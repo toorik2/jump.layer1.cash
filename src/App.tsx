@@ -113,7 +113,7 @@ export default function App() {
       <div class="container">
         <header>
           <h1>Jump to layer 1</h1>
-          <p class="intro">Convert your EVM smart contract to CashVM</p>
+          <p class="intro">Convert your Solidity smart contract to CashScript</p>
         </header>
 
         <div class="converter">
