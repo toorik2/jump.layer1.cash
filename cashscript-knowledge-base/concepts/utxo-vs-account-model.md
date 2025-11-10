@@ -1,0 +1,270 @@
+# UTXO vs Account Model - EVM→CashScript Conversion Reference
+
+## Core Model Differences
+
+| Aspect | UTXO (CashScript/BCH) | Account (EVM/Solidity) |
+|--------|----------------------|------------------------|
+| **State** | No global state, independent atomic UTXOs | Global state tree, persistent storage |
+| **Execution** | Transaction-level validation, stateless scripts | Contract-level execution, stateful |
+| **Concurrency** | Parallel spending of different UTXOs | Sequential (nonce-based) |
+| **Persistence** | UTXO chains, NFT commitments (128 bytes max) | Storage slots, mappings, state variables |
+| **Transaction** | Multiple inputs → Multiple outputs | Single sender → Single recipient |
+| **Gas Model** | Fee based on tx size (bytes) | Computational steps (opcode-based) |
+| **Introspection** | Full tx visibility (`tx.inputs[]`, `tx.outputs[]`) | Limited (`msg.sender`, `msg.value`) |
+| **Covenants** | Native output constraints via bytecode validation | No native support |
+| **Reentrancy** | N/A (atomic transactions) | Vulnerable (requires guards) |
+| **Arrays** | Limited (multiple UTXOs or covenant chains) | Native arrays, mappings |
+| **Tokens** | Native CashTokens (FT/NFT) | ERC-20/721 contract standards |
+| **Inter-Contract** | Via multi-input transactions | `call`, `delegatecall`, `staticcall` |
+| **Loops** | `do {} while()` (v0.13.0+, beta) | `for`, `while`, `do while` |
+| **Signatures** | Explicit `checkSig(sig, pk)` | Implicit `msg.sender` recovery |
+| **Time** | `tx.time` (block height or Unix timestamp) | `block.timestamp`, `block.number` |
+
+## CashScript UTXO Primitives
+
+### Transaction Introspection
+
+```cashscript
+// Input Properties
+tx.inputs[i].value                 // int: BCH amount in satoshis
+tx.inputs[i].lockingBytecode       // bytes: Input script
+tx.inputs[i].tokenCategory         // bytes32: Token category (unreversed)
+tx.inputs[i].tokenAmount           // int: Fungible token amount
+tx.inputs[i].nftCommitment         // bytes: NFT data (max 128 bytes)
+tx.inputs[i].sequenceNumber        // int: nSequence field value
+tx.inputs[i].unlockingBytecode     // bytes: scriptSig of input
+tx.inputs[i].outpointTransactionHash // bytes32: Previous transaction hash
+tx.inputs[i].outpointIndex         // int: Previous output index
+
+// Output Properties
+tx.outputs[i].value                // int: BCH amount in satoshis
+tx.outputs[i].lockingBytecode      // bytes: Output script
+tx.outputs[i].tokenCategory        // bytes32: Token category (unreversed)
+tx.outputs[i].tokenAmount          // int: Fungible token amount
+tx.outputs[i].nftCommitment        // bytes: NFT data (max 128 bytes)
+
+// Context
+this.activeInputIndex              // int: Current UTXO being spent
+this.activeBytecode                // bytes: Current UTXO's script
+
+// Time
+tx.time                           // int: nLocktime (<500M=block, ≥500M=Unix timestamp)
+tx.version                        // int: Transaction version
+tx.locktime                       // int: Same as tx.time
+this.age                          // int: nSequence relative timelock (blocks only in SDK)
+```
+
+### Locking Bytecode Constructors
+
+```cashscript
+new LockingBytecodeP2PKH(bytes20 pkHash)           // Standard payment
+new LockingBytecodeP2SH20(bytes20 scriptHash)      // Legacy (less secure)
+new LockingBytecodeP2SH32(bytes32 scriptHash)      // Default (more secure)
+new LockingBytecodeNullData(bytes[] chunks)        // OP_RETURN (223 bytes total/tx)
+```
+
+### Timelock Semantics
+
+```cashscript
+// Absolute Time (nLocktime)
+require(tx.time >= lockTime);      // ✅ ALWAYS use >= (not >)
+
+// Relative Time (nSequence)
+require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec chunks)
+```
+
+## EVM→CashScript Pattern Mappings
+
+| Solidity | CashScript | Notes |
+|----------|-----------|-------|
+| `constructor(address _owner)` | `contract MyContract(pubkey owner)` | Parameters are immutable, set at instantiation |
+| `uint256 balance;` | NFT commitment or UTXO chain | State stored in 128-byte NFT commitments |
+| `mapping(address => uint)` | NFT commitment + loop validation | No native mappings, use arrays or commitment data |
+| `require(condition, "msg")` | `require(condition);` | No error messages, tx fails if false |
+| `msg.sender` | `checkSig(sig, pubkey)` | Explicit signature verification required |
+| `msg.value` | `tx.inputs[this.activeInputIndex].value` | Must sum inputs, validate outputs |
+| `transfer(recipient, amount)` | `require(tx.outputs[0].value >= amount)` | Covenant-based output validation |
+| `payable` keyword | No keyword | All functions can handle value |
+| `emit Event(data)` | `new LockingBytecodeNullData([data])` | OP_RETURN output (223 bytes max total) |
+| `modifier onlyOwner` | `require(checkSig(sig, owner));` | No native modifiers, inline checks |
+| `for(uint i=0; i<n; i++)` | `do { i=i+1; } while(i<n)` | Beta in v0.13.0, body executes first |
+| Reentrancy guard | N/A | No reentrancy in UTXO model |
+| `storage[]` arrays | Multiple UTXOs or covenant | No storage arrays, separate UTXOs |
+| ERC-20 | CashTokens fungible | Native: `tokenAmount`, `tokenCategory` |
+| ERC-721 | CashTokens NFT | Native: `nftCommitment`, capabilities |
+| `balanceOf[addr]` | `tx.inputs[i].tokenAmount` | Query UTXOs for token balance |
+| `view` functions | N/A | All validation happens in spending tx |
+| `pure` functions | User-defined functions | `function myFunc(): int { return 42; }` |
+| `this.balance` | `tx.inputs[this.activeInputIndex].value` | Current UTXO value |
+| `block.timestamp` | `tx.time` | nLocktime value |
+| `block.number` | `tx.time` (when <500M) | Block height |
+| `selfdestruct()` | Spend to any output | No self-destruct, just spend UTXO |
+| `delegatecall()` | N/A | No contract calls |
+| `call{value: x}()` | Multi-input transaction | Construct tx with multiple contract inputs |
+
+## Critical Gotchas
+
+### State Management
+- ❌ No persistent state variables
+- ✅ State via UTXO chains: validate input state → create output with new state
+- ✅ Pattern: `require(tx.inputs[0].nftCommitment == oldState)` + `require(tx.outputs[0].nftCommitment == newState)`
+
+### No Inter-Contract Calls
+- ❌ Cannot call other contracts
+- ❌ No `call`, `delegatecall`, `staticcall`
+- ✅ Multi-contract interaction via transaction construction (multiple inputs from different contracts)
+
+### Array Bounds Validation
+- ❌ No automatic bounds checking
+- ✅ ALWAYS validate: `require(tx.outputs.length > index)` before access
+- ✅ Same for `tx.inputs.length`
+
+### No Short-Circuit Evaluation
+- ❌ `&&` and `||` evaluate ALL operands (not lazy)
+- ❌ Cannot use `array.length > 0 && array[0] == value` safely
+- ✅ Must separate: `require(array.length > 0); require(array[0] == value);`
+
+### Time Comparison Operators
+- ❌ `tx.time > lockTime` is WRONG
+- ✅ `tx.time >= lockTime` is CORRECT (ALWAYS use `>=`)
+- ❌ `this.age` is NOT 512-second chunks (SDK limitation)
+- ✅ `this.age` is blocks only
+
+### Arithmetic Limitations
+- ❌ No decimals, no floating point
+- ❌ Integer-only, division truncates
+- ❌ No compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`)
+- ✅ Manual operations: `x = x + 1` (not `x++` or `x += 1`)
+- ✅ Overflow checks: `require(a + b >= a)`
+
+### Bitwise Operations (Version-Dependent)
+- ❌ Legacy: No shift operators (`<<`, `>>`)
+- ❌ Legacy: No bitwise NOT (`~`)
+- ✅ Legacy: Only `&`, `|`, `^`
+- ✅ Modern (recent upgrades): Full bitwise support including `~`, shifts
+
+### Token Category Byte Order
+- ⚠️ `tokenCategory` returned in unreversed order (unlike tx hashes)
+- ✅ Use as-is without reversal
+
+### Signature Validation
+- ⚠️ `checkSig(0x, pubkey)` returns `false` (not failure)
+- ⚠️ Empty signature = valid false response
+- ⚠️ Invalid signature format = transaction failure
+- ✅ Nullfail rule enforced
+
+### OP_RETURN Size
+- ❌ 223 bytes TOTAL across ALL OP_RETURN outputs in transaction
+- ❌ Not a per-output limit
+- ✅ Plan accordingly for multiple OP_RETURN outputs
+
+### Loops (Pre-v0.13.0)
+- ❌ No `for`, `while` loops in older versions
+- ✅ v0.13.0+: `do { } while()` syntax (beta)
+- ✅ ALWAYS validate bounds: `require(count <= maxIterations)` before loop
+- ✅ Check loop state for overflows
+
+### No Fallback/Receive
+- ❌ No automatic payment handling
+- ❌ No `fallback()` or `receive()`
+- ✅ Explicit function calls required
+
+### P2SH Standards
+- ✅ P2SH32 (32-byte hash) is default and more secure
+- ⚠️ P2SH20 (20-byte hash) is legacy, less collision-resistant
+- ✅ P2S (Pay to Script) reduces tx size by 23-35 bytes vs P2SH
+
+### Bytecode Limits
+- ✅ 10,000 bytes unlocking bytecode limit
+- ✅ 128 bytes NFT commitment limit (BLS12-381 compatible)
+
+## Type System Reference
+
+| Type | Size | Range/Constraints | Operations | Auto-Convert To |
+|------|------|------------------|------------|----------------|
+| `bool` | 1 byte | `true`, `false` | `!`, `&&`, `\|\|` | N/A |
+| `int` | Variable | -2^63 to 2^63-1 | `+`, `-`, `*`, `/`, `%`, `<`, `>`, `==`, `!=`, `<=`, `>=` | `bytes` |
+| `string` | Variable | UTF-8 or hex (`0x...`) | `.split()`, `.length`, `.reverse()` | `bytes` |
+| `bytes` | Variable | Arbitrary byte sequence | `.split()`, `.length`, `.reverse()`, `&`, `\|`, `^` | N/A |
+| `bytes1` to `bytes64` | Fixed (N) | Fixed-length byte sequence | Same as `bytes` | `bytes` |
+| `pubkey` | 33 bytes | Compressed public key | Used in `checkSig`, `checkMultiSig` | `bytes` |
+| `sig` | 64-65 bytes | Schnorr signature | Used in `checkSig`, `checkMultiSig` | `bytes` |
+| `datasig` | 64-65 bytes | Data signature | Used in `checkDataSig` | `bytes` |
+
+### Type Constraints
+- All variables explicitly typed (no `var`)
+- No implicit conversions
+- Fixed-length: `bytesN` where N ∈ [1, 64]
+- Collections: Arrays limited (mainly `sig[]`, `pubkey[]` for `checkMultiSig`)
+- Tuples: Only from `split()` operations, requires destructuring
+
+### Operators
+
+| Category | Supported | Notes |
+|----------|-----------|-------|
+| Arithmetic | `+`, `-`, `*`, `/`, `%` | Integer only, division truncates |
+| Comparison | `<`, `<=`, `>`, `>=`, `==`, `!=` | All types |
+| Logical | `!`, `&&`, `\|\|` | No short-circuit evaluation |
+| Bitwise (legacy) | `&`, `\|`, `^` | AND, OR, XOR only |
+| Bitwise (modern) | `&`, `\|`, `^`, `~`, `<<`, `>>` | Full support in recent versions |
+| Assignment | `=` | No compound (`+=`, `-=`, etc.) |
+
+### Units
+
+```cashscript
+// BCH Units
+1 sats    = 1
+1 finney  = 10
+1 bits    = 100
+1 bitcoin = 100_000_000
+
+// Time Units
+1 seconds = 1
+1 minutes = 60 seconds
+1 hours   = 60 minutes
+1 days    = 24 hours
+1 weeks   = 7 days
+```
+
+### Built-in Functions
+
+| Function | Signature | Returns | Notes |
+|----------|-----------|---------|-------|
+| `abs()` | `abs(int a)` | `int` | Absolute value |
+| `min()` | `min(int a, int b)` | `int` | Minimum of two values |
+| `max()` | `max(int a, int b)` | `int` | Maximum of two values |
+| `within()` | `within(int x, int lower, int upper)` | `bool` | `lower <= x < upper` (upper exclusive) |
+| `sha256()` | `sha256(bytes data)` | `bytes32` | SHA-256 hash |
+| `sha1()` | `sha1(bytes data)` | `bytes20` | SHA-1 hash |
+| `ripemd160()` | `ripemd160(bytes data)` | `bytes20` | RIPEMD-160 hash |
+| `hash160()` | `hash160(bytes data)` | `bytes20` | SHA-256 then RIPEMD-160 |
+| `hash256()` | `hash256(bytes data)` | `bytes32` | Double SHA-256 |
+| `checkSig()` | `checkSig(sig s, pubkey pk)` | `bool` | Verify signature |
+| `checkMultiSig()` | `checkMultiSig(sig[] sigs, pubkey[] pks)` | `bool` | NOT supported in SDK |
+| `checkDataSig()` | `checkDataSig(datasig s, bytes msg, pubkey pk)` | `bool` | Verify data signature |
+| `bytes()` | `bytes(T data)` | `bytes` | Convert to bytes |
+
+### Mental Model: UTXO State Continuity
+
+```
+EVM: storage.balance += amount (in-place state update)
+
+CashScript:
+1. Consume UTXO with current balance (input)
+2. Validate input has expected balance state: require(tx.inputs[0].nftCommitment == oldState)
+3. Create new UTXO with updated balance (output)
+4. Enforce balance conservation: sum(inputs) == sum(outputs) + fee
+5. Set new state: require(tx.outputs[0].nftCommitment == newState)
+```
+
+Think in terms of:
+- **Input Selection**: Which UTXOs to consume
+- **Validation Logic**: What conditions must inputs/outputs satisfy
+- **Output Creation**: What UTXOs to create
+- **State Continuity**: How to link current UTXO to next state
+
+NOT:
+- ~~Storage updates~~
+- ~~State transitions in-place~~
+- ~~Function calls between contracts~~
+- ~~Persistent memory~~

@@ -344,7 +344,7 @@ footer a:hover {
   }
 
   header {
-    padding: 3rem 0 2rem 0;
+    padding: 2rem 0 1.5rem 0;
   }
 
   h1 {
@@ -356,7 +356,7 @@ footer a:hover {
   }
 
   .input-textarea {
-    min-height: 250px;
+    min-height: 200px;
     font-size: 0.8125rem;
   }
 
@@ -367,10 +367,31 @@ footer a:hover {
 
   .output-section {
     padding: 1.25rem;
-    min-height: 250px;
+    min-height: 200px;
   }
 
   .output-content {
     font-size: 0.8125rem;
+  }
+
+  .code-block pre {
+    font-size: 0.75rem !important;
+    padding: 1rem !important;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .alternative-code-block pre {
+    font-size: 0.6875rem !important;
+  }
+
+  .code-copy-btn {
+    padding: 0.75rem;
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+
+  .detail-summary {
+    padding: 1.25rem 1.5rem;
   }
 }
