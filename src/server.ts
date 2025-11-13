@@ -69,7 +69,7 @@ app.post('/api/convert', async (req, res) => {
 CashScript Language Reference:
 ${knowledgeBase}
 
-IMPORTANT: Always use "pragma cashscript ^0.12.0;" at the top of every CashScript contract.
+IMPORTANT: Always use "pragma cashscript ^0.13.0;" at the top of every CashScript contract.
 
 Respond with valid JSON in this structure:
 {
