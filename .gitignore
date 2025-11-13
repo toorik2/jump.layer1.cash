@@ -7,6 +7,9 @@ dist/
 # Environment variables
 .env
 
+# Database
+data/
+
 # Logs
 *.log
 npm-debug.log*
