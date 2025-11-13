@@ -78,6 +78,12 @@ CRITICAL RULES:
    - This is the most common cause of compilation failures
    - Example: function transfer(pubkey recipient, sig senderSig) requires BOTH recipient and senderSig to be used
 
+3. BCH is UTXO-based (stateless), NOT account-based like Ethereum.
+   - Solidity state variables that can be updated → CashScript MUST use covenant patterns
+   - "Update" means: spend old UTXO, enforce output creates new UTXO with new constructor params
+   - Use tx.outputs constraints to enforce recreation (see STATE VARIABLES section in reference)
+   - Remove "read" functions - reading is done off-chain by inspecting constructor parameters
+
 Respond with valid JSON in this structure:
 {
   "primaryContract": "string - the best CashScript translation (code only)",

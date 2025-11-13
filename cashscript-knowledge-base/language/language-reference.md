@@ -89,6 +89,35 @@
 - Contract typically does NOT enforce OP_RETURN (SDK adds it)
 - Alternative: Contract enforces via `LockingBytecodeNullData` for critical events
 
+## STATE VARIABLES (Solidity → CashScript)
+
+**CRITICAL**: BCH is UTXO-based (stateless), NOT account-based like Ethereum.
+
+**Solidity updatable state → CashScript covenant pattern**:
+```solidity
+// Solidity (account model - state persists)
+string public message;
+function update(string newMessage) { message = newMessage; }
+```
+→
+```cashscript
+// CashScript (UTXO model - enforce recreation)
+contract Message(bytes message) {
+    function update(bytes newMessage, sig ownerSig) {
+        require(checkSig(ownerSig, owner));
+        // Enforce output creates NEW contract instance
+        require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2SH32(hash256(/* new contract with newMessage */)));
+        require(tx.outputs[0].value >= tx.inputs[this.activeInputIndex].value - 1000);
+    }
+}
+```
+
+**Key differences**:
+- Constructor params = "state" (immutable per UTXO)
+- "Update" = spend old UTXO, create new UTXO with new constructor params
+- Covenant enforces output constraints (new contract instance, preserve value)
+- Read functions unnecessary (inspect constructor params off-chain)
+
 ## OPERATORS
 
 | Category | Operators | Valid Types | Notes |
