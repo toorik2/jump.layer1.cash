@@ -98,8 +98,8 @@ export async function logApiCallStart(
   attemptNumber: number,
   model: string,
   maxTokens: number,
-  systemPrompt: string,
-  userMessage: string
+  userMessage: string,
+  systemPrompt?: string
 ): Promise<number> {
   return new Promise((resolve, reject) => {
     setImmediate(() => {

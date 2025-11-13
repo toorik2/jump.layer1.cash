@@ -25,7 +25,7 @@ export interface AnthropicApiCallRecord {
   created_at: string;
   model: string;
   max_tokens: number;
-  system_prompt: string;
+  system_prompt?: string; // Optional - avoid storing large knowledge base
   user_message: string;
   response_text?: string;
   response_time_ms?: number;

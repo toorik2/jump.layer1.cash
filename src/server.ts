@@ -97,7 +97,7 @@ Use your best judgment to pick the optimal translation as primaryContract. Inclu
     // Initial attempt
     console.log('[Conversion] Calling Anthropic API (initial attempt)...');
     const apiCallStartTime = Date.now();
-    const apiCallId = await logApiCallStart(conversionId, 1, 'claude-sonnet-4-5-20250929', 8000, systemPrompt, contract);
+    const apiCallId = await logApiCallStart(conversionId, 1, 'claude-sonnet-4-5-20250929', 8000, contract);
 
     let message = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
@@ -160,7 +160,7 @@ Please fix this specific issue and provide a corrected translation. Make sure ev
         retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a syntax error:\n${validation.error}\n\nPlease fix the syntax error and provide a corrected translation.`;
       }
 
-      const retryApiCallId = await logApiCallStart(conversionId, 2, 'claude-sonnet-4-5-20250929', 8000, systemPrompt, retryMessage);
+      const retryApiCallId = await logApiCallStart(conversionId, 2, 'claude-sonnet-4-5-20250929', 8000, retryMessage);
 
       message = await anthropic.messages.create({
         model: 'claude-sonnet-4-5-20250929',
