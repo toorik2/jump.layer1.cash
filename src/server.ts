@@ -69,7 +69,14 @@ app.post('/api/convert', async (req, res) => {
 CashScript Language Reference:
 ${knowledgeBase}
 
-IMPORTANT: Always use "pragma cashscript ^0.13.0;" at the top of every CashScript contract.
+CRITICAL RULES:
+1. Always use "pragma cashscript ^0.13.0;" at the top of every CashScript contract.
+
+2. EVERY function parameter you declare MUST be used in the function body.
+   - CashScript compiler strictly enforces this requirement (similar to Rust)
+   - If a parameter is not needed in the function logic, do NOT declare it
+   - This is the most common cause of compilation failures
+   - Example: function transfer(pubkey recipient, sig senderSig) requires BOTH recipient and senderSig to be used
 
 Respond with valid JSON in this structure:
 {
@@ -132,7 +139,26 @@ Use your best judgment to pick the optimal translation as primaryContract. Inclu
 
       // Retry with validation error
       const retryApiCallStartTime = Date.now();
-      const retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a syntax error:\n${validation.error}\n\nPlease fix the syntax error and provide a corrected translation.`;
+
+      // Parse error for unused variable to provide specific guidance
+      const unusedVarMatch = validation.error?.match(/Unused variable (\w+) at Line (\d+), Column (\d+)/);
+
+      let retryMessage: string;
+      if (unusedVarMatch) {
+        const [_, varName, line, column] = unusedVarMatch;
+        retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a critical error:
+
+UNUSED PARAMETER ERROR: The variable '${varName}' at Line ${line}, Column ${column} is declared in your function signature but never used in the function body.
+
+CashScript strictly requires that ALL function parameters must be used (similar to Rust). You have two options:
+1. Use the '${varName}' parameter somewhere in your function logic
+2. Remove '${varName}' from the function signature if it's not needed for the contract logic
+
+Please fix this specific issue and provide a corrected translation. Make sure every parameter you declare is actually used in the code.`;
+      } else {
+        // Generic retry message for other errors
+        retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a syntax error:\n${validation.error}\n\nPlease fix the syntax error and provide a corrected translation.`;
+      }
 
       const retryApiCallId = await logApiCallStart(conversionId, 2, 'claude-sonnet-4-5-20250929', 8000, systemPrompt, retryMessage);
 
