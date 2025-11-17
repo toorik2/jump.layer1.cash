@@ -1,10 +1,11 @@
-import { createSignal, createEffect } from 'solid-js';
+import { createSignal, createEffect, For, Show } from 'solid-js';
 import { codeToHtml } from 'shiki';
 import { Copy, Check, X } from 'lucide-solid';
 import { API_URL } from './config';
 import './styles.css';
 
-type ConversionResult = {
+// Single contract response type
+type SingleContractResult = {
   primaryContract: string;
   explanation: string;
   considerations: string[];
@@ -16,6 +17,58 @@ type ConversionResult = {
   artifact?: any;
 };
 
+// Multi-contract response types
+type ContractParam = {
+  name: string;
+  type: string;
+  description: string;
+  source: string;
+  sourceContractId: string | null;
+};
+
+type ContractInfo = {
+  id: string;
+  name: string;
+  purpose: string;
+  code: string;
+  role: string;
+  deploymentOrder: number;
+  dependencies: string[];
+  constructorParams: ContractParam[];
+  validated?: boolean;
+  bytecodeSize?: number;
+  artifact?: any;
+  validationError?: string;
+};
+
+type DeploymentStep = {
+  order: number;
+  contractId: string;
+  description: string;
+  prerequisites: string[];
+  outputs: string[];
+};
+
+type DeploymentGuide = {
+  steps: DeploymentStep[];
+  warnings: string[];
+  testingNotes: string[];
+};
+
+type MultiContractResult = {
+  contracts: ContractInfo[];
+  deploymentGuide: DeploymentGuide;
+  explanation: string;
+  considerations: string[];
+  alternatives?: any[];
+};
+
+type ConversionResult = SingleContractResult | MultiContractResult;
+
+function isMultiContractResult(result: ConversionResult): result is MultiContractResult {
+  return 'contracts' in result && Array.isArray(result.contracts);
+}
+
 export default function App() {
   const [evmContract, setEvmContract] = createSignal('');
   const [result, setResult] = createSignal<ConversionResult | null>(null);
@@ -23,9 +76,12 @@ export default function App() {
   const [error, setError] = createSignal('');
   const [copyStatus, setCopyStatus] = createSignal<'idle' | 'copied' | 'error'>('idle');
   const [altCopyStatus, setAltCopyStatus] = createSignal<{[key: number]: 'idle' | 'copied' | 'error'}>({});
+  const [contractCopyStatus, setContractCopyStatus] = createSignal<{[key: string]: 'idle' | 'copied' | 'error'}>({});
   const [highlightedHTML, setHighlightedHTML] = createSignal('');
   const [altHighlightedHTML, setAltHighlightedHTML] = createSignal<{[key: number]: string}>({});
+  const [contractHighlightedHTML, setContractHighlightedHTML] = createSignal<{[key: string]: string}>({});
   const [artifactHTML, setArtifactHTML] = createSignal('');
+  const [activeContractTab, setActiveContractTab] = createSignal(0);
 
   const copyToClipboard = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -39,32 +95,52 @@ export default function App() {
     setTimeout(() => setAltCopyStatus(prev => ({ ...prev, [index]: 'idle' })), 2000);
   };
 
+  const copyContractToClipboard = async (text: string, id: string) => {
+    await navigator.clipboard.writeText(text);
+    setContractCopyStatus(prev => ({ ...prev, [id]: 'copied' }));
+    setTimeout(() => setContractCopyStatus(prev => ({ ...prev, [id]: 'idle' })), 2000);
+  };
+
   createEffect(async () => {
     const r = result();
     if (r) {
-      const html = await codeToHtml(r.primaryContract, {
-        lang: 'javascript',
-        theme: 'dark-plus'
-      });
-      setHighlightedHTML(html);
-
-      const altHtmls: {[key: number]: string} = {};
-      for (let i = 0; i < r.alternatives.length; i++) {
-        const altHtml = await codeToHtml(r.alternatives[i].contract, {
+      if (isMultiContractResult(r)) {
+        // Multi-contract response
+        const contractHtmls: {[key: string]: string} = {};
+        for (const contract of r.contracts) {
+          const html = await codeToHtml(contract.code, {
+            lang: 'javascript',
+            theme: 'dark-plus'
+          });
+          contractHtmls[contract.id] = html;
+        }
+        setContractHighlightedHTML(contractHtmls);
+      } else {
+        // Single contract response
+        const html = await codeToHtml(r.primaryContract, {
           lang: 'javascript',
           theme: 'dark-plus'
         });
-        altHtmls[i] = altHtml;
-      }
-      setAltHighlightedHTML(altHtmls);
+        setHighlightedHTML(html);
 
-      if (r.artifact) {
-        const artifactJson = JSON.stringify(r.artifact, null, 2);
-        const artifactHtml = await codeToHtml(artifactJson, {
-          lang: 'json',
-          theme: 'dark-plus'
-        });
-        setArtifactHTML(artifactHtml);
+        const altHtmls: {[key: number]: string} = {};
+        for (let i = 0; i < r.alternatives.length; i++) {
+          const altHtml = await codeToHtml(r.alternatives[i].contract, {
+            lang: 'javascript',
+            theme: 'dark-plus'
+          });
+          altHtmls[i] = altHtml;
+        }
+        setAltHighlightedHTML(altHtmls);
+
+        if (r.artifact) {
+          const artifactJson = JSON.stringify(r.artifact, null, 2);
+          const artifactHtml = await codeToHtml(artifactJson, {
+            lang: 'json',
+            theme: 'dark-plus'
+          });
+          setArtifactHTML(artifactHtml);
+        }
       }
     }
   });
@@ -83,7 +159,9 @@ export default function App() {
     setResult(null);
     setHighlightedHTML('');
     setAltHighlightedHTML({});
+    setContractHighlightedHTML({});
     setArtifactHTML('');
+    setActiveContractTab(0);
 
     console.log(`[Jump Arena] Sending request to ${API_URL}`);
     const response = await fetch(API_URL, {
@@ -139,70 +217,247 @@ export default function App() {
             <span class="output-label">CashScript Output</span>
             {loading() && <div class="loading">Converting your contract...</div>}
             {error() && <div class="error">{error()}</div>}
+
             {result() && (
-              <>
-                <div class="code-container">
-                  <div class="code-block" innerHTML={highlightedHTML()} />
-                  <button
-                    class={`code-copy-btn ${copyStatus() === 'copied' ? 'copied' : copyStatus() === 'error' ? 'error' : ''}`}
-                    onClick={() => copyToClipboard(result()!.primaryContract)}
-                    disabled={copyStatus() === 'copied'}
-                    title={copyStatus() === 'copied' ? 'Copied!' : 'Copy to clipboard'}
-                  >
-                    {copyStatus() === 'copied' ? <Check size={20} /> : copyStatus() === 'error' ? <X size={20} /> : <Copy size={20} />}
-                  </button>
-                </div>
+              <Show
+                when={isMultiContractResult(result()!)}
+                fallback={
+                  // Single contract display
+                  <>
+                    <div class="code-container">
+                      <div class="code-block" innerHTML={highlightedHTML()} />
+                      <button
+                        class={`code-copy-btn ${copyStatus() === 'copied' ? 'copied' : copyStatus() === 'error' ? 'error' : ''}`}
+                        onClick={() => copyToClipboard((result() as SingleContractResult).primaryContract)}
+                        disabled={copyStatus() === 'copied'}
+                        title={copyStatus() === 'copied' ? 'Copied!' : 'Copy to clipboard'}
+                      >
+                        {copyStatus() === 'copied' ? <Check size={20} /> : copyStatus() === 'error' ? <X size={20} /> : <Copy size={20} />}
+                      </button>
+                    </div>
 
-                <div class="expandable-sections">
-                  <details class="detail-section">
-                    <summary class="detail-summary">Explanation</summary>
-                    <div class="detail-content">{result()!.explanation}</div>
-                  </details>
+                    <div class="expandable-sections">
+                      <details class="detail-section">
+                        <summary class="detail-summary">Explanation</summary>
+                        <div class="detail-content">{(result() as SingleContractResult).explanation}</div>
+                      </details>
 
-                  {result()!.considerations.length > 0 && (
-                    <details class="detail-section">
-                      <summary class="detail-summary">Considerations ({result()!.considerations.length})</summary>
-                      <ul class="detail-list">
-                        {result()!.considerations.map(item => <li>{item}</li>)}
-                      </ul>
-                    </details>
-                  )}
+                      {(result() as SingleContractResult).considerations.length > 0 && (
+                        <details class="detail-section">
+                          <summary class="detail-summary">Considerations ({(result() as SingleContractResult).considerations.length})</summary>
+                          <ul class="detail-list">
+                            {(result() as SingleContractResult).considerations.map(item => <li>{item}</li>)}
+                          </ul>
+                        </details>
+                      )}
 
-                  {result()!.alternatives.length > 0 && (
-                    <details class="detail-section">
-                      <summary class="detail-summary">Alternative Implementations ({result()!.alternatives.length})</summary>
-                      <div class="alternatives">
-                        {result()!.alternatives.map((alt, idx) => (
-                          <div class="alternative">
-                            <div class="alternative-header">{alt.name}</div>
-                            <div class="alternative-rationale">{alt.rationale}</div>
-                            <div class="code-container">
-                              <div class="code-block alternative-code-block" innerHTML={altHighlightedHTML()[idx] || ''} />
-                              <button
-                                class={`code-copy-btn ${altCopyStatus()[idx] === 'copied' ? 'copied' : altCopyStatus()[idx] === 'error' ? 'error' : ''}`}
-                                onClick={() => copyAltToClipboard(alt.contract, idx)}
-                                disabled={altCopyStatus()[idx] === 'copied'}
-                                title={altCopyStatus()[idx] === 'copied' ? 'Copied!' : 'Copy to clipboard'}
-                              >
-                                {altCopyStatus()[idx] === 'copied' ? <Check size={18} /> : altCopyStatus()[idx] === 'error' ? <X size={18} /> : <Copy size={18} />}
-                              </button>
-                            </div>
+                      {(result() as SingleContractResult).alternatives.length > 0 && (
+                        <details class="detail-section">
+                          <summary class="detail-summary">Alternative Implementations ({(result() as SingleContractResult).alternatives.length})</summary>
+                          <div class="alternatives">
+                            {(result() as SingleContractResult).alternatives.map((alt, idx) => (
+                              <div class="alternative">
+                                <div class="alternative-header">{alt.name}</div>
+                                <div class="alternative-rationale">{alt.rationale}</div>
+                                <div class="code-container">
+                                  <div class="code-block alternative-code-block" innerHTML={altHighlightedHTML()[idx] || ''} />
+                                  <button
+                                    class={`code-copy-btn ${altCopyStatus()[idx] === 'copied' ? 'copied' : altCopyStatus()[idx] === 'error' ? 'error' : ''}`}
+                                    onClick={() => copyAltToClipboard(alt.contract, idx)}
+                                    disabled={altCopyStatus()[idx] === 'copied'}
+                                    title={altCopyStatus()[idx] === 'copied' ? 'Copied!' : 'Copy to clipboard'}
+                                  >
+                                    {altCopyStatus()[idx] === 'copied' ? <Check size={18} /> : altCopyStatus()[idx] === 'error' ? <X size={18} /> : <Copy size={18} />}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
+                        </details>
+                      )}
 
-                  {result()!.artifact && (
-                    <details class="detail-section">
-                      <summary class="detail-summary">Compiled Artifact</summary>
-                      <div class="code-container">
-                        <div class="code-block" innerHTML={artifactHTML()} />
+                      {(result() as SingleContractResult).artifact && (
+                        <details class="detail-section">
+                          <summary class="detail-summary">Compiled Artifact</summary>
+                          <div class="code-container">
+                            <div class="code-block" innerHTML={artifactHTML()} />
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </>
+                }
+              >
+                {/* Multi-contract display */}
+                {(() => {
+                  const multiResult = result() as MultiContractResult;
+                  return (
+                    <>
+                      <div class="multi-contract-badge">
+                        Multi-Contract System ({multiResult.contracts.length} contracts)
                       </div>
-                    </details>
-                  )}
-                </div>
-              </>
+
+                      <div class="contract-tabs">
+                        <For each={multiResult.contracts}>
+                          {(contract, idx) => (
+                            <button
+                              class={`contract-tab ${activeContractTab() === idx() ? 'active' : ''}`}
+                              onClick={() => setActiveContractTab(idx())}
+                            >
+                              <span class="tab-order">{contract.deploymentOrder}</span>
+                              <span class="tab-name">{contract.name}</span>
+                              <span class={`tab-status ${contract.validated ? 'valid' : 'invalid'}`}>
+                                {contract.validated ? '✓' : '✗'}
+                              </span>
+                            </button>
+                          )}
+                        </For>
+                      </div>
+
+                      <div class="contract-card">
+                        {(() => {
+                          const contract = multiResult.contracts[activeContractTab()];
+                          return (
+                            <>
+                              <div class="contract-meta">
+                                <div class="contract-role">{contract.role}</div>
+                                <div class="contract-purpose">{contract.purpose}</div>
+                                {contract.validationError && (
+                                  <div class="contract-error">
+                                    Validation Error: {contract.validationError}
+                                  </div>
+                                )}
+                              </div>
+
+                              {contract.dependencies.length > 0 && (
+                                <div class="contract-dependencies">
+                                  <strong>Dependencies:</strong> {contract.dependencies.join(', ')}
+                                </div>
+                              )}
+
+                              {contract.constructorParams.length > 0 && (
+                                <div class="contract-params">
+                                  <strong>Constructor Parameters:</strong>
+                                  <table class="params-table">
+                                    <thead>
+                                      <tr>
+                                        <th>Name</th>
+                                        <th>Type</th>
+                                        <th>Source</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      <For each={contract.constructorParams}>
+                                        {(param) => (
+                                          <tr>
+                                            <td>{param.name}</td>
+                                            <td><code>{param.type}</code></td>
+                                            <td>
+                                              {param.source === 'from-contract'
+                                                ? `From: ${param.sourceContractId}`
+                                                : param.source}
+                                            </td>
+                                          </tr>
+                                        )}
+                                      </For>
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+
+                              <div class="code-container">
+                                <div class="code-block" innerHTML={contractHighlightedHTML()[contract.id] || ''} />
+                                <button
+                                  class={`code-copy-btn ${contractCopyStatus()[contract.id] === 'copied' ? 'copied' : ''}`}
+                                  onClick={() => copyContractToClipboard(contract.code, contract.id)}
+                                  disabled={contractCopyStatus()[contract.id] === 'copied'}
+                                  title={contractCopyStatus()[contract.id] === 'copied' ? 'Copied!' : 'Copy to clipboard'}
+                                >
+                                  {contractCopyStatus()[contract.id] === 'copied'
+                                    ? <Check size={20} />
+                                    : <Copy size={20} />}
+                                </button>
+                              </div>
+
+                              {contract.bytecodeSize && (
+                                <div class="bytecode-size">
+                                  Bytecode size: {contract.bytecodeSize} bytes
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+
+                      <div class="expandable-sections">
+                        <details class="detail-section" open>
+                          <summary class="detail-summary">Deployment Guide</summary>
+                          <div class="deployment-guide">
+                            <div class="deployment-steps">
+                              <strong>Deployment Steps:</strong>
+                              <ol>
+                                <For each={multiResult.deploymentGuide.steps}>
+                                  {(step) => (
+                                    <li>
+                                      <div class="step-description">{step.description}</div>
+                                      {step.prerequisites.length > 0 && (
+                                        <div class="step-prereqs">
+                                          Prerequisites: {step.prerequisites.join(', ')}
+                                        </div>
+                                      )}
+                                      {step.outputs.length > 0 && (
+                                        <div class="step-outputs">
+                                          Outputs: {step.outputs.join(', ')}
+                                        </div>
+                                      )}
+                                    </li>
+                                  )}
+                                </For>
+                              </ol>
+                            </div>
+
+                            {multiResult.deploymentGuide.warnings.length > 0 && (
+                              <div class="deployment-warnings">
+                                <strong>Warnings:</strong>
+                                <ul>
+                                  <For each={multiResult.deploymentGuide.warnings}>
+                                    {(warning) => <li class="warning-item">{warning}</li>}
+                                  </For>
+                                </ul>
+                              </div>
+                            )}
+
+                            {multiResult.deploymentGuide.testingNotes.length > 0 && (
+                              <div class="deployment-testing">
+                                <strong>Testing Notes:</strong>
+                                <ul>
+                                  <For each={multiResult.deploymentGuide.testingNotes}>
+                                    {(note) => <li>{note}</li>}
+                                  </For>
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </details>
+
+                        <details class="detail-section">
+                          <summary class="detail-summary">System Explanation</summary>
+                          <div class="detail-content">{multiResult.explanation}</div>
+                        </details>
+
+                        {multiResult.considerations.length > 0 && (
+                          <details class="detail-section">
+                            <summary class="detail-summary">Considerations ({multiResult.considerations.length})</summary>
+                            <ul class="detail-list">
+                              {multiResult.considerations.map(item => <li>{item}</li>)}
+                            </ul>
+                          </details>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+              </Show>
             )}
           </div>
         </div>

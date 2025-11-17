@@ -51,6 +51,88 @@ function validateContract(code: string): { valid: boolean; error?: string; bytec
   }
 }
 
+// Type definitions for multi-contract responses
+interface ContractParam {
+  name: string;
+  type: string;
+  description: string;
+  source: string;
+  sourceContractId: string | null;
+}
+
+interface ContractInfo {
+  id: string;
+  name: string;
+  purpose: string;
+  code: string;
+  role: string;
+  deploymentOrder: number;
+  dependencies: string[];
+  constructorParams: ContractParam[];
+  validated?: boolean;
+  bytecodeSize?: number;
+  artifact?: any;
+  validationError?: string;
+}
+
+interface DeploymentStep {
+  order: number;
+  contractId: string;
+  description: string;
+  prerequisites: string[];
+  outputs: string[];
+}
+
+interface DeploymentGuide {
+  steps: DeploymentStep[];
+  warnings: string[];
+  testingNotes: string[];
+}
+
+interface MultiContractResponse {
+  contracts: ContractInfo[];
+  deploymentGuide: DeploymentGuide;
+  explanation: string;
+  considerations: string[];
+  alternatives?: any[];
+}
+
+interface SingleContractResponse {
+  primaryContract: string;
+  explanation: string;
+  considerations: string[];
+  alternatives?: any[];
+  validated?: boolean;
+  bytecodeSize?: number;
+  artifact?: any;
+}
+
+function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
+  return parsed.contracts && Array.isArray(parsed.contracts);
+}
+
+function validateMultiContractResponse(parsed: MultiContractResponse): { allValid: boolean; firstError?: string } {
+  let allValid = true;
+  let firstError: string | undefined;
+
+  for (const contract of parsed.contracts) {
+    const validation = validateContract(contract.code);
+    contract.validated = validation.valid;
+    if (validation.valid) {
+      contract.bytecodeSize = validation.bytecodeSize;
+      contract.artifact = validation.artifact;
+    } else {
+      contract.validationError = validation.error;
+      if (allValid) {
+        allValid = false;
+        firstError = `${contract.name}: ${validation.error}`;
+      }
+    }
+  }
+
+  return { allValid, firstError };
+}
+
 app.post('/api/convert', async (req, res) => {
   const startTime = Date.now();
   let conversionId: number | undefined;
@@ -84,21 +166,156 @@ CRITICAL RULES:
    - Use tx.outputs constraints to enforce recreation (see STATE VARIABLES section in reference)
    - Remove "read" functions - reading is done off-chain by inspecting constructor parameters
 
-Respond with valid JSON in this structure:
+4. For DATA STORAGE, use NFT commitments, NOT OP_RETURN.
+   - OP_RETURN is provably unspendable (funds burned) - use ONLY for event logging
+   - NFT commitments provide local transferrable state (40 bytes, 128 bytes planned 2026)
+   - Pattern: tx.inputs[i].nftCommitment → tx.outputs[i].nftCommitment
+   - Solidity state → Store in NFT commitment, validate/update via covenant
+
+5. No visibility modifiers (public/private/internal/external) in CashScript.
+   - All functions callable by anyone who constructs valid transaction
+   - Use require(checkSig(s, pk)) for access control
+   - Solidity private → CashScript function with signature gate
+
+6. ALWAYS validate this.activeInputIndex and exact input/output counts.
+   - require(this.activeInputIndex == 0) - Contract must be expected input position
+   - require(tx.inputs.length == 2) - Use == not >= for exact validation
+   - require(tx.outputs.length <= 3) - Strict output constraints
+   - This prevents malicious transaction construction
+
+7. UTXO-based authorization is PREFERRED over signatures for user actions.
+   - Instead of: require(checkSig(s, userPk))
+   - Prefer: require(tx.inputs[1].lockingBytecode == new LockingBytecodeP2PKH(userPkh))
+   - User proves ownership by spending their UTXO, no signature parameter needed
+   - Only use checkSig for fixed admin/oracle keys
+
+8. Pack structured data into 40-byte NFT commitments.
+   - Plan byte layout: [pubkeyhash(20) + reserved(18) + blocks(2)] = 40 bytes
+   - Write: tx.outputs[0].nftCommitment == userPkh + bytes18(0) + bytes2(blocks)
+   - Read: bytes20(tx.inputs[0].nftCommitment.split(20)[0]) for first 20 bytes
+   - Use .split(N)[1] to skip N bytes and get remainder
+
+9. Account for dust and fees explicitly.
+   - require(tx.outputs[0].value == 1000) - Minimum dust for token UTXOs
+   - require(amount >= 5000) - Enough sats for future fees
+   - require(tx.outputs[0].value == tx.inputs[0].value - 3000) - Explicit fee subtraction
+
+10. Manipulate token capabilities with .split(32)[0].
+    - tx.inputs[0].tokenCategory.split(32)[0] + 0x01 = strip capability, add mutable
+    - tx.inputs[0].tokenCategory.split(32)[0] = strip to immutable
+    - masterCategory + 0x02 = add minting capability
+
+11. Use chained splits and tuple destructuring for complex commitment parsing.
+    - bytes4 pledgeID, bytes5 campaignID = commitment.split(31)[1].split(4)
+    - Chained: commitment.split(26)[1].split(4)[0] = skip 26 bytes, take next 4
+    - Tuple: bytes20 addr, bytes remaining = data.split(20) = single split, two vars
+
+12. Validate Script Number minimal encoding bounds (MSB constraint).
+    - require(amount <= 140737488355327) - Max bytes6 (2^47-1, MSB reserved for sign)
+    - require(newID != 2147483647) - Max bytes4 (2^31-1)
+    - Auto-increment: int newID = int(oldID) + 1; require(newID < max); then use
+
+13. IMPLICIT NFT BURNING - Not recreating NFT in outputs = destroyed.
+    - if (no_pledges) require(tx.outputs.length == 1); // Don't include NFT = burn
+    - Key UTXO insight: anything not explicitly recreated ceases to exist
+    - Use output count to control burn vs preserve behavior
+
+14. NFT CAPABILITY AS STATE MACHINE - Capability encodes contract state.
+    - MINTING (0x02) = Active state (can modify freely)
+    - MUTABLE (0x01) = Stopped state (restricted modifications)
+    - IMMUTABLE (no byte) = Final state (receipt/proof)
+    - Downgrade: .split(32)[0] + 0x01 (minting→mutable) or .split(32)[0] (→immutable)
+    - Verify state: bytes capability = tokenCategory.split(32)[1]; require(capability == 0x02);
+
+15. VALUE-BASED STATE DETECTION - Satoshi amount indicates state.
+    - if (tx.inputs[1].value == 1000) = initial/empty state (dust only)
+    - if (tx.inputs[1].value > 1000) = modified state (has accumulated funds)
+    - Design initial values to be identifiable (e.g., exactly 1000 sats)
+
+16. RECEIPT NFT PATTERN - Immutable NFTs as cryptographic proofs.
+    - Create: tx.outputs[1].tokenCategory == category.split(32)[0]; // No capability = immutable
+    - Store proof data in commitment: pledgeAmount + padding + metadata
+    - Verify later: require(capability2 == 0x); // Must be immutable
+
+17. PERMISSIONLESS CONTRACTS - Some protocols need ZERO authorization.
+    - No checkSig, no UTXO ownership checks - pure constraint validation
+    - Anyone can call if transaction structure is valid
+    - Use for: games, public goods, open protocols, deterministic state machines
+    - Authorization via constraints, not signatures
+
+18. STATELESS LOGIC CONTRACTS - Separate logic from state.
+    - Logic contracts: contract PureLogic() { } - NO constructor params
+    - State contracts: contract State(bytes categoryID) { } - embed trust anchors
+    - Pattern: State contracts hold data, logic contracts validate rules
+
+19. UTXO ORDERING AS DATA STRUCTURE - Input position encodes information.
+    - tx.inputs[this.activeInputIndex - 1] = previous input
+    - tx.inputs[this.activeInputIndex + 1] = next input
+    - Sequential UTXOs represent paths (source → intermediates → destination)
+    - Use for: path validation, sequential processes, graph traversal
+
+20. CONSTRUCTOR PARAMETERS AS TRUST ANCHORS - Embed category IDs at compile time.
+    - contract X(bytes tokenCategory01) { require(tx.inputs[i].tokenCategory == tokenCategory01); }
+    - Trustless cross-contract validation via hardcoded category IDs
+    - Compile-time trust establishment
+
+Respond with valid JSON. Use ONE of these structures:
+
+FOR SINGLE CONTRACT (simple translations):
 {
-  "primaryContract": "string - the best CashScript translation (code only)",
-  "explanation": "string - brief explanation of the translation approach",
-  "considerations": ["array of strings - key differences between EVM and CashScript"],
-  "alternatives": [
-    {
-      "name": "string - name of alternative approach",
-      "contract": "string - alternative CashScript code",
-      "rationale": "string - why this alternative exists"
-    }
-  ]
+  "primaryContract": "string - CashScript code",
+  "explanation": "string - brief explanation",
+  "considerations": ["key differences between EVM and CashScript"],
+  "alternatives": [{"name": "string", "contract": "string", "rationale": "string"}]
 }
 
-Use your best judgment to pick the optimal translation as primaryContract. Include 1-3 alternatives if multiple valid approaches exist.`;
+FOR MULTI-CONTRACT SYSTEMS (when Solidity pattern requires multiple CashScript contracts):
+{
+  "contracts": [
+    {
+      "id": "unique-id",
+      "name": "Human Readable Name",
+      "purpose": "What this contract does in the system",
+      "code": "pragma cashscript ^0.13.0;...",
+      "role": "primary | helper | state",
+      "deploymentOrder": 1,
+      "dependencies": ["other-contract-id"],
+      "constructorParams": [
+        {
+          "name": "paramName",
+          "type": "pubkey | bytes | bytes32 | int",
+          "description": "What this parameter is for",
+          "source": "user-provided | from-contract | computed",
+          "sourceContractId": "null or id of contract that produces this value"
+        }
+      ]
+    }
+  ],
+  "deploymentGuide": {
+    "steps": [
+      {
+        "order": 1,
+        "contractId": "contract-id",
+        "description": "Step description",
+        "prerequisites": ["What must exist before this step"],
+        "outputs": ["What this step produces (e.g., tokenCategory ID)"]
+      }
+    ],
+    "warnings": ["Important deployment considerations"],
+    "testingNotes": ["How to verify the system works"]
+  },
+  "explanation": "Overall system explanation",
+  "considerations": ["Key differences between EVM and CashScript"],
+  "alternatives": [{"name": "Alternative system design", "contracts": [...], "rationale": "Why this alternative"}]
+}
+
+Use multi-contract structure when:
+- Solidity contract has complex state that needs multiple CashScript contracts to manage
+- Pattern requires separate logic contracts (like BCHess piece validators)
+- System needs helper contracts (like CashStarter's cancel/claim/refund)
+- Factory patterns that create child contracts
+
+Use your best judgment. Include deployment order and parameter sources for multi-contract systems.`;
 
     // Initial attempt
     console.log('[Conversion] Calling Anthropic API (initial attempt)...');
@@ -131,23 +348,52 @@ Use your best judgment to pick the optimal translation as primaryContract. Inclu
 
     let parsed = JSON.parse(jsonString);
 
-    // Validate primary contract
-    console.log('[Conversion] Validating primary contract...');
-    const validation = validateContract(parsed.primaryContract);
+    // Detect response type and validate accordingly
+    const isMultiContract = isMultiContractResponse(parsed);
+    console.log(`[Conversion] Response type: ${isMultiContract ? 'multi-contract' : 'single-contract'}`);
 
-    // Log initial validation result (don't wait)
-    logValidationResult(conversionId, validation.valid, validation.error, validation.bytecodeSize).catch(err =>
-      console.error('[Logging] Failed to log validation result:', err)
-    );
+    let validationPassed = false;
+    let validationError: string | undefined;
 
-    if (!validation.valid) {
+    if (isMultiContract) {
+      // Validate all contracts in multi-contract response
+      console.log(`[Conversion] Validating ${parsed.contracts.length} contracts...`);
+      const multiValidation = validateMultiContractResponse(parsed);
+      validationPassed = multiValidation.allValid;
+      validationError = multiValidation.firstError;
+
+      // Log validation result (don't wait)
+      const firstContract = parsed.contracts[0];
+      logValidationResult(conversionId, validationPassed, validationError, firstContract?.bytecodeSize).catch(err =>
+        console.error('[Logging] Failed to log validation result:', err)
+      );
+    } else {
+      // Validate single contract
+      console.log('[Conversion] Validating primary contract...');
+      const validation = validateContract(parsed.primaryContract);
+      validationPassed = validation.valid;
+      validationError = validation.error;
+
+      // Log initial validation result (don't wait)
+      logValidationResult(conversionId, validation.valid, validation.error, validation.bytecodeSize).catch(err =>
+        console.error('[Logging] Failed to log validation result:', err)
+      );
+
+      if (validationPassed) {
+        parsed.validated = true;
+        parsed.bytecodeSize = validation.bytecodeSize;
+        parsed.artifact = validation.artifact;
+      }
+    }
+
+    if (!validationPassed) {
       console.log('[Conversion] Validation failed, retrying with error feedback...');
 
       // Retry with validation error
       const retryApiCallStartTime = Date.now();
 
       // Parse error for unused variable to provide specific guidance
-      const unusedVarMatch = validation.error?.match(/Unused variable (\w+) at Line (\d+), Column (\d+)/);
+      const unusedVarMatch = validationError?.match(/Unused variable (\w+) at Line (\d+), Column (\d+)/);
 
       let retryMessage: string;
       if (unusedVarMatch) {
@@ -163,7 +409,7 @@ CashScript strictly requires that ALL function parameters must be used (similar 
 Please fix this specific issue and provide a corrected translation. Make sure every parameter you declare is actually used in the code.`;
       } else {
         // Generic retry message for other errors
-        retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a syntax error:\n${validation.error}\n\nPlease fix the syntax error and provide a corrected translation.`;
+        retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a syntax error:\n${validationError}\n\nPlease fix the syntax error and provide a corrected translation.`;
       }
 
       const retryApiCallId = await logApiCallStart(conversionId, 2, 'claude-opus-4-1-20250805', 8000, retryMessage);
@@ -194,24 +440,45 @@ Please fix this specific issue and provide a corrected translation. Make sure ev
 
       parsed = JSON.parse(retryJsonString);
 
-      // Validate retry attempt
-      const retryValidation = validateContract(parsed.primaryContract);
+      // Validate retry attempt based on response type
+      const retryIsMultiContract = isMultiContractResponse(parsed);
+      let retryValidationPassed = false;
+      let retryValidationError: string | undefined;
+      let retryBytecodeSize: number | undefined;
+
+      if (retryIsMultiContract) {
+        const retryMultiValidation = validateMultiContractResponse(parsed);
+        retryValidationPassed = retryMultiValidation.allValid;
+        retryValidationError = retryMultiValidation.firstError;
+        retryBytecodeSize = parsed.contracts[0]?.bytecodeSize;
+      } else {
+        const retryValidation = validateContract(parsed.primaryContract);
+        retryValidationPassed = retryValidation.valid;
+        retryValidationError = retryValidation.error;
+        retryBytecodeSize = retryValidation.bytecodeSize;
+
+        if (retryValidationPassed) {
+          parsed.validated = true;
+          parsed.bytecodeSize = retryValidation.bytecodeSize;
+          parsed.artifact = retryValidation.artifact;
+        }
+      }
 
       // Log retry attempt (don't wait)
-      logRetryAttempt(conversionId, retryValidation.valid).catch(err =>
+      logRetryAttempt(conversionId, retryValidationPassed).catch(err =>
         console.error('[Logging] Failed to log retry attempt:', err)
       );
 
       // Log retry validation result (don't wait)
-      logValidationResult(conversionId, retryValidation.valid, retryValidation.error, retryValidation.bytecodeSize).catch(err =>
+      logValidationResult(conversionId, retryValidationPassed, retryValidationError, retryBytecodeSize).catch(err =>
         console.error('[Logging] Failed to log retry validation result:', err)
       );
 
-      if (!retryValidation.valid) {
+      if (!retryValidationPassed) {
         console.log('[Conversion] Retry validation failed');
 
         // Log error (don't wait)
-        logError('validation_error', retryValidation.error || 'Unknown validation error', conversionId).catch(err =>
+        logError('validation_error', retryValidationError || 'Unknown validation error', conversionId).catch(err =>
           console.error('[Logging] Failed to log error:', err)
         );
 
@@ -222,19 +489,13 @@ Please fix this specific issue and provide a corrected translation. Make sure ev
 
         return res.status(400).json({
           error: 'Contract validation failed after retry',
-          validationError: retryValidation.error
+          validationError: retryValidationError
         });
       }
 
       console.log('[Conversion] Retry validation successful');
-      parsed.validated = true;
-      parsed.bytecodeSize = retryValidation.bytecodeSize;
-      parsed.artifact = retryValidation.artifact;
     } else {
       console.log('[Conversion] Initial validation successful');
-      parsed.validated = true;
-      parsed.bytecodeSize = validation.bytecodeSize;
-      parsed.artifact = validation.artifact;
     }
 
     // Log alternatives and considerations (don't wait)

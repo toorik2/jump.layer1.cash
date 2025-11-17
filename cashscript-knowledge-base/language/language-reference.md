@@ -15,6 +15,35 @@
 
 **Common bytesN**: `bytes1` (byte), `bytes4` (prefix), `bytes20` (hash160), `bytes32` (sha256), `bytes64` (signature)
 
+### CRITICAL: Script Number Minimal Encoding
+
+**BCH Script requires minimal encoding for integers**. The most significant bit (MSB) of the last byte indicates sign. Production contracts must validate upper bounds:
+
+```cashscript
+// PATTERN: Validate values don't exceed bytesN capacity (minus MSB)
+require(pledgeAmount <= 140737488355327);  // Max bytes6: 2^47 - 1 (MSB reserved)
+require(newPledgeID != 2147483647);        // Max bytes4: 2^31 - 1 (MSB reserved)
+require(campaignID != 0xFFFFFFFFFF);       // Sentinel value check (bytes5)
+```
+
+**Maximum values by byte size (CRITICAL - MSB constraint):**
+- `bytes1`: 127 (2^7 - 1)
+- `bytes2`: 32,767 (2^15 - 1)
+- `bytes4`: 2,147,483,647 (2^31 - 1)
+- `bytes5`: 549,755,813,887 (2^39 - 1)
+- `bytes6`: 140,737,488,355,327 (2^47 - 1)
+- `bytes8`: 9,223,372,036,854,775,807 (2^63 - 1)
+
+**Why MSB matters**: In Script Number encoding, the MSB indicates sign. If you use the full byte range, you risk creating values that get interpreted as negative. Always subtract 1 bit from max capacity.
+
+**Auto-increment pattern with overflow check:**
+```cashscript
+bytes4 currentID = bytes4(tx.inputs[0].nftCommitment.split(4)[0]);
+int newID = int(currentID) + 1;
+require(newID != 2147483647);  // Check BEFORE using new value
+require(tx.outputs[0].nftCommitment == bytes4(newID) + restOfCommitment);
+```
+
 ## FUNCTION REFERENCE
 
 | Function | Signature | Returns | Notes |
@@ -50,12 +79,12 @@
 | `tx.inputs[i].outpointTransactionHash` | `bytes32` | UTXO source tx hash | - |
 | `tx.inputs[i].outpointIndex` | `int` | UTXO source output index | - |
 | `tx.inputs[i].sequenceNumber` | `int` | nSequence value | Relative timelock in v2 tx only |
-| `tx.inputs[i].tokenCategory` | `bytes32` | Input token category | CashTokens. Unreversed byte order |
+| `tx.inputs[i].tokenCategory` | `bytes` | Input token category | 32-byte ID + optional capability (0x01=mutable, 0x02=minting) |
 | `tx.inputs[i].nftCommitment` | `bytes` | Input NFT commitment | CashTokens, max 40 bytes |
-| `tx.inputs[i].tokenAmount` | `int` | Input fungible tokens | CashTokens |
+| `tx.inputs[i].tokenAmount` | `int` | Input fungible tokens | CashTokens, max 64-bit |
 | `tx.outputs[i].value` | `int` | Output satoshi amount | Bounds: `i < tx.outputs.length` |
 | `tx.outputs[i].lockingBytecode` | `bytes` | Output script bytecode | - |
-| `tx.outputs[i].tokenCategory` | `bytes32` | Output token category | CashTokens. Unreversed byte order |
+| `tx.outputs[i].tokenCategory` | `bytes` | Output token category | 32-byte ID + optional capability (0x01=mutable, 0x02=minting) |
 | `tx.outputs[i].nftCommitment` | `bytes` | Output NFT commitment | CashTokens, max 40 bytes |
 | `tx.outputs[i].tokenAmount` | `int` | Output fungible tokens | CashTokens |
 | `this.activeInputIndex` | `int` | Current input being evaluated | - |
@@ -67,27 +96,69 @@
 - `new LockingBytecodeP2SH32(bytes32 scriptHash)` - Pay to script hash (32-byte)
 - `new LockingBytecodeNullData(bytes[] chunks)` - OP_RETURN data output
 
+**CashToken Capabilities**:
+- **Immutable** (no capability byte): Cannot modify NFT commitment when spent
+- **Mutable** (0x01): Can create ONE replacement NFT per spending, can downgrade to immutable
+- **Minting** (0x02): Can create unlimited NFTs, can downgrade to mutable or immutable
+
+**Token Constraints**:
+- One NFT per output maximum
+- All tokens in output must share same category
+- Fungible token amount: 1 to 9,223,372,036,854,775,807 (64-bit)
+- tokenCategory returns `0x` when no tokens present
+- Category byte order: unreversed (OP_HASH256 format, NOT wallet/explorer format)
+
+## NFT COMMITMENT DATA STORAGE
+
+**CRITICAL**: BCH has no global state. Store data in NFT commitments (local transferrable state).
+
+**Size limits**:
+- Current: 40 bytes
+- Future: 128 bytes (planned for 2026 upgrade, BLS12-381 compatible)
+
+**Pattern**: Contract introspects input commitment, enforces output commitment with updated state.
+```cashscript
+contract StatefulContract(bytes32 stateTokenCategory) {
+    function updateState(sig ownerSig, bytes newState) {
+        require(checkSig(ownerSig, owner));
+        // Read current state from input NFT commitment
+        require(tx.inputs[0].tokenCategory == stateTokenCategory);
+        bytes currentState = tx.inputs[0].nftCommitment;
+        // Enforce updated state in output NFT commitment
+        require(tx.outputs[0].tokenCategory == stateTokenCategory);
+        require(tx.outputs[0].nftCommitment == newState);
+    }
+}
+```
+
+**Key concepts**:
+- **Local transferrable state**: NFT commitments persist across transactions
+- **Local transferrable functions**: Store function logic in 128-byte commitments (post-May 2025)
+- **NOT OP_RETURN**: OP_RETURN is provably unspendable (funds burned), not for storage
+
 ## OP_RETURN OUTPUTS
 
-**Purpose**: Data storage, event logging (Solidity events → OP_RETURN)
-**Size limit**: 223 bytes total per transaction across all OP_RETURN outputs
-**Spendability**: Provably unspendable (funds sent to OP_RETURN are burned)
+**CRITICAL**: In UTXO model, the transaction itself IS the observable event. UTXO consumption/creation is inherently visible on-chain - no separate event emission needed.
 
-**Usage patterns**:
-1. **Contract enforcement** (covenant requires specific OP_RETURN):
-   ```cashscript
-   require(tx.outputs[i].lockingBytecode == new LockingBytecodeNullData([eventData]));
-   ```
+**OP_RETURN purpose**: Optional off-chain metadata broadcasting (NOT "Solidity events")
+**Size limit**: 223 bytes total per transaction
+**Spendability**: Provably unspendable (funds BURNED)
 
-2. **SDK usage** (add OP_RETURN without contract enforcement):
-   ```javascript
-   .withOpReturn(['0x6d02', 'Event data', address, amount])
-   ```
+**When to use OP_RETURN**:
+- App-specific metadata for off-chain indexers (Chronik, Chaingraph)
+- Protocol-specific data (e.g., social apps, token metadata)
+- NOT for state change notifications (UTXO changes are already observable)
+- NOT for data storage (use NFT commitments)
 
-**Solidity events → CashScript translation**:
-- `emit MyEvent(args)` → OP_RETURN output with event data
-- Contract typically does NOT enforce OP_RETURN (SDK adds it)
-- Alternative: Contract enforces via `LockingBytecodeNullData` for critical events
+```cashscript
+// Optional: Add metadata for indexers
+require(tx.outputs[1].lockingBytecode == new LockingBytecodeNullData([appData]));
+```
+
+**Solidity events vs BCH UTXO model**:
+- Solidity `emit Transfer(from, to, amount)` → logs state change explicitly
+- BCH: The UTXO with updated NFT commitment IS the state change - no explicit event needed
+- Transaction structure itself communicates what happened
 
 ## STATE VARIABLES (Solidity → CashScript)
 
@@ -117,6 +188,646 @@ contract Message(bytes message) {
 - "Update" = spend old UTXO, create new UTXO with new constructor params
 - Covenant enforces output constraints (new contract instance, preserve value)
 - Read functions unnecessary (inspect constructor params off-chain)
+
+## STRUCTURED COMMITMENT PACKING
+
+**40-byte NFT commitments require careful layout planning**. Production contracts pack multiple values with explicit byte positions:
+
+```cashscript
+// PRODUCTION PATTERN: Pack multiple values into 40-byte commitment
+// Layout: userPkh(20) + reserved(18) + lockBlocks(2) = 40 bytes total
+bytes20 userPkh = 0xaabbccdd...;  // 20 bytes
+int lockBlocks = 1000;             // Will become 2 bytes
+
+// WRITE: Pack into commitment
+require(tx.outputs[0].nftCommitment == userPkh + bytes18(0) + bytes2(lockBlocks));
+
+// READ: Unpack from commitment
+bytes20 storedPkh = bytes20(tx.inputs[0].nftCommitment.split(20)[0]);
+bytes stakeBlocks = bytes2(tx.inputs[0].nftCommitment.split(38)[1]);  // Skip 38, take last 2
+int blocks = int(stakeBlocks);
+```
+
+### CRITICAL: Chained Split Operations and Tuple Destructuring
+
+**Production contracts use chained splits for complex layouts:**
+
+```cashscript
+// PATTERN: Extract multiple values from middle of commitment
+// Layout: [other(31) + pledgeID(4) + campaignID(5)] = 40 bytes
+
+// Chained split: skip 31 bytes, then split remaining 9 bytes at position 4
+bytes4 pledgeID, bytes5 campaignID = tx.inputs[0].nftCommitment.split(31)[1].split(4);
+
+// Another example: extract middle field
+// Layout: [prefix(26) + endBlock(4) + suffix(10)]
+bytes4 endBlock = tx.inputs[0].nftCommitment.split(26)[1].split(4)[0];  // Skip 26, take next 4
+```
+
+**Tuple destructuring syntax (CRITICAL - often overlooked):**
+```cashscript
+// SINGLE split returns TWO parts - assign both at once
+bytes left, bytes right = someBytes.split(10);  // Generic
+bytes4 id, bytes5 rest = data.split(4);         // Typed destructuring
+bytes20 addr, bytes remaining = commitment.split(20);  // Common pattern
+```
+
+### Partial Commitment Preservation
+
+**Modify specific bytes while keeping rest intact:**
+```cashscript
+// PATTERN: Update only the last N bytes of commitment
+bytes restCommitment = tx.inputs[0].nftCommitment.split(31)[0];  // Keep first 31 bytes
+int newPledgeID = int(pledgeID) + 1;
+require(tx.outputs[0].nftCommitment == restCommitment + bytes4(newPledgeID) + campaignID);
+
+// PATTERN: Update only the first N bytes
+bytes existingTail = tx.inputs[0].nftCommitment.split(2)[1];  // Keep last 38 bytes
+require(tx.outputs[0].nftCommitment == bytes2(newFee) + existingTail);
+```
+
+**Common layouts (40 bytes)**:
+```
+[pubkeyhash(20) + fee(2) + adminPkh(18)]                    // Admin contract
+[pubkeyhash(20) + reserved(18) + blocks(2)]                 // Time-locked
+[pledgeAmt(6) + padding(21) + endBlock(4) + id(4) + campaignID(5)]  // Receipt NFT
+[prefix(31) + pledgeID(4) + campaignID(5)]                  // Campaign state
+```
+
+**Byte-size reference**:
+- `bytes2` = 0-65535 (sufficient for block counts, small fees)
+- `bytes4` = 0-4,294,967,295 (timestamps, larger values)
+- `bytes5` = 0-1,099,511,627,775 (5-byte IDs, up to ~1 trillion)
+- `bytes6` = 0-281,474,976,710,655 (6-byte amounts)
+- `bytes8` = int max range (Script Number limit)
+- `bytes20` = pubkeyhash (P2PKH address)
+- `bytes32` = token category ID, hashes
+
+**CRITICAL**: Plan your commitment layout BEFORE writing code. Changing layout breaks existing UTXOs.
+
+## DUST AND FEE ACCOUNTING
+
+**BCH requires explicit fee management**. Unlike EVM gas abstraction, you must account for every satoshi:
+
+```cashscript
+// CRITICAL: Minimum dust amounts
+require(tx.outputs[0].value == 1000);  // Minimum dust for token UTXO (546 technically, 1000 safe)
+require(amount >= 5000);               // Ensure enough for future fees
+
+// PATTERN: Explicit fee subtraction
+require(tx.outputs[0].value == tx.inputs[0].value - 3000);  // 3000 = miner fee + 2x dust UTXOs
+
+// PATTERN: Fee collection into contract
+bytes2 stakeFee = bytes2(tx.inputs[0].nftCommitment.split(2)[0]);
+require(tx.outputs[0].value == tx.inputs[0].value + int(stakeFee));
+
+// PATTERN: Withdraw accumulated fees
+require(tx.outputs[1].value == tx.inputs[0].value + tx.inputs[1].value - 2000);
+```
+
+**Production fee constants**:
+- **546 sats** - Absolute minimum dust (rarely used)
+- **1000 sats** - Safe dust for token UTXOs
+- **1000-2000 sats** - Typical miner fee per KB
+- **5000+ sats** - Minimum lock amounts (covers future unlock fees)
+
+**Key insight**: Every output costs ~34 bytes (8 value + 26 script). Fee = tx_size * rate. Plan outputs carefully.
+
+## INTER-CONTRACT TRUST MODEL
+
+**CashScript contracts can interact securely via shared token categories**. This enables composable DeFi protocols:
+
+```cashscript
+// CONTRACT A: Primary contract (e.g., CashStarter)
+contract PrimaryContract() {
+    function doSomething() {
+        require(this.activeInputIndex == 0);  // This is input 0
+        // ... primary logic
+    }
+
+    // Allow external contracts to interact
+    function externalFunction() {
+        require(this.activeInputIndex == 1);  // This contract is input 1
+        // Trust verified by input 0 having minting NFT from shared category
+        bytes masterCategory = 0x64c9ea104e07d9099bc3cdcb2a0035286773790c40dbcb0ae67068b1b8453748;
+        require(tx.inputs[0].tokenCategory == masterCategory + 0x02);  // Other contract has minting NFT
+    }
+}
+
+// CONTRACT B: Extension contract (deployed alongside)
+contract ExtensionContract() {
+    function extendedLogic() {
+        require(this.activeInputIndex == 0);  // This is input 0
+        bytes masterCategory = 0x64c9ea104e07d9099bc3cdcb2a0035286773790c40dbcb0ae67068b1b8453748;
+        require(tx.inputs[0].tokenCategory == masterCategory + 0x02);  // Has minting NFT
+        require(tx.inputs[1].tokenCategory == masterCategory + 0x02);  // Primary also has minting NFT
+        // Now both contracts trust each other
+    }
+}
+```
+
+**Trust mechanism**:
+1. Deploy contracts together, share same minting NFTs
+2. Minting NFTs (0x02 capability) should NEVER exist outside trusted contracts
+3. Contract verifies other input has minting NFT = trusted partner
+4. `this.activeInputIndex` determines which contract executes
+
+**Use cases**:
+- Plugin/extension architecture
+- Protocol upgrades without migration
+- Cross-contract composability
+- Shared state management
+
+**CRITICAL**: This pattern requires careful deployment. Minting NFTs are the "keys to the kingdom". Never let them escape to untrusted addresses.
+
+## IMPLICIT NFT BURNING
+
+**NFTs are burned by NOT including them in transaction outputs**. This is a fundamental UTXO pattern:
+
+```cashscript
+function stop() {
+    require(this.activeInputIndex == 0);
+    require(tx.inputs.length == 2);
+
+    // Recreate masterNFT (input 0)
+    require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+    require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+    // ... other validations
+
+    if (tx.inputs[1].value == 1000) {  // No pledges made
+        require(tx.outputs.length == 1);  // ONLY masterNFT recreated
+        // Campaign NFT (input 1) is IMPLICITLY BURNED - not in any output!
+    } else {
+        // Recreate campaign NFT with modified state
+        require(tx.outputs[1].lockingBytecode == tx.inputs[1].lockingBytecode);
+        // ...
+    }
+}
+```
+
+**Key insight**: In UTXO model, anything not explicitly recreated is destroyed. Use output count to control burn behavior.
+
+## NFT CAPABILITY AS STATE MACHINE
+
+**Token capabilities encode contract state, not just permissions**:
+
+```
+MINTING (0x02)     →    MUTABLE (0x01)      →    IMMUTABLE (0x)
+Active state            Stopped state            Final state
+Can modify freely       Can modify once more     Proof/receipt only
+
+Examples:
+- Active campaign       - Cancelled campaign     - Receipt NFT
+- Master controller     - Restricted campaign    - Proof of pledge
+```
+
+**State transition pattern:**
+```cashscript
+// Downgrade from minting to mutable (stop/cancel campaign)
+require(tx.outputs[1].tokenCategory == tx.inputs[1].tokenCategory.split(32)[0] + 0x01);
+
+// Downgrade from minting to immutable (create receipt)
+require(tx.outputs[1].tokenCategory == tx.inputs[0].tokenCategory.split(32)[0]);  // No capability byte
+
+// Verify state
+bytes category, bytes capability = tx.inputs[1].tokenCategory.split(32);
+require(capability == 0x02);  // Must be minting (active)
+require(capability != 0x);     // Must NOT be immutable (receipt)
+```
+
+**State machine benefits**:
+- Capability = State indicator visible to all contracts
+- Irreversible state transitions (can't upgrade capability)
+- Receipt NFTs are permanent proof of action
+
+## RECEIPT NFT PATTERN
+
+**Immutable NFTs serve as cryptographic receipts/proofs**:
+
+```cashscript
+function pledge(int pledgeAmount) {
+    // ... validation ...
+
+    // Create IMMUTABLE receipt NFT (proof of pledge)
+    require(tx.outputs[1].tokenCategory == tx.inputs[0].tokenCategory.split(32)[0]);  // No capability
+    require(tx.outputs[1].lockingBytecode == tx.inputs[1].lockingBytecode);  // To user
+    require(tx.outputs[1].value == 1000);  // Dust
+    require(tx.outputs[1].tokenAmount == 0);  // No fungible tokens
+
+    // Receipt contains proof data
+    require(tx.outputs[1].nftCommitment ==
+        bytes6(pledgeAmount) +      // What was pledged
+        bytes21(0) +                // Padding
+        endBlock +                  // Campaign deadline
+        bytes4(pledgeID) +          // Unique pledge ID
+        campaignID                  // Which campaign
+    );
+}
+
+// Later: Verify receipt for refund
+function refund() {
+    bytes category2, bytes capability2 = tx.inputs[2].tokenCategory.split(32);
+    require(category2 == masterCategory);  // Same token family
+    require(capability2 == 0x);             // MUST be immutable (receipt)
+
+    bytes campaignID = tx.inputs[1].nftCommitment.split(35)[1];
+    bytes refundID = tx.inputs[2].nftCommitment.split(35)[1];
+    require(campaignID == refundID);  // Receipt matches campaign
+
+    int pledgeAmount = int(tx.inputs[2].nftCommitment.split(6)[0]);
+    // Process refund based on receipt...
+}
+```
+
+**Use cases**: Pledge receipts, voting proofs, subscription tickets, access tokens
+
+## VALUE-BASED STATE DETECTION
+
+**Satoshi amount can indicate contract state**:
+
+```cashscript
+function cancel() {
+    // Initial campaign has exactly 1000 sats (dust for existence)
+    // After pledges, value increases
+
+    if (tx.inputs[1].value == 1000) {  // No pledges = initial state
+        // Burn campaign, refund user
+        require(tx.outputs.length == 2);
+        require(tx.outputs[1].value == tx.inputs[2].value);
+
+    } else {  // Has pledges = modified state
+        // Preserve campaign with downgraded capability
+        require(tx.outputs[1].value == tx.inputs[1].value - 1000);
+        require(tx.outputs[2].value == tx.inputs[2].value);
+    }
+}
+```
+
+**Patterns**:
+- `value == 1000`: Initial/empty state (dust only)
+- `value > initial`: Modified state (has accumulated funds)
+- `value <= pledgeAmount`: Last pledge (will empty contract)
+
+**Key insight**: BCH value is part of contract state. Design initial values to be identifiable.
+
+## SERVICE PROVIDER FEE PATTERNS
+
+**Built-in protocol monetization for frontends**:
+
+```cashscript
+// PATTERN 1: Flat fee cap (initialization)
+function initialize(bytes20 servicePKH, int serviceFee) {
+    require(serviceFee <= 1000000);  // Max 0.01 BCH absolute cap
+    require(tx.outputs[2].lockingBytecode == new LockingBytecodeP2PKH(servicePKH));
+    require(tx.outputs[2].value == serviceFee);
+    require(tx.outputs[2].tokenCategory == 0x);  // Pure BCH
+}
+
+// PATTERN 2: Percentage cap (claiming)
+function claim(bytes20 servicePKH, int serviceFee) {
+    // Integer percentage: value * numerator / denominator
+    require(serviceFee <= tx.inputs[1].value * 50 / 1000);  // Max 5% of campaign
+
+    require(tx.outputs[2].lockingBytecode == new LockingBytecodeP2PKH(servicePKH));
+    require(tx.outputs[2].value == serviceFee);
+    require(tx.outputs[2].tokenCategory == 0x);
+}
+```
+
+**Percentage math patterns**:
+- `value * 50 / 1000` = 5%
+- `value * 10 / 1000` = 1%
+- `value * 1 / 100` = 1%
+- `value / 100` = 1% (simplest)
+
+**Benefits**: Incentivizes frontend development, decentralizes service provision
+
+## MULTI-CONTRACT DEPLOYMENT PATTERNS
+
+**Complex protocols require coordinated contract deployment**:
+
+```cashscript
+// CONTRACT 1: Manager (creates campaigns)
+contract Manager() {
+    function initialize() {
+        // Hardcode target contract address at compile time
+        require(tx.outputs[1].lockingBytecode ==
+            new LockingBytecodeP2SH32(0xe3cab0f5a4aa3b8898d4708dbfa3b4126a723d5d982ac4c2691e33841fa8371f));
+    }
+}
+
+// CONTRACT 2: Main (holds campaigns)
+contract Main() {
+    function externalFunction() {
+        require(this.activeInputIndex == 1);  // I am input 1
+        require(tx.inputs[0].tokenCategory == masterCategory + 0x02);  // Trust input 0
+    }
+}
+
+// CONTRACT 3-N: Helpers (cancel, claim, refund, stop)
+contract Helper() {
+    function action() {
+        // Each helper has its OWN masterNFT
+        require(tx.inputs[0].nftCommitment.split(35)[1] == 0xFFFFFFFFFF);  // Sentinel ID
+        // Main contract NFT is input 1
+        require(tx.inputs[1].tokenCategory == masterCategory + 0x02);
+    }
+}
+```
+
+**Distributed masterNFT pattern**:
+- Each contract in system gets ONE masterNFT with sentinel ID (0xFFFFFFFFFF)
+- MasterNFTs stay in their respective contracts forever
+- Contracts identify each other by shared token category
+- Sentinel value distinguishes master from data NFTs
+
+**Deployment checklist**:
+1. Deploy all contracts (get P2SH32 addresses)
+2. Hardcode addresses in source where needed
+3. Recompile with addresses
+4. Create token category (genesis transaction)
+5. Mint masterNFTs for each contract
+6. Send masterNFTs to their contracts
+
+**CRITICAL**: Contracts are immutable after deployment. All inter-contract addresses must be correct at compile time.
+
+## PERMISSIONLESS (CONSTRAINT-ONLY) CONTRACTS
+
+**Some protocols require NO authorization at all**. Anyone can execute if they construct valid transactions:
+
+```cashscript
+// BCHess: ZERO signatures, ZERO authorization checks
+contract King() {  // Empty constructor
+    function move() {
+        // No checkSig, no UTXO ownership check
+        // Pure constraint validation only
+
+        int turnCounter = int(tx.inputs[2].nftCommitment);
+        int colorTurn = turnCounter % 2;  // Whose turn is it?
+
+        // Verify source piece belongs to current team
+        byte sourceTeam = tx.inputs[3].nftCommitment.split(6)[1].split(1)[0];
+        require(int(sourceTeam) == colorTurn);
+
+        // Validate movement rules (king moves 1 square any direction)
+        require(abs(deltaX) <= 1 && abs(deltaY) <= 1);
+        require(deltaX != 0 || deltaY != 0);  // Must actually move
+    }
+}
+```
+
+**When to use permissionless contracts:**
+- Games (chess, checkers) - state determines valid moves
+- Public goods - anyone can contribute/participate
+- Open protocols - no gatekeeping required
+- Deterministic state machines - rules enforce validity
+
+**Key insight**: Authorization via constraints, not signatures. If transaction structure is valid, the action is valid.
+
+## STATELESS LOGIC CONTRACTS
+
+**Separate validation logic from state management**. Logic contracts have NO constructor parameters:
+
+```cashscript
+// STATE CONTRACT: Holds and manages data
+contract ChessMaster(bytes squareCategory, bytes pieceCategory) {
+    function move() {
+        // Validate state transitions
+        int turnCounter = int(tx.inputs[2].nftCommitment);
+        int newTurnCounter = turnCounter + 1;
+        require(tx.outputs[2].nftCommitment == bytes8(newTurnCounter));
+    }
+}
+
+// LOGIC CONTRACT: Pure validation rules (NO constructor params)
+contract Pawn() {  // Empty!
+    function move() {
+        // ONLY validates movement rules
+        byte piece = tx.inputs[3].nftCommitment.split(7)[1].split(1)[0];
+        require(piece == 0x01);  // Must be pawn
+
+        // Forward movement validation
+        require(deltaX == 0 && deltaY == 1);  // One square forward
+    }
+}
+```
+
+**Benefits:**
+- **Modularity**: Add new piece types without changing state contract
+- **Reusability**: Same logic contract used across multiple games
+- **Testability**: Logic isolated from state management
+- **Upgradability**: Deploy new logic contract, same state
+
+**Pattern**: State contracts embed category IDs. Logic contracts are pure validators.
+
+## UTXO ORDERING AS DATA STRUCTURE
+
+**Input position in transaction encodes information**. Sequential UTXOs represent paths or sequences:
+
+```cashscript
+// BCHess: Rook movement path validation
+// Inputs represent: source -> empty squares -> destination
+
+function checkEmpty() {
+    // Get previous square coordinates
+    byte prevX = tx.inputs[this.activeInputIndex - 1].nftCommitment.split(4)[1].split(1)[0];
+    byte prevY = tx.inputs[this.activeInputIndex - 1].nftCommitment.split(5)[1].split(1)[0];
+
+    // Get current square coordinates
+    byte thisX = tx.inputs[this.activeInputIndex].nftCommitment.split(4)[1].split(1)[0];
+    byte thisY = tx.inputs[this.activeInputIndex].nftCommitment.split(5)[1].split(1)[0];
+
+    // Get next square coordinates
+    byte nextX = tx.inputs[this.activeInputIndex + 1].nftCommitment.split(4)[1].split(1)[0];
+    byte nextY = tx.inputs[this.activeInputIndex + 1].nftCommitment.split(5)[1].split(1)[0];
+
+    // Verify stepping pattern (must maintain direction)
+    int stepToPrevX = int(thisX) - int(prevX);
+    int stepToNextX = int(nextX) - int(thisX);
+    require(stepToPrevX == stepToNextX);  // Same direction
+
+    // Verify this square is empty
+    byte currentTeam = tx.inputs[this.activeInputIndex].nftCommitment.split(6)[1].split(1)[0];
+    require(currentTeam == 0x02);  // Empty square
+}
+```
+
+**Use cases:**
+- Path validation (chess pieces moving through squares)
+- Sequential approval chains
+- Multi-step processes
+- Graph traversal validation
+
+**Critical pattern**: `tx.inputs[this.activeInputIndex ± 1]` accesses neighboring inputs.
+
+## DISTRIBUTED STATE ACROSS MULTIPLE UTXOs
+
+**Complex state split across many NFTs**. BCHess uses 64 UTXOs for chess board:
+
+```cashscript
+// Each square NFT commitment (8 bytes):
+// [startingTeam(1) + startingPiece(1) + x(1) + y(1) + currentTeam(1) + currentPiece(1)]
+
+// Square 0,0 (white rook): 0x00040000 + 0x0004 (white, rook at start; white, rook now)
+// Square 3,4 (empty):      0x02000304 + 0x0200 (empty at start; empty now)
+
+function reset() {
+    // After king capture, reset ALL 64 squares in one transaction
+    require(tx.inputs.length == 66);   // ChessMaster + user + 64 squares
+    require(tx.outputs.length == 66);
+
+    // Each square resets to starting configuration
+    bytes teamPiece, bytes xy = tx.inputs[this.activeInputIndex].nftCommitment.split(2);
+    require(tx.outputs[this.activeInputIndex].nftCommitment == teamPiece + xy + teamPiece);
+}
+```
+
+**Immutable + Mutable in one NFT:**
+```
+Bytes 0-3: Immutable (starting position, coordinates)
+Bytes 4-5: Mutable (current state)
+```
+Immutable fields enable reset to known good state.
+
+**Benefits:**
+- Parallel state updates (all squares in one tx)
+- Granular state tracking
+- Reset via immutable field copying
+- Distributed validation load
+
+## CONSTRUCTOR PARAMETERS AS TRUST ANCHORS
+
+**Embed token category IDs at compile time** for cross-contract validation:
+
+```cashscript
+contract Squares(
+    bytes chessMasterCategory01,  // Category ID embedded at deployment
+    bytes squareCategory01,
+    bytes pieceCategory00
+) {
+    function move() {
+        // Validate other contracts by embedded category IDs
+        require(tx.inputs[1].tokenCategory == pieceCategory00);          // Piece logic
+        require(tx.inputs[2].tokenCategory == chessMasterCategory01);   // Game master
+        require(tx.inputs[3].tokenCategory == squareCategory01);        // Source square
+
+        // Multiple validation layers via constructor params
+        bytes srcCategory = tx.inputs[3].tokenCategory.split(32)[0];
+        require(srcCategory == squareCategory01.split(32)[0]);
+    }
+}
+```
+
+**Trust anchor flow:**
+1. Deploy all contracts (get addresses)
+2. Create token categories (genesis txs)
+3. Recompile contracts with category IDs in constructors
+4. Deploy with embedded trust anchors
+5. Contracts validate each other by hardcoded categories
+
+**Key insight**: Constructor parameters are compile-time constants that enable trustless cross-contract validation.
+
+## VARIABLE-LENGTH INPUT PATTERNS
+
+**Dynamic input counts for arbitrary-length operations**:
+
+```cashscript
+function move() {
+    // Minimum inputs: user + piece + master + source + destination
+    require(tx.inputs.length >= 5);
+
+    // Can have more for longer paths (rook, bishop, queen)
+    // Each additional input is an empty square along the path
+
+    // Process all inputs between source and destination
+    int i = 4;  // Start after source square
+    do {
+        // Validate each intermediate square is empty
+        byte team = tx.inputs[i].nftCommitment.split(6)[1].split(1)[0];
+        require(team == 0x02);  // Empty
+        i = i + 1;
+    } while (i < tx.inputs.length - 1);  // Stop before destination
+
+    // Last input is always destination
+    bytes destCommitment = tx.inputs[tx.inputs.length - 1].nftCommitment;
+}
+```
+
+**Patterns:**
+- `tx.inputs.length` for conditional logic
+- `tx.inputs[tx.inputs.length - 1]` for last input
+- Loop through variable number of inputs
+- Different path lengths for different operations
+
+**Use cases:**
+- Movement paths of varying length
+- Multi-signature with variable signers
+- Batch operations
+- Chain validation with arbitrary depth
+
+## FUNCTION VISIBILITY & AUTHORIZATION
+
+**CRITICAL**: CashScript has NO visibility modifiers (public/private/internal/external).
+
+**All functions are callable by anyone** who can construct a valid transaction. Access control must be explicit via `require` statements.
+
+| Solidity | CashScript | Notes |
+|----------|-----------|-------|
+| `public` | All functions | No keyword - all functions exposed |
+| `private` | Authorization pattern | Gate with signature OR UTXO ownership check |
+| `internal` | N/A | No contract inheritance in CashScript |
+| `external` | All functions | All functions externally callable |
+| `view/pure` | N/A | All validation on-chain, no read-only functions |
+
+### Authorization Pattern 1: Signature-Based (Explicit)
+```cashscript
+contract SignatureAuth(pubkey ownerPk) {
+    function ownerOnly(sig s) {
+        require(checkSig(s, ownerPk));  // Must prove key ownership
+        // ... restricted logic
+    }
+}
+```
+**Use when**: Known fixed set of authorized keys (admin, oracle)
+
+### Authorization Pattern 2: UTXO-Based (Implicit) - PRODUCTION PREFERRED
+```cashscript
+contract UTXOAuth() {
+    function userAction(bytes20 userPkh) {
+        // NO signature check needed!
+        // User proves ownership by spending their UTXO
+        require(tx.inputs[1].lockingBytecode == new LockingBytecodeP2PKH(userPkh));
+        // ... action authorized by UTXO ownership
+    }
+}
+```
+**Use when**: Any user can participate, authorization via UTXO spending
+
+### Authorization Pattern 3: Commitment-Stored Admin
+```cashscript
+contract CommitmentAuth() {
+    function adminOnly() {
+        // Admin pubkeyhash stored in NFT commitment
+        bytes20 adminPkh = bytes20(tx.inputs[0].nftCommitment.split(20)[1]);
+        bytes adminBytecode = new LockingBytecodeP2PKH(adminPkh);
+        require(tx.inputs[1].lockingBytecode == adminBytecode);  // Admin must provide input
+    }
+}
+```
+**Use when**: Admin changeable, stored in contract state
+
+### Critical: `this.activeInputIndex` Validation
+```cashscript
+function anyFunction() {
+    // ALWAYS validate which input executes the contract
+    require(this.activeInputIndex == 0);  // Contract must be input 0
+    require(tx.inputs.length == 2);        // Exact input count
+    // ... rest of logic
+}
+```
+**Why critical**: Multi-input transactions can have different contracts executing. This ensures your contract code runs as expected input position.
+
+**Key insight**: UTXO-based authorization is more flexible and gas-efficient than signature-based. User proves they control funds by spending them.
 
 ## OPERATORS
 
@@ -209,97 +920,173 @@ require(tx.outputs[index].value >= amount);
 
 ## MASTER EXAMPLE
 
+**Production-grade contract demonstrating real-world patterns:**
+
 ```cashscript
 pragma cashscript ^0.13.0;
 
-contract MasterReference(
-    pubkey owner,
-    pubkey delegate,
-    bytes32 secretHash,
-    int threshold,
-    int timeout,
-    bytes32 tokenCategory
-) {
-    // Hash lock path
-    function hashPath(sig ownerSig, bytes preimage) {
-        require(checkSig(ownerSig, owner));
-        require(sha256(preimage) == secretHash);
-        require(hash160(preimage) != 0x0000000000000000000000000000000000000000);
+// PRODUCTION PATTERN: Empty constructor with hardcoded values (common for deployed contracts)
+contract MasterReference() {
+
+    // PATTERN 1: Stateful NFT Management with Structured Commitment
+    // Input layout: [0] masterNFT (from contract), [1] userUTXO (from user)
+    // Output layout: [0] masterNFT (to contract), [1] lockNFT (to contract), [2] optional change
+    function lock(int amount, int lockBlocks, bytes20 userPkh) {
+        // CRITICAL: Always validate this contract is the expected input
+        require(this.activeInputIndex == 0);
+
+        // CRITICAL: Exact input/output validation (not >=, exact counts)
+        require(tx.inputs.length == 2);
+        require(tx.outputs.length <= 3);
+
+        // Business logic constraints
+        require(lockBlocks <= 65536);
+        require(amount >= 5000);  // Minimum dust for unlock fees
+
+        // PATTERN: Hardcoded token category + capability check
+        bytes masterCategory = 0xd7ff0a63d5c1cbe1ced509314fe3caca563a73095be37734744c40dbce6e2f24;
+        require(tx.inputs[0].tokenCategory == masterCategory + 0x02);  // Must be minting NFT
+        require(tx.inputs[1].tokenCategory == 0x);  // User input must be pure BCH
+
+        // PATTERN: UTXO-based authorization (NO checkSig needed!)
+        // User proves ownership by spending their UTXO
+        require(tx.inputs[1].lockingBytecode == new LockingBytecodeP2PKH(userPkh));
+
+        // PATTERN: Structured 40-byte commitment packing
+        // Layout: userPkh(20) + reserved(18) + lockBlocks(2) = 40 bytes
+        bytes lockLength = bytes2(lockBlocks);
+        require(tx.outputs[1].nftCommitment == userPkh + bytes18(0) + lockLength);
+
+        // PATTERN: Read fee from master NFT commitment (first 2 bytes)
+        bytes2 stakeFee = bytes2(tx.inputs[0].nftCommitment.split(2)[0]);
+
+        // PATTERN: Contract self-preservation with fee collection
+        require(tx.outputs[0].value == tx.inputs[0].value + int(stakeFee));
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+        require(tx.outputs[0].nftCommitment == tx.inputs[0].nftCommitment);
+
+        // PATTERN: Calculate rewards and deduct from master
+        int reward = amount * lockBlocks / 100000000;
+        require(reward >= 1);
+        require(tx.outputs[0].tokenAmount == tx.inputs[0].tokenAmount - reward);
+
+        // PATTERN: Create child NFT with different capability
+        // Strip minting capability (32 bytes), add mutable (0x01)
+        require(tx.outputs[1].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[1].tokenCategory == tx.inputs[0].tokenCategory.split(32)[0] + 0x01);
+        require(tx.outputs[1].value == amount);
+        require(tx.outputs[1].tokenAmount == reward);
+
+        // PATTERN: Optional output handling
+        if (tx.outputs.length == 3) {
+            require(tx.outputs[2].lockingBytecode == tx.inputs[1].lockingBytecode);
+            require(tx.outputs[2].tokenCategory == 0x);  // Change must be pure BCH
+        }
     }
 
-    // Time lock path with relative age
-    function timePath(sig ownerSig) {
-        require(checkSig(ownerSig, owner));
-        require(tx.time >= timeout);
-        require(this.age >= 144);  // ~24 hours in blocks
+    // PATTERN 2: Time-locked redemption with commitment unpacking
+    function unlock() {
+        require(this.activeInputIndex == 0);
+        require(tx.inputs.length == 1);
+        require(tx.outputs.length == 3);
+
+        bytes masterCategory = 0xd7ff0a63d5c1cbe1ced509314fe3caca563a73095be37734744c40dbce6e2f24;
+        require(tx.inputs[0].tokenCategory == masterCategory + 0x01);  // Must be mutable NFT
+
+        // PATTERN: Unpack structured commitment
+        // Layout: userPkh(20) + reserved(18) + lockBlocks(2)
+        bytes stakeBlocks = bytes2(tx.inputs[0].nftCommitment.split(38)[1]);
+        require(tx.age >= int(stakeBlocks));  // Time lock validation
+
+        bytes20 payoutAddress = bytes20(tx.inputs[0].nftCommitment.split(20)[0]);
+        bytes payoutBytecode = new LockingBytecodeP2PKH(payoutAddress);
+
+        // PATTERN: Distribute tokens to user
+        require(tx.outputs[0].lockingBytecode == payoutBytecode);
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory.split(32)[0]);  // Strip to immutable
+        require(tx.outputs[0].value == 1000);  // Dust for token UTXO
+        require(tx.outputs[0].tokenAmount == tx.inputs[0].tokenAmount);
+
+        // PATTERN: Create receipt NFT with computed commitment
+        require(tx.outputs[1].lockingBytecode == payoutBytecode);
+        require(tx.outputs[1].tokenCategory == tx.inputs[0].tokenCategory.split(32)[0]);
+        require(tx.outputs[1].value == 1000);
+        bytes commitment = 0x0000 + bytes(tx.inputs[0].tokenAmount);
+        require(tx.outputs[1].nftCommitment == commitment);
+
+        // PATTERN: Fee accounting (explicit dust subtraction)
+        require(tx.outputs[2].lockingBytecode == payoutBytecode);
+        require(tx.outputs[2].tokenCategory == 0x);
+        require(tx.outputs[2].value == tx.inputs[0].value - 3000);  // Miner fee + dust UTXOs
     }
 
-    // Covenant: enforce output constraints
-    function covenantPath(sig ownerSig) {
-        require(checkSig(ownerSig, owner));
+    // PATTERN 3: Admin function with UTXO-based authorization
+    function withdraw(int newFee) {
+        require(this.activeInputIndex == 0);
+        require(tx.inputs.length == 2);
+        require(tx.outputs.length == 2);
 
-        // Validate outputs length
-        require(tx.outputs.length >= 2);
+        bytes masterCategory = 0xd7ff0a63d5c1cbe1ced509314fe3caca563a73095be37734744c40dbce6e2f24;
+        require(tx.inputs[0].tokenCategory == masterCategory + 0x02);
+        require(tx.inputs[1].tokenCategory == 0x);
 
-        // Output 0: payment with minimum amount
-        require(tx.outputs[0].value >= threshold);
-        bytes20 pkh = hash160(owner);
-        require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2PKH(pkh));
+        // PATTERN: Admin authorization via commitment-stored pubkeyhash
+        bytes20 adminAddress = bytes20(tx.inputs[0].nftCommitment.split(20)[1]);
+        bytes payoutBytecode = new LockingBytecodeP2PKH(adminAddress);
+        require(tx.inputs[1].lockingBytecode == payoutBytecode);  // Admin must provide input1
 
-        // Output 1: OP_RETURN data
-        bytes data = bytes(threshold) + bytes(tx.time);
-        require(tx.outputs[1].lockingBytecode == new LockingBytecodeNullData([data]));
-    }
+        // PATTERN: Withdraw accumulated fees
+        require(tx.outputs[1].tokenCategory == 0x);
+        require(tx.outputs[1].value == tx.inputs[0].value + tx.inputs[1].value - 2000);
 
-    // Token path: validate CashTokens
-    function tokenPath(sig ownerSig) {
-        require(checkSig(ownerSig, owner));
-        require(tx.outputs[0].tokenCategory == tokenCategory);
-        require(tx.outputs[0].tokenAmount >= 100);
-    }
-
-    // Loop: aggregate input values
-    function aggregatePath(sig delegateSig) {
-        require(checkSig(delegateSig, delegate));
-
-        int i = 0;
-        int totalInput = 0;
-        do {
-            totalInput = totalInput + tx.inputs[i].value;
-            i = i + 1;
-        } while (i < tx.inputs.length);
-
-        require(totalInput >= threshold * 2);
-    }
-
-    // Bitwise: flag validation using AND/OR/XOR
-    function flagPath(sig ownerSig, int flags) {
-        require(checkSig(ownerSig, owner));
-
-        int requiredFlags = 0x07;  // Binary: 00000111
-        require((flags & requiredFlags) == requiredFlags);
-
-        // Use multiplication for doubling (no shift operators)
-        int doubled = threshold * 2;
-        require(tx.outputs[0].value >= doubled);
-    }
-
-    // Multi-signature with oracle data
-    function oraclePath(
-        sig ownerSig,
-        datasig oracleSig,
-        bytes priceData,
-        pubkey oraclePk
-    ) {
-        require(checkSig(ownerSig, owner));
-        require(checkDataSig(oracleSig, priceData, oraclePk));
-
-        // Type conversion
-        int price = int(bytes4(priceData));
-        require(price >= threshold);
+        // PATTERN: Update commitment state (modify first N bytes, preserve rest)
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+        require(tx.outputs[0].value == 1000);
+        require(tx.outputs[0].tokenAmount == tx.inputs[0].tokenAmount);
+        bytes restCommitment = tx.inputs[0].nftCommitment.split(2)[1];
+        require(tx.outputs[0].nftCommitment == bytes2(newFee) + restCommitment);
     }
 }
 ```
+
+**Key Production Patterns Demonstrated:**
+1. **`this.activeInputIndex`** - Always validate which input is executing the contract
+2. **Exact counts** - Use `==` not `>=` for input/output validation
+3. **UTXO authorization** - Prove ownership by spending UTXOs, not signatures
+4. **Structured commitments** - Pack multiple values into 40-byte commitment with clear layout
+5. **Capability manipulation** - `.split(32)[0] + 0x01` to change NFT capabilities
+6. **Fee accounting** - Explicit dust (1000 sats) and fee subtraction
+7. **Optional outputs** - Use `if` blocks for variable output counts
+
+## UNSUPPORTED SOLIDITY FEATURES
+
+**CRITICAL**: CashScript is stack-based, not storage-based. Many Solidity concepts do not exist.
+
+| Solidity Feature | CashScript | Notes |
+|-----------------|-----------|-------|
+| `import` | N/A | No code modularity - single file contracts only |
+| `interface/abstract` | N/A | No abstract contracts or interfaces |
+| `library` | N/A | No reusable library contracts |
+| `enum` | int constants | Use `int` values: `int PENDING = 0; int ACTIVE = 1;` |
+| `struct` | bytes + `.split()` | Pack data into bytes, unpack with split() |
+| `mapping` | NFT commitments | NO O(1) lookups - fundamentally different model |
+| `storage/memory/calldata` | N/A | Stack-based execution, no data locations |
+| `assert` | `require()` | Single error handler, no assert/revert distinction |
+| `revert` | `require()` | Transaction fails if require() is false |
+| `tx.origin` | N/A | No transaction originator - signature-based authorization |
+| `address` | `bytes20` or `pubkey` | Hash160 for addresses, pubkey for keys |
+| `constant` keyword | Literals only | Constructor params are immutable per UTXO |
+| `++/--/+=` | Manual operations | `x = x + 1;` not `x++;` |
+| `for/while` loops | `do {} while()` | Beta in v0.13.0, body executes first |
+
+**Key paradigm shifts:**
+- **No persistent state** - State lives in NFT commitments (40 bytes, 128 planned for 2026)
+- **No O(1) lookups** - Must loop over UTXOs, no hash tables
+- **No code reuse** - No import/library/inheritance mechanisms
+- **Fee = tx size** - Cost based on bytes, not opcodes (no "gas optimization")
+- **Stack-based** - All operations ephemeral, no storage slots
 
 ## CONSTRAINTS
 
@@ -332,7 +1119,7 @@ contract MasterReference(
 - Array access: ALWAYS validate `.length` before indexing
 - Integer arithmetic: no decimals, integer division only
 - `checkMultiSig`: NOT supported in TypeScript SDK (compile-time only)
-- NFT commitment: max 40 bytes currently
+- NFT commitment: max 40 bytes (128 bytes planned for 2026 upgrade)
 - String/bytes operations: `.split(index)` returns tuple, requires destructuring
 - Bitwise operators: Only `&`, `|`, `^` supported. NO shift (`<<`, `>>`) or invert (`~`)
 - Loops: `do {} while ()` syntax, beta in CashScript 0.13.0. Body executes at least once
@@ -340,6 +1127,7 @@ contract MasterReference(
 - Compound assignment: NOT supported (`+=`, `-=`, etc.)
 
 ### Best Practices for AI Agents
+- **DATA STORAGE**: Use NFT commitments for persistent state, NOT OP_RETURN (which is unspendable)
 - Always check array bounds before access
 - Use fixed-length types (`bytes20`, `bytes32`) for hash outputs
 - Validate inputs at function entry

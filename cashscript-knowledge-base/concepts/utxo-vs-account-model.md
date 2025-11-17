@@ -7,7 +7,7 @@
 | **State** | No global state, independent atomic UTXOs | Global state tree, persistent storage |
 | **Execution** | Transaction-level validation, stateless scripts | Contract-level execution, stateful |
 | **Concurrency** | Parallel spending of different UTXOs | Sequential (nonce-based) |
-| **Persistence** | UTXO chains, NFT commitments (128 bytes max) | Storage slots, mappings, state variables |
+| **Persistence** | UTXO chains, NFT commitments (40 bytes, 128 planned 2026) | Storage slots, mappings, state variables |
 | **Transaction** | Multiple inputs → Multiple outputs | Single sender → Single recipient |
 | **Gas Model** | Fee based on tx size (bytes) | Computational steps (opcode-based) |
 | **Introspection** | Full tx visibility (`tx.inputs[]`, `tx.outputs[]`) | Limited (`msg.sender`, `msg.value`) |
@@ -28,9 +28,9 @@
 // Input Properties
 tx.inputs[i].value                 // int: BCH amount in satoshis
 tx.inputs[i].lockingBytecode       // bytes: Input script
-tx.inputs[i].tokenCategory         // bytes32: Token category (unreversed)
+tx.inputs[i].tokenCategory         // bytes: 32-byte category + optional capability (0x01=mutable, 0x02=minting)
 tx.inputs[i].tokenAmount           // int: Fungible token amount
-tx.inputs[i].nftCommitment         // bytes: NFT data (max 128 bytes)
+tx.inputs[i].nftCommitment         // bytes: NFT data (40 bytes, 128 planned 2026)
 tx.inputs[i].sequenceNumber        // int: nSequence field value
 tx.inputs[i].unlockingBytecode     // bytes: scriptSig of input
 tx.inputs[i].outpointTransactionHash // bytes32: Previous transaction hash
@@ -39,9 +39,9 @@ tx.inputs[i].outpointIndex         // int: Previous output index
 // Output Properties
 tx.outputs[i].value                // int: BCH amount in satoshis
 tx.outputs[i].lockingBytecode      // bytes: Output script
-tx.outputs[i].tokenCategory        // bytes32: Token category (unreversed)
+tx.outputs[i].tokenCategory        // bytes: 32-byte category + optional capability (0x01=mutable, 0x02=minting)
 tx.outputs[i].tokenAmount          // int: Fungible token amount
-tx.outputs[i].nftCommitment        // bytes: NFT data (max 128 bytes)
+tx.outputs[i].nftCommitment        // bytes: NFT data (40 bytes, 128 planned 2026)
 
 // Context
 this.activeInputIndex              // int: Current UTXO being spent
@@ -78,15 +78,15 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 | Solidity | CashScript | Notes |
 |----------|-----------|-------|
 | `constructor(address _owner)` | `contract MyContract(pubkey owner)` | Parameters are immutable, set at instantiation |
-| `uint256 balance;` | NFT commitment or UTXO chain | State stored in 128-byte NFT commitments |
+| `uint256 balance;` | NFT commitment or UTXO chain | State stored in NFT commitments (40 bytes, 128 in 2026) |
 | `mapping(address => uint)` | NFT commitment + loop validation | No native mappings, use arrays or commitment data |
 | `require(condition, "msg")` | `require(condition);` | No error messages, tx fails if false |
 | `msg.sender` | `checkSig(sig, pubkey)` | Explicit signature verification required |
 | `msg.value` | `tx.inputs[this.activeInputIndex].value` | Must sum inputs, validate outputs |
 | `transfer(recipient, amount)` | `require(tx.outputs[0].value >= amount)` | Covenant-based output validation |
 | `payable` keyword | No keyword | All functions can handle value |
-| `emit Event(data)` | `new LockingBytecodeNullData([data])` | OP_RETURN output (223 bytes max total) |
-| `modifier onlyOwner` | `require(checkSig(sig, owner));` | No native modifiers, inline checks |
+| `emit Event(data)` | UTXO change is implicit event; OP_RETURN optional | Transaction IS the event. OP_RETURN only for extra off-chain metadata |
+| `modifier onlyOwner` | `require(checkSig(s, pk));` | No native modifiers, inline checks |
 | `for(uint i=0; i<n; i++)` | `do { i=i+1; } while(i<n)` | Beta in v0.13.0, body executes first |
 | Reentrancy guard | N/A | No reentrancy in UTXO model |
 | `storage[]` arrays | Multiple UTXOs or covenant | No storage arrays, separate UTXOs |
@@ -95,14 +95,68 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 | `balanceOf[addr]` | `tx.inputs[i].tokenAmount` | Query UTXOs for token balance |
 | `view` functions | N/A | All validation happens in spending tx |
 | `pure` functions | User-defined functions | `function myFunc(): int { return 42; }` |
+| `public` function | All functions (no keyword) | No visibility modifiers in CashScript |
+| `private` function | `require(checkSig(s, pk))` | Gate access with signature checks |
+| `internal` function | N/A | No contract inheritance |
+| `external` function | All functions (no keyword) | All functions externally callable |
 | `this.balance` | `tx.inputs[this.activeInputIndex].value` | Current UTXO value |
 | `block.timestamp` | `tx.time` | nLocktime value |
 | `block.number` | `tx.time` (when <500M) | Block height |
 | `selfdestruct()` | Spend to any output | No self-destruct, just spend UTXO |
 | `delegatecall()` | N/A | No contract calls |
 | `call{value: x}()` | Multi-input transaction | Construct tx with multiple contract inputs |
+| `import` | N/A | No code imports - single file contracts |
+| `interface` | N/A | No abstract contracts |
+| `library` | N/A | No reusable libraries |
+| `enum` | int constants | `int PENDING = 0; int ACTIVE = 1;` |
+| `struct` | bytes + `.split()` | Pack into bytes, unpack with split() |
+| `address` type | `bytes20` or `pubkey` | Hash160 or 33-byte public key |
+| `constant` keyword | Constructor params | Immutable per UTXO instance |
+| `immutable` keyword | Constructor params | Same as constant - set at deployment |
+| `assert(condition)` | `require(condition);` | Only require() exists |
+| `revert("msg")` | `require(false);` | No explicit revert keyword |
+| `tx.origin` | N/A | No transaction originator concept |
+| `storage` location | N/A | Stack-based execution, no storage |
+| `memory` location | N/A | Ephemeral stack, no memory allocation |
+| `calldata` location | N/A | Transaction introspection instead |
 
 ## Critical Gotchas
+
+### No Visibility Modifiers
+- ❌ No public/private/internal/external keywords
+- ❌ All functions callable by anyone who constructs valid transaction
+- ✅ Access control via explicit `require(checkSig(s, pk))` checks
+- ✅ Functions don't restrict callers - they restrict valid signatures
+
+### Stack-Based Execution (No Data Locations)
+- ❌ No `storage`, `memory`, `calldata` keywords
+- ❌ No persistent storage slots or state variables
+- ❌ No memory allocation or deallocation
+- ✅ All operations on ephemeral stack
+- ✅ State lives in NFT commitments (40 bytes, 128 in 2026) or UTXO outputs
+- ✅ Transaction introspection provides input data
+
+### No O(1) Lookups
+- ❌ No mappings - NO hash table lookups
+- ❌ Cannot do `balances[address]` constant-time access
+- ✅ Must loop over UTXOs or commitment data
+- ✅ Off-chain indexing for complex queries
+- ⚠️ Fundamentally different from Solidity's O(1) mapping pattern
+
+### No Code Reuse Mechanisms
+- ❌ No `import` statements
+- ❌ No `library` contracts
+- ❌ No contract inheritance (`is` keyword)
+- ❌ No `virtual`/`override` patterns
+- ✅ Single file contracts only
+- ✅ Copy-paste or user-defined functions for reuse
+
+### Transaction Size Fees (Not Gas)
+- ❌ No opcode-based gas costs
+- ❌ No storage slot packing optimization
+- ✅ Fee = transaction size in bytes × sat/byte rate
+- ✅ Optimize by minimizing output count, using P2S over P2SH
+- ✅ NFT commitment size (40 bytes, 128 in 2026) affects fee, not "gas"
 
 ### State Management
 - ❌ No persistent state variables
@@ -153,10 +207,13 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 - ⚠️ Invalid signature format = transaction failure
 - ✅ Nullfail rule enforced
 
-### OP_RETURN Size
+### OP_RETURN (Off-Chain Metadata ONLY)
+- ❌ NOT for data storage (provably unspendable, funds burned)
+- ❌ NOT needed for "events" - UTXO changes are inherently observable
 - ❌ 223 bytes TOTAL across ALL OP_RETURN outputs in transaction
-- ❌ Not a per-output limit
-- ✅ Plan accordingly for multiple OP_RETURN outputs
+- ✅ Use for optional off-chain indexer metadata (app-specific data)
+- ✅ For data storage, use NFT commitments
+- ✅ Transaction structure itself communicates state changes
 
 ### Loops (Pre-v0.13.0)
 - ❌ No `for`, `while` loops in older versions
@@ -176,7 +233,7 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 
 ### Bytecode Limits
 - ✅ 10,000 bytes unlocking bytecode limit
-- ✅ 128 bytes NFT commitment limit (BLS12-381 compatible)
+- ✅ NFT commitment: 40 bytes (128 bytes planned for 2026 upgrade)
 
 ## Type System Reference
 
