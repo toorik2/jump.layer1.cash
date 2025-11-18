@@ -271,6 +271,48 @@ CRITICAL RULES:
     - Trustless cross-contract validation via hardcoded category IDs
     - Compile-time trust establishment
 
+PROFESSIONAL DOCUMENTATION REQUIREMENTS:
+EVERY CashScript contract MUST include BCHess-style professional documentation:
+
+1. NFT STATE BLOCK (before contract declaration):
+   /*  --- ContractName [Mutable/Immutable/none] NFT State ---
+       type variableName = defaultValue        // optional comment
+   */
+   - Use "Mutable" if contract modifies nftCommitment
+   - Use "Immutable" if contract has fixed constructor params only
+   - Use "none" if no NFT state exists
+   - List ALL state variables with types and default values
+
+2. FUNCTION DOCUMENTATION (before each function):
+   //////////////////////////////////////////////////////////////////////////////////////////
+   //  Brief description of what the function does and why.
+   //
+   //inputs:
+   //  idx   Name                      [TYPE]      (from source)
+   //outputs:
+   //  idx   Name                      [TYPE]      (to destination)
+   //////////////////////////////////////////////////////////////////////////////////////////
+
+   - Separator: min 78 chars, extend to match longest line
+   - Column alignment: Index @4, Name @30, Type @42
+   - Index notation: 0-N (fixed), ? (variable), ranges (2-65)
+   - Type annotations: [NFT], [BCH], [FT]
+   - Source/destination: ALWAYS specify (from X), (to X)
+   - Optional outputs: Mark with {optional}
+
+3. INLINE COMMENTS:
+   - Explain validation logic: require(x) // Why this check matters
+   - Document state transitions: int newCount = old + 1; // Increment
+   - Clarify business logic: if (value == 1000) // No pledges = initial state
+
+4. MULTI-CONTRACT DOCUMENTATION:
+   - Show clear UTXO flow between contracts
+   - Document input/output for each function in every contract
+   - Consistent naming across related contracts
+   - NFT state blocks for all contracts in the system
+
+Examples in knowledge base: BCHess contracts (8 contracts), CashStarter (6 contracts)
+
 Respond with valid JSON. Use ONE of these structures:
 
 FOR SINGLE CONTRACT (simple translations):

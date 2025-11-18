@@ -378,6 +378,18 @@ contract ExtensionContract() {
 **NFTs are burned by NOT including them in transaction outputs**. This is a fundamental UTXO pattern:
 
 ```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Stop a campaign after deadline. Burns campaign NFT if no pledges.
+//
+//inputs:
+//  0   helperMasterNFT           [NFT]       (from Stop contract)
+//  1   campaignNFT               [NFT]       (from Main contract)
+//  2   creatorBCH                [BCH]       (from campaign creator)
+//outputs:
+//  0   helperMasterNFT           [NFT]       (to Stop contract)
+//  1   campaignNFT {if pledges}  [NFT]       (to Main contract)
+//  ?   creatorBCH                [BCH]       (to campaign creator)
+//////////////////////////////////////////////////////////////////////////////////////////
 function stop() {
     require(this.activeInputIndex == 0);
     require(tx.inputs.length == 2);
@@ -438,6 +450,19 @@ require(capability != 0x);     // Must NOT be immutable (receipt)
 **Immutable NFTs serve as cryptographic receipts/proofs**:
 
 ```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Accept a pledge from a backer. Issues an immutable receipt NFT as proof.
+//
+//inputs:
+//  0   masterNFT                 [NFT]       (from Manager contract)
+//  1   backerBCH                 [BCH]       (from backer)
+//  2   campaignNFT               [NFT]       (from Main contract)
+//outputs:
+//  0   masterNFT                 [NFT]       (to Manager contract)
+//  1   pledgeReceipt             [NFT]       (to backer)
+//  2   campaignNFT               [NFT]       (to Main contract)
+//  3   change {optional}         [BCH]       (to backer)
+//////////////////////////////////////////////////////////////////////////////////////////
 function pledge(int pledgeAmount) {
     // ... validation ...
 
@@ -457,7 +482,19 @@ function pledge(int pledgeAmount) {
     );
 }
 
-// Later: Verify receipt for refund
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Refund a backer after campaign failure. Validates receipt NFT authenticity.
+//
+//inputs:
+//  0   helperMasterNFT           [NFT]       (from Refund contract)
+//  1   campaignNFT               [NFT]       (from Main contract)
+//  2   pledgeReceipt             [NFT]       (from backer)
+//  3   backerBCH                 [BCH]       (from backer)
+//outputs:
+//  0   helperMasterNFT           [NFT]       (to Refund contract)
+//  1   campaignNFT               [NFT]       (to Main contract)
+//  2   refundPayment             [BCH]       (to backer)
+//////////////////////////////////////////////////////////////////////////////////////////
 function refund() {
     bytes category2, bytes capability2 = tx.inputs[2].tokenCategory.split(32);
     require(category2 == masterCategory);  // Same token family
@@ -479,6 +516,19 @@ function refund() {
 **Satoshi amount can indicate contract state**:
 
 ```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Cancel a campaign before deadline. Behavior depends on whether pledges exist.
+//
+//inputs:
+//  0   helperMasterNFT           [NFT]       (from Cancel contract)
+//  1   campaignNFT               [NFT]       (from Main contract)
+//  2   creatorBCH                [BCH]       (from campaign creator)
+//outputs:
+//  0   helperMasterNFT           [NFT]       (to Cancel contract)
+//  1   campaignNFT {if pledges}  [NFT]       (to Main contract)
+//  1   creatorBCH                [BCH]       (to campaign creator)
+//  2   creatorBCH {if pledges}   [BCH]       (to campaign creator)
+//////////////////////////////////////////////////////////////////////////////////////////
 function cancel() {
     // Initial campaign has exactly 1000 sats (dust for existence)
     // After pledges, value increases
@@ -508,7 +558,18 @@ function cancel() {
 **Built-in protocol monetization for frontends**:
 
 ```cashscript
-// PATTERN 1: Flat fee cap (initialization)
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Initialize a new campaign with optional service provider fee.
+//
+//inputs:
+//  0   masterNFT                 [NFT]       (from Manager contract)
+//  1   creatorBCH                [BCH]       (from campaign creator)
+//outputs:
+//  0   masterNFT                 [NFT]       (to Manager contract)
+//  1   campaignNFT               [NFT]       (to Main contract)
+//  2   serviceFee {optional}     [BCH]       (to service provider)
+//  ?   change {optional}         [BCH]       (to campaign creator)
+//////////////////////////////////////////////////////////////////////////////////////////
 function initialize(bytes20 servicePKH, int serviceFee) {
     require(serviceFee <= 1000000);  // Max 0.01 BCH absolute cap
     require(tx.outputs[2].lockingBytecode == new LockingBytecodeP2PKH(servicePKH));
@@ -516,7 +577,18 @@ function initialize(bytes20 servicePKH, int serviceFee) {
     require(tx.outputs[2].tokenCategory == 0x);  // Pure BCH
 }
 
-// PATTERN 2: Percentage cap (claiming)
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Claim successful campaign funds with capped service provider fee.
+//
+//inputs:
+//  0   helperMasterNFT           [NFT]       (from Claim contract)
+//  1   campaignNFT               [NFT]       (from Main contract)
+//  2   creatorBCH                [BCH]       (from campaign creator)
+//outputs:
+//  0   helperMasterNFT           [NFT]       (to Claim contract)
+//  1   campaignFunds             [BCH]       (to campaign creator)
+//  2   serviceFee                [BCH]       (to service provider)
+//////////////////////////////////////////////////////////////////////////////////////////
 function claim(bytes20 servicePKH, int serviceFee) {
     // Integer percentage: value * numerator / denominator
     require(serviceFee <= tx.inputs[1].value * 50 / 1000);  // Max 5% of campaign
@@ -1171,3 +1243,543 @@ contract MasterReference() {
 - Check both `tx.time` and `this.age` for robust time locks
 - Validate token category AND amount for CashTokens
 - Use NULLFAIL behavior: empty sig `0x` returns false without failure
+
+## PROFESSIONAL CONTRACT DOCUMENTATION
+
+**MANDATORY**: ALL CashScript contracts MUST include professional documentation following BCHess production standards.
+
+### NFT STATE DOCUMENTATION BLOCK
+
+**Location**: BEFORE contract declaration
+**Format**:
+```cashscript
+/*  --- [ContractName] [Mutable/Immutable] NFT State ---
+    [type] [variableName] = [defaultValue]        // [optional comment]
+*/
+```
+
+**Rules**:
+- Use "**Mutable**" if contract modifies `nftCommitment` during execution
+- Use "**Immutable**" if contract has fixed parameters only (constructor params)
+- Use "**none**" if no NFT state exists in the contract
+- List ALL state variables with types and default values
+- Add inline comments for enum-style values
+
+**BCHess Examples**:
+
+```cashscript
+/*  --- ChessMaster Mutable NFT State ---
+    bytes8 turnCounter = 0x0000000000000000
+    byte deadKing = 0x00
+*/
+
+/*  --- Squares Mutable NFT State ---
+    byte startingTeam = 0x00
+    byte startingPiece = 0x00
+    bytes2 x = 0x0000
+    bytes2 y = 0x0000
+    byte team = 0x00            // 0x00 white, 0x01 black, 0x02 empty
+    byte pieceType = 0x00       // 0x01 pawn, 0x02 knight, 0x03 bishop, 0x04 rook, 0x05 queen, 0x06 king
+*/
+
+/*  --- King Immutable NFT State ---
+    none
+*/
+```
+
+**CashStarter Example**:
+```cashscript
+/*  --- Campaign Mutable NFT State ---
+    bytes4 pledgeCount = 0x00000000
+    bytes6 totalPledged = 0x000000000000        // Satoshis pledged
+    bytes4 deadline = 0x00000000                 // Block height deadline
+    byte status = 0x00                           // 0x00 active, 0x01 funded, 0x02 refunding
+*/
+```
+
+### FUNCTION DOCUMENTATION BLOCK
+
+**Location**: BEFORE each function declaration
+**Format**:
+```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  [Brief description of what the function does and why]
+//
+//inputs:
+//  [idx]   [Name]                [TYPE]      (from [source])
+//  ...
+//outputs:
+//  [idx]   [Name]                [TYPE]      (to [destination])
+//  ...
+//////////////////////////////////////////////////////////////////////////////////////////
+function functionName(...) { }
+```
+
+**Separator Rules**:
+- Use forward slashes (`/`) for header and footer separators
+- **Dynamic length**: Minimum 78 characters, extend to match longest line if needed
+- Count from start of comment to end of longest input/output line
+- Maintain visual balance and readability
+
+**Column Alignment**:
+- **Index**: Position 4 after `//  ` (2 spaces after comment marker)
+- **Name**: Align at column ~30 (pad with spaces)
+- **Type**: Align at column ~42 (in brackets `[TYPE]`)
+- **Source/Destination**: After type, in parentheses
+
+**Index Notation**:
+- **Fixed positions**: `0`, `1`, `2`, `3`, etc. - Explicit numeric indexes
+- **Variable quantity**: `?` - Optional or variable number of inputs/outputs
+- **Last position**: `N` - Calculated last index (when total is variable)
+- **Ranges**: `2-65` - Multiple sequential UTXOs
+- **Optional elements**: Add `{optional}` tag to name
+
+**Type Annotations**:
+- `[NFT]` - Non-fungible token (CashTokens NFT)
+- `[BCH]` - Pure satoshi UTXO (no tokens)
+- `[FT]` - Fungible tokens (if applicable)
+
+**Source/Destination Notation**:
+- **Format**: `(from [location])` and `(to [location])`
+- **Locations**: Contract name, "user", "P2PKH address", etc.
+- **ALWAYS specify** - Never leave blank
+
+**BCHess Examples**:
+
+```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Reset all squares to new game state.
+//
+//inputs:
+//  0       ChessMaster         [NFT]       (from ChessMaster contract)
+//  1       userBCH             [BCH]       (from user)
+//  2-65    Squares             [NFT]       (from Squares contract)
+//outputs:
+//  0       ChessMaster         [NFT]       (to ChessMaster contract)
+//  1       userBCH             [BCH]       (to user)
+//  2-65    Squares             [NFT]       (to Squares contract)
+//////////////////////////////////////////////////////////////////////////////////////////
+function reset() { ... }
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Move a piece, overwrites any existing piece on the destination square.
+//
+//inputs:
+//  0   userBCH                   [BCH]       (from user)
+//  1   PieceLogic                [NFT]       (from PieceLogic contract)
+//  2   ChessMaster               [NFT]       (from ChessMaster contract)
+//  3   SourceSquare              [NFT]       (from Squares contract)
+//  ?   CheckEmptySquare(s)       [NFT]       (from Squares contract)
+//  N   DestinationSquare         [NFT]       (from Squares contract)
+//outputs:
+//  0   userBCH                   [BCH]       (to user)
+//  1   PieceLogic                [NFT]       (to PieceLogic contract)
+//  2   ChessMaster               [NFT]       (to ChessMaster contract)
+//  3   SourceSquare              [NFT]       (to Squares contract)
+//  ?   CheckEmptySquare(s)       [NFT]       (to Squares contract)
+//  N   DestinationSquare         [NFT]       (to Squares contract)
+//////////////////////////////////////////////////////////////////////////////////////////
+function move() { ... }
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Check if a square is empty. Used with non-knight pieces that move multiple squares
+//  in a single move to verify they don't pass through other pieces.
+//
+//inputs:
+//  0   PieceNFT                  [NFT]       (from PieceLogic contract)
+//  1   ChessMasterNFT            [NFT]       (from ChessMaster contract)
+//  2   SourceSquare              [NFT]       (from Squares contract)
+//  ?   CheckEmptySquare(s)       [NFT]       (from Squares contract)
+//  3   DestinationSquare         [NFT]       (from Squares contract)
+//  4   userBCH                   [BCH]       (from user)
+//outputs:
+//  0   PieceNFT                  [NFT]       (to PieceLogic contract)
+//  1   ChessMasterNFT            [NFT]       (to ChessMaster contract)
+//  2   SourceSquare              [NFT]       (to Squares contract)
+//  3   DestinationSquare         [NFT]       (to Squares contract)
+//  4   change {optional}         [BCH]       (to user)
+//////////////////////////////////////////////////////////////////////////////////////////
+function checkEmpty() { ... }
+```
+
+### COMPLETE CONTRACT TEMPLATE
+
+```cashscript
+pragma cashscript ^0.13.0;
+
+/*  --- [ContractName] [Mutable/Immutable] NFT State ---
+    [type] [varName] = [default]        // [optional comment]
+*/
+
+contract [ContractName]([constructorParams]) {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  [Brief description of what this function does and why it's important]
+    //
+    //inputs:
+    //  [0]     [InputName1]            [TYPE]      (from [source])
+    //  [1]     [InputName2]            [TYPE]      (from [source])
+    //  [?]     [OptionalInputs]        [TYPE]      (from [source])
+    //  [N]     [LastInput]             [TYPE]      (from [source])
+    //outputs:
+    //  [0]     [OutputName1]           [TYPE]      (to [destination])
+    //  [1]     [OutputName2]           [TYPE]      (to [destination])
+    //  [N]     [LastOutput]            [TYPE]      (to [destination])
+    //  [?]     [change {optional}]     [BCH]       (to user)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function functionName([params]) {
+        require(this.activeInputIndex == 0);        // Validate which input is executing
+        require(tx.inputs.length == 3);              // Fixed input count
+        require(tx.outputs.length >= 2);             // Variable output count
+
+        // Business logic with inline comments explaining WHY
+        bytes nftCommitment = tx.inputs[0].nftCommitment;
+        bytes4 counter = bytes4(nftCommitment.split(4)[0]);
+        int newCounter = int(counter) + 1;
+        require(newCounter < 2147483647);            // Prevent overflow
+
+        // Recreate NFT with updated state
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+        require(tx.outputs[0].nftCommitment == bytes4(newCounter) + restOfCommitment);
+        require(tx.outputs[0].value == 1000);        // Preserve dust
+    }
+}
+```
+
+### MULTI-CONTRACT DOCUMENTATION PATTERNS
+
+When generating multi-contract systems, show clear UTXO flow between contracts:
+
+**Example: Voting System with 3 Contracts**
+
+```cashscript
+// ===== CONTRACT 1: VotingBooth (PRIMARY) =====
+/*  --- VotingBooth Mutable NFT State ---
+    bytes4 activeVotes = 0x00000000
+    byte votingOpen = 0x01
+*/
+
+contract VotingBooth() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Cast a vote. Routes to appropriate ProposalCounter contract.
+    //
+    //inputs:
+    //  0   votingBoothNFT            [NFT]       (from VotingBooth contract)
+    //  1   voterAuth                 [BCH]       (from user)
+    //  2   proposalCounter           [NFT]       (from ProposalCounter contract)
+    //outputs:
+    //  0   votingBoothNFT            [NFT]       (to VotingBooth contract)
+    //  1   voterAuth                 [BCH]       (to user)
+    //  2   proposalCounter           [NFT]       (to ProposalCounter contract)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function vote(int proposalId) { ... }
+}
+
+// ===== CONTRACT 2: ProposalCounter (HELPER) =====
+/*  --- ProposalCounter Mutable NFT State ---
+    bytes4 proposalId = 0x00000000
+    bytes4 voteCount = 0x00000000
+    bytes32 proposalName = 0x00...
+*/
+
+contract ProposalCounter() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Increment vote count for this proposal.
+    //
+    //inputs:
+    //  0   proposalNFT               [NFT]       (from ProposalCounter contract)
+    //  1   votingBoothNFT            [NFT]       (from VotingBooth contract)
+    //  2   voterAuth                 [BCH]       (from user)
+    //outputs:
+    //  0   proposalNFT               [NFT]       (to ProposalCounter contract)
+    //  1   votingBoothNFT            [NFT]       (to VotingBooth contract)
+    //  2   voterAuth                 [BCH]       (to user)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function increment() { ... }
+}
+
+// ===== CONTRACT 3: VoterRegistry (STATE) =====
+/*  --- VoterRegistry Mutable NFT State ---
+    bytes voterList = 0x                // Packed list of voter PKHs (20 bytes each)
+*/
+
+contract VoterRegistry() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Add a new eligible voter to the registry.
+    //
+    //inputs:
+    //  0   registryNFT               [NFT]       (from VoterRegistry contract)
+    //  1   adminAuth                 [BCH]       (from admin)
+    //outputs:
+    //  0   registryNFT               [NFT]       (to VoterRegistry contract)
+    //  1   adminAuth                 [BCH]       (to admin)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function addVoter(bytes20 voterPkh) { ... }
+}
+```
+
+**Example: CashStarter Crowdfunding with 6 Contracts**
+
+```cashscript
+// ===== CONTRACT 1: Manager (PRIMARY) =====
+/*  --- Manager Mutable NFT State ---
+    bytes4 campaignCount = 0x00000000
+    bytes20 adminPkh = 0x0000000000000000000000000000000000000000
+*/
+
+contract Manager(bytes32 mainContractAddress) {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Initialize a new crowdfunding campaign. Creates campaign NFT in Main contract.
+    //
+    //inputs:
+    //  0   managerNFT                [NFT]       (from Manager contract)
+    //  1   creatorBCH                [BCH]       (from campaign creator)
+    //outputs:
+    //  0   managerNFT                [NFT]       (to Manager contract)
+    //  1   campaignNFT               [NFT]       (to Main contract)
+    //  2   serviceFee {optional}     [BCH]       (to service provider)
+    //  ?   change {optional}         [BCH]       (to campaign creator)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function initialize(int goal, int deadline, bytes20 servicePkh, int serviceFee) { ... }
+}
+
+// ===== CONTRACT 2: Main (PRIMARY) =====
+/*  --- Campaign Mutable NFT State ---
+    bytes5 campaignId = 0x0000000000
+    bytes6 goalAmount = 0x000000000000
+    bytes4 deadline = 0x00000000                 // Block height deadline
+    bytes4 pledgeCount = 0x00000000
+    bytes6 totalPledged = 0x000000000000
+    byte status = 0x00                           // 0x00 active, 0x01 funded, 0x02 cancelled
+    bytes20 creatorPkh = 0x0000000000000000000000000000000000000000
+*/
+
+contract Main() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Accept a pledge from a backer. Issues an immutable receipt NFT as proof.
+    //
+    //inputs:
+    //  0   campaignNFT               [NFT]       (from Main contract)
+    //  1   backerBCH                 [BCH]       (from backer)
+    //outputs:
+    //  0   campaignNFT               [NFT]       (to Main contract)
+    //  1   pledgeReceipt             [NFT]       (to backer)
+    //  2   change {optional}         [BCH]       (to backer)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function pledge(bytes20 backerPkh, int pledgeAmount) { ... }
+}
+
+// ===== CONTRACT 3: Cancel (HELPER) =====
+/*  --- CancelHelper Immutable NFT State ---
+    bytes5 sentinelId = 0xFFFFFFFFFF           // Sentinel value identifying helper master
+*/
+
+contract Cancel() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Cancel a campaign before deadline. Burns campaign NFT if no pledges exist.
+    //
+    //inputs:
+    //  0   cancelMasterNFT           [NFT]       (from Cancel contract)
+    //  1   campaignNFT               [NFT]       (from Main contract)
+    //  2   creatorBCH                [BCH]       (from campaign creator)
+    //outputs:
+    //  0   cancelMasterNFT           [NFT]       (to Cancel contract)
+    //  1   campaignNFT {if pledges}  [NFT]       (to Main contract)
+    //  ?   creatorRefund             [BCH]       (to campaign creator)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function cancel() { ... }
+}
+
+// ===== CONTRACT 4: Claim (HELPER) =====
+/*  --- ClaimHelper Immutable NFT State ---
+    bytes5 sentinelId = 0xFFFFFFFFFF
+*/
+
+contract Claim() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Claim successful campaign funds after reaching goal and passing deadline.
+    //
+    //inputs:
+    //  0   claimMasterNFT            [NFT]       (from Claim contract)
+    //  1   campaignNFT               [NFT]       (from Main contract)
+    //  2   creatorBCH                [BCH]       (from campaign creator)
+    //outputs:
+    //  0   claimMasterNFT            [NFT]       (to Claim contract)
+    //  1   campaignFunds             [BCH]       (to campaign creator)
+    //  2   serviceFee {optional}     [BCH]       (to service provider)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function claim(bytes20 servicePkh, int serviceFee) { ... }
+}
+
+// ===== CONTRACT 5: Refund (HELPER) =====
+/*  --- RefundHelper Immutable NFT State ---
+    bytes5 sentinelId = 0xFFFFFFFFFF
+*/
+
+contract Refund() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Refund a backer after campaign failure. Validates receipt NFT authenticity.
+    //
+    //inputs:
+    //  0   refundMasterNFT           [NFT]       (from Refund contract)
+    //  1   campaignNFT               [NFT]       (from Main contract)
+    //  2   pledgeReceipt             [NFT]       (from backer)
+    //  3   backerBCH                 [BCH]       (from backer)
+    //outputs:
+    //  0   refundMasterNFT           [NFT]       (to Refund contract)
+    //  1   campaignNFT               [NFT]       (to Main contract)
+    //  2   refundPayment             [BCH]       (to backer)
+    //  3   change {optional}         [BCH]       (to backer)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function refund() { ... }
+}
+
+// ===== CONTRACT 6: Stop (HELPER) =====
+/*  --- StopHelper Immutable NFT State ---
+    bytes5 sentinelId = 0xFFFFFFFFFF
+*/
+
+contract Stop() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Stop a campaign after deadline passes without reaching goal.
+    //
+    //inputs:
+    //  0   stopMasterNFT             [NFT]       (from Stop contract)
+    //  1   campaignNFT               [NFT]       (from Main contract)
+    //  2   creatorBCH                [BCH]       (from campaign creator)
+    //outputs:
+    //  0   stopMasterNFT             [NFT]       (to Stop contract)
+    //  1   campaignNFT {if pledges}  [NFT]       (to Main contract)
+    //  ?   creatorRefund             [BCH]       (to campaign creator)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function stop() { ... }
+}
+```
+
+**CashStarter System Architecture**:
+- **Manager**: Creates new campaigns (primary initialization contract)
+- **Main**: Core campaign logic (pledge acceptance)
+- **Cancel/Claim/Refund/Stop**: Each helper has its own masterNFT with sentinel ID (0xFFFFFFFFFF)
+- **UTXO Flow**: Helper contracts validate Main contract's minting NFT, enabling trustless cross-contract operations
+- **Receipt Pattern**: Pledge function creates immutable NFT receipts for later refund validation
+
+### COMMON PATTERNS BY USE CASE
+
+**Simple Token Contract (Single UTXO)**:
+```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Transfer tokens to a new owner.
+//
+//inputs:
+//  0   tokenNFT                  [NFT]       (from Token contract)
+//  1   ownerAuth                 [BCH]       (from current owner)
+//outputs:
+//  0   tokenNFT                  [NFT]       (to Token contract)
+//  1   change {optional}         [BCH]       (to current owner)
+//////////////////////////////////////////////////////////////////////////////////////////
+function transfer(bytes20 newOwner) { ... }
+```
+
+**Crowdfunding (Variable Pledges)**:
+```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Accept a new pledge from a backer. Updates campaign state.
+//
+//inputs:
+//  0   campaignNFT               [NFT]       (from Campaign contract)
+//  1   pledge                    [BCH]       (from backer)
+//outputs:
+//  0   campaignNFT               [NFT]       (to Campaign contract)
+//  1   pledgeReceipt             [NFT]       (to backer)
+//  2   change {optional}         [BCH]       (to backer)
+//////////////////////////////////////////////////////////////////////////////////////////
+function pledge(bytes20 backerPkh) { ... }
+```
+
+**Time-Locked Release**:
+```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Release funds after deadline. Requires time validation.
+//
+//inputs:
+//  0   lockedFunds               [BCH]       (from TimeRelease contract)
+//outputs:
+//  0   releasedFunds             [BCH]       (to beneficiary)
+//////////////////////////////////////////////////////////////////////////////////////////
+function release() {
+    require(tx.time >= deadline);               // Enforce time lock
+    ...
+}
+```
+
+**Batch Operations (Variable Inputs)**:
+```cashscript
+//////////////////////////////////////////////////////////////////////////////////////////
+//  Process multiple NFTs in a single transaction for gas efficiency.
+//
+//inputs:
+//  0       masterNFT             [NFT]       (from Master contract)
+//  1-N     batchNFTs             [NFT]       (from Batch contract)
+//outputs:
+//  0       masterNFT             [NFT]       (to Master contract)
+//  1-N     batchNFTs             [NFT]       (to Batch contract)
+//////////////////////////////////////////////////////////////////////////////////////////
+function batchProcess() {
+    require(tx.inputs.length >= 2);             // At least master + 1 batch
+    require(tx.inputs.length <= 66);            // Max 65 batch items
+    ...
+}
+```
+
+### INLINE CODE COMMENTS
+
+In addition to input/output documentation, include inline comments explaining:
+
+**Validation Logic**:
+```cashscript
+require(tx.inputs[0].tokenCategory == campaignCategory);    // Verify correct campaign
+require(int(weight) > 0);                                    // Must have voting rights
+require(voted == 0x00);                                      // Hasn't voted yet
+```
+
+**State Transitions**:
+```cashscript
+bytes4 currentCount = bytes4(commitment.split(4)[0]);       // Extract counter
+int newCount = int(currentCount) + 1;                       // Increment
+require(newCount <= 2147483647);                             // Max bytes4 (MSB safety)
+```
+
+**Mathematical Operations**:
+```cashscript
+int feeAmount = pledgeValue / 100;                          // 1% fee
+require(feeAmount <= 10000);                                 // Max 10k sat fee cap
+int netPledge = pledgeValue - feeAmount;                    // After fee deduction
+```
+
+**NFT Recreation**:
+```cashscript
+require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);    // Same contract
+require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);        // Same category
+require(tx.outputs[0].value == 1000);                                      // Preserve dust
+```
+
+### DOCUMENTATION QUALITY CHECKLIST
+
+Before finalizing any contract, verify:
+
+- [ ] NFT state block present and accurate (Mutable/Immutable/none)
+- [ ] All state variables listed with types and defaults
+- [ ] All functions have input/output documentation
+- [ ] Separator length appropriate (78+ chars, matches content)
+- [ ] Column alignment correct (index @4, name @30, type @42)
+- [ ] Index notation appropriate (0-N, ?, ranges)
+- [ ] All inputs have type annotations ([NFT], [BCH], [FT])
+- [ ] All inputs have source specification (from X)
+- [ ] All outputs have destination specification (to X)
+- [ ] Optional outputs marked with {optional}
+- [ ] Function description explains WHAT and WHY
+- [ ] Inline comments explain validation logic
+- [ ] Multi-contract systems show clear UTXO flow
+- [ ] Consistent terminology across related contracts
+
+**MANDATORY FOR ALL CONTRACTS**: Every generated CashScript contract must meet ALL these documentation standards before being returned to the user.
