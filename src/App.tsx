@@ -7,13 +7,8 @@ import './styles.css';
 // Single contract response type
 type SingleContractResult = {
   primaryContract: string;
-  explanation: string;
-  considerations: string[];
-  alternatives: Array<{
-    name: string;
-    contract: string;
-    rationale: string;
-  }>;
+  validated?: boolean;
+  bytecodeSize?: number;
   artifact?: any;
 };
 
@@ -58,9 +53,6 @@ type DeploymentGuide = {
 type MultiContractResult = {
   contracts: ContractInfo[];
   deploymentGuide: DeploymentGuide;
-  explanation: string;
-  considerations: string[];
-  alternatives?: any[];
 };
 
 type ConversionResult = SingleContractResult | MultiContractResult;
@@ -75,10 +67,8 @@ export default function App() {
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal('');
   const [copyStatus, setCopyStatus] = createSignal<'idle' | 'copied' | 'error'>('idle');
-  const [altCopyStatus, setAltCopyStatus] = createSignal<{[key: number]: 'idle' | 'copied' | 'error'}>({});
   const [contractCopyStatus, setContractCopyStatus] = createSignal<{[key: string]: 'idle' | 'copied' | 'error'}>({});
   const [highlightedHTML, setHighlightedHTML] = createSignal('');
-  const [altHighlightedHTML, setAltHighlightedHTML] = createSignal<{[key: number]: string}>({});
   const [contractHighlightedHTML, setContractHighlightedHTML] = createSignal<{[key: string]: string}>({});
   const [artifactHTML, setArtifactHTML] = createSignal('');
   const [activeContractTab, setActiveContractTab] = createSignal(0);
@@ -101,12 +91,6 @@ export default function App() {
     await navigator.clipboard.writeText(text);
     setCopyStatus('copied');
     setTimeout(() => setCopyStatus('idle'), 2000);
-  };
-
-  const copyAltToClipboard = async (text: string, index: number) => {
-    await navigator.clipboard.writeText(text);
-    setAltCopyStatus(prev => ({ ...prev, [index]: 'copied' }));
-    setTimeout(() => setAltCopyStatus(prev => ({ ...prev, [index]: 'idle' })), 2000);
   };
 
   const copyContractToClipboard = async (text: string, id: string) => {
@@ -137,16 +121,6 @@ export default function App() {
         });
         setHighlightedHTML(html);
 
-        const altHtmls: {[key: number]: string} = {};
-        for (let i = 0; i < r.alternatives.length; i++) {
-          const altHtml = await codeToHtml(r.alternatives[i].contract, {
-            lang: 'javascript',
-            theme: 'dark-plus'
-          });
-          altHtmls[i] = altHtml;
-        }
-        setAltHighlightedHTML(altHtmls);
-
         if (r.artifact) {
           const artifactJson = JSON.stringify(r.artifact, null, 2);
           const artifactHtml = await codeToHtml(artifactJson, {
@@ -172,7 +146,6 @@ export default function App() {
     setError('');
     setResult(null);
     setHighlightedHTML('');
-    setAltHighlightedHTML({});
     setContractHighlightedHTML({});
     setArtifactHTML('');
     setActiveContractTab(0);
@@ -250,46 +223,16 @@ export default function App() {
                       </button>
                     </div>
 
-                    <div class="expandable-sections">
-                      <details class="detail-section">
-                        <summary class="detail-summary">Explanation</summary>
-                        <div class="detail-content">{(result() as SingleContractResult).explanation}</div>
-                      </details>
-
-                      {(result() as SingleContractResult).alternatives.length > 0 && (
-                        <details class="detail-section">
-                          <summary class="detail-summary">Alternative Implementations ({(result() as SingleContractResult).alternatives.length})</summary>
-                          <div class="alternatives">
-                            {(result() as SingleContractResult).alternatives.map((alt, idx) => (
-                              <div class="alternative">
-                                <div class="alternative-header">{alt.name}</div>
-                                <div class="alternative-rationale">{alt.rationale}</div>
-                                <div class="code-container">
-                                  <div class="code-block alternative-code-block" innerHTML={altHighlightedHTML()[idx] || ''} />
-                                  <button
-                                    class={`code-copy-btn ${altCopyStatus()[idx] === 'copied' ? 'copied' : altCopyStatus()[idx] === 'error' ? 'error' : ''}`}
-                                    onClick={() => copyAltToClipboard(alt.contract, idx)}
-                                    disabled={altCopyStatus()[idx] === 'copied'}
-                                    title={altCopyStatus()[idx] === 'copied' ? 'Copied!' : 'Copy to clipboard'}
-                                  >
-                                    {altCopyStatus()[idx] === 'copied' ? <Check size={18} /> : altCopyStatus()[idx] === 'error' ? <X size={18} /> : <Copy size={18} />}
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </details>
-                      )}
-
-                      {(result() as SingleContractResult).artifact && (
+                    {(result() as SingleContractResult).artifact && (
+                      <div class="expandable-sections">
                         <details class="detail-section">
                           <summary class="detail-summary">Compiled Artifact</summary>
                           <div class="code-container">
                             <div class="code-block" innerHTML={artifactHTML()} />
                           </div>
                         </details>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </>
                 }
               >
@@ -443,11 +386,6 @@ export default function App() {
                               </div>
                             )}
                           </div>
-                        </details>
-
-                        <details class="detail-section">
-                          <summary class="detail-summary">System Explanation</summary>
-                          <div class="detail-content">{multiResult.explanation}</div>
                         </details>
                       </div>
                     </>

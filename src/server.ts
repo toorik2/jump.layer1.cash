@@ -92,16 +92,10 @@ interface DeploymentGuide {
 interface MultiContractResponse {
   contracts: ContractInfo[];
   deploymentGuide: DeploymentGuide;
-  explanation: string;
-  considerations: string[];
-  alternatives?: any[];
 }
 
 interface SingleContractResponse {
   primaryContract: string;
-  explanation: string;
-  considerations: string[];
-  alternatives?: any[];
   validated?: boolean;
   bytecodeSize?: number;
   artifact?: any;
@@ -110,6 +104,111 @@ interface SingleContractResponse {
 function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
   return parsed.contracts && Array.isArray(parsed.contracts);
 }
+
+// JSON Schema for structured outputs
+const outputSchema = {
+  type: "json_schema",
+  schema: {
+    anyOf: [
+      {
+        // Single contract response
+        type: "object",
+        properties: {
+          primaryContract: {
+            type: "string",
+            description: "Complete CashScript contract code with pragma, documentation, and all functions"
+          }
+        },
+        required: ["primaryContract"],
+        additionalProperties: false
+      },
+      {
+        // Multi-contract response
+        type: "object",
+        properties: {
+          contracts: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                name: { type: "string" },
+                purpose: { type: "string" },
+                code: { type: "string" },
+                role: {
+                  type: "string",
+                  enum: ["primary", "helper", "state"]
+                },
+                deploymentOrder: { type: "integer" },
+                dependencies: {
+                  type: "array",
+                  items: { type: "string" }
+                },
+                constructorParams: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      name: { type: "string" },
+                      type: { type: "string" },
+                      description: { type: "string" },
+                      source: { type: "string" },
+                      sourceContractId: {
+                        type: ["string", "null"]
+                      }
+                    },
+                    required: ["name", "type", "description", "source", "sourceContractId"],
+                    additionalProperties: false
+                  }
+                }
+              },
+              required: ["id", "name", "purpose", "code", "role", "deploymentOrder", "dependencies", "constructorParams"],
+              additionalProperties: false
+            }
+          },
+          deploymentGuide: {
+            type: "object",
+            properties: {
+              steps: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    order: { type: "integer" },
+                    contractId: { type: "string" },
+                    description: { type: "string" },
+                    prerequisites: {
+                      type: "array",
+                      items: { type: "string" }
+                    },
+                    outputs: {
+                      type: "array",
+                      items: { type: "string" }
+                    }
+                  },
+                  required: ["order", "contractId", "description", "prerequisites", "outputs"],
+                  additionalProperties: false
+                }
+              },
+              warnings: {
+                type: "array",
+                items: { type: "string" }
+              },
+              testingNotes: {
+                type: "array",
+                items: { type: "string" }
+              }
+            },
+            required: ["steps", "warnings", "testingNotes"],
+            additionalProperties: false
+          }
+        },
+        required: ["contracts", "deploymentGuide"],
+        additionalProperties: false
+      }
+    ]
+  }
+} as const;
 
 function validateMultiContractResponse(parsed: MultiContractResponse): {
   allValid: boolean;
@@ -325,10 +424,7 @@ Respond with valid JSON. Use ONE of these structures:
 
 FOR SINGLE CONTRACT (simple translations):
 {
-  "primaryContract": "string - CashScript code",
-  "explanation": "string - brief explanation",
-  "considerations": ["key differences between EVM and CashScript"],
-  "alternatives": [{"name": "string", "contract": "string", "rationale": "string"}]
+  "primaryContract": "string - Complete CashScript code with pragma, documentation, and all functions"
 }
 
 FOR MULTI-CONTRACT SYSTEMS (when Solidity pattern requires multiple CashScript contracts):
@@ -365,10 +461,7 @@ FOR MULTI-CONTRACT SYSTEMS (when Solidity pattern requires multiple CashScript c
     ],
     "warnings": ["Important deployment considerations"],
     "testingNotes": ["How to verify the system works"]
-  },
-  "explanation": "Overall system explanation",
-  "considerations": ["Key differences between EVM and CashScript"],
-  "alternatives": [{"name": "Alternative system design", "contracts": [...], "rationale": "Why this alternative"}]
+  }
 }
 
 CONTRACT ROLE DEFINITIONS (critical for UI display order):
@@ -402,24 +495,22 @@ Use your best judgment. Include deployment order and parameter sources for multi
     const apiCallStartTime = Date.now();
     const apiCallId = await logApiCallStart(conversionId, 1, 'claude-opus-4-1-20250805', 8000, contract);
 
-    let message = await anthropic.messages.create({
+    let message = await anthropic.beta.messages.create({
       model: 'claude-opus-4-1-20250805',
       max_tokens: 8000,
       system: systemPrompt,
+      betas: ['structured-outputs-2025-11-13'],
+      output_format: outputSchema,
       messages: [
         {
           role: 'user',
           content: contract
-        },
-        {
-          role: 'assistant',
-          content: '{'
         }
       ]
     });
 
     let response = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonString = '{' + response;
+    const jsonString = response;
 
     // Log API call completion (don't wait)
     logApiCallComplete(apiCallId, apiCallStartTime, true, response).catch(err =>
@@ -543,24 +634,22 @@ Please fix this specific issue and provide a corrected translation. Make sure ev
 
       const retryApiCallId = await logApiCallStart(conversionId, 2, 'claude-opus-4-1-20250805', 8000, retryMessage);
 
-      message = await anthropic.messages.create({
+      message = await anthropic.beta.messages.create({
         model: 'claude-opus-4-1-20250805',
         max_tokens: 8000,
         system: systemPrompt,
+        betas: ['structured-outputs-2025-11-13'],
+        output_format: outputSchema,
         messages: [
           {
             role: 'user',
             content: retryMessage
-          },
-          {
-            role: 'assistant',
-            content: '{'
           }
         ]
       });
 
       response = message.content[0].type === 'text' ? message.content[0].text : '';
-      const retryJsonString = '{' + response;
+      const retryJsonString = response;
 
       // Log retry API call completion (don't wait)
       logApiCallComplete(retryApiCallId, retryApiCallStartTime, true, response).catch(err =>
