@@ -208,7 +208,7 @@ export default function App() {
           <a href="https://jump.layer1.cash" class="nav-link active">Jump</a>
         </nav>
         <header>
-          <h1 onClick={handleReset}>Jump to layer 1</h1>
+          <h1>Jump to layer 1</h1>
           <p class="intro">Convert your Solidity smart contract to CashScript</p>
         </header>
 
