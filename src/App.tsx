@@ -256,7 +256,6 @@ export default function App() {
                             class={`contract-tab ${activeContractTab() === idx() ? 'active' : ''}`}
                             onClick={() => setActiveContractTab(idx())}
                           >
-                            <span class="tab-order">{contract.deploymentOrder}</span>
                             <span class="tab-name">{contract.name}</span>
                             <span class={`tab-status ${contract.validated ? 'valid' : 'invalid'}`}>
                               {contract.validated ? '✓' : '✗'}

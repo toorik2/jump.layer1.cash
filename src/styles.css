@@ -456,24 +456,6 @@ footer a:hover {
   color: #39FF14;
 }
 
-.tab-order {
-  background: #30363D;
-  color: #F0F6FC;
-  border-radius: 50%;
-  width: 1.5rem;
-  height: 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.contract-tab.active .tab-order {
-  background: #39FF14;
-  color: #000;
-}
-
 .start-over-btn {
   margin-left: auto;
   background: #161B22;
