@@ -259,11 +259,11 @@ app.post('/api/convert', async (req, res) => {
 
   try {
     console.log('[Conversion] Received conversion request');
-    const { solidityCode } = req.body;
+    const { contract } = req.body;
     const metadata = req.metadata!;
 
     // Log conversion start (async, but wait for ID)
-    conversionId = await logConversionStart(metadata, solidityCode);
+    conversionId = await logConversionStart(metadata, contract);
     console.log(`[Conversion] Started with ID ${conversionId}`);
 
     const systemPrompt = `You are a CashScript expert. Convert EVM (Solidity) smart contracts to CashScript.
@@ -507,7 +507,7 @@ Use your best judgment. Include deployment order and parameter sources for multi
 
     for (let attemptNumber = 1; attemptNumber <= MAX_RETRIES; attemptNumber++) {
       // Determine message content for this attempt
-      const messageContent = attemptNumber === 1 ? solidityCode : retryMessage;
+      const messageContent = attemptNumber === 1 ? contract : retryMessage;
       const attemptLabel = attemptNumber === 1 ? 'initial attempt' : `retry ${attemptNumber - 1}/${MAX_RETRIES - 1}`;
 
       console.log(`[Conversion] Calling Anthropic API (${attemptLabel})...`);
