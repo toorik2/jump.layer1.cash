@@ -146,14 +146,14 @@ export default function App() {
   });
 
   const handleConvert = async () => {
-    console.log('[Jump Arena] Starting conversion...');
+    console.log('[Jump] Starting conversion...');
     const contract = evmContract().trim();
     if (!contract) {
-      console.log('[Jump Arena] No contract provided');
+      console.log('[Jump] No contract provided');
       return;
     }
 
-    console.log(`[Jump Arena] Contract length: ${contract.length} characters`);
+    console.log(`[Jump] Contract length: ${contract.length} characters`);
     setLoading(true);
     setError('');
     setResult(null);
@@ -163,25 +163,25 @@ export default function App() {
     setArtifactHTML('');
     setActiveContractTab(0);
 
-    console.log(`[Jump Arena] Sending request to ${API_URL}`);
+    console.log(`[Jump] Sending request to ${API_URL}`);
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contract })
     });
 
-    console.log(`[Jump Arena] Response status: ${response.status}`);
+    console.log(`[Jump] Response status: ${response.status}`);
     const data = await response.json();
-    console.log('[Jump Arena] Response data received:', data);
+    console.log('[Jump] Response data received:', data);
 
     if (!response.ok) {
-      console.error('[Jump Arena] Conversion failed:', data.error);
+      console.error('[Jump] Conversion failed:', data.error);
       setError(data.error || 'Conversion failed');
       setLoading(false);
       return;
     }
 
-    console.log('[Jump Arena] Conversion successful!');
+    console.log('[Jump] Conversion successful!');
     setResult(data);
     setLoading(false);
   };
