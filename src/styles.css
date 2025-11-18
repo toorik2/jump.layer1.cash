@@ -479,8 +479,32 @@ footer a:hover {
   color: #39FF14;
 }
 
-.start-over-btn {
+.original-btn {
   margin-left: auto;
+  background: #161B22;
+  border: 1px solid #30363D;
+  border-radius: 6px;
+  padding: 0.75rem 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #9CA3AF;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.original-btn:hover {
+  border-color: #39FF14;
+  color: #F0F6FC;
+  background: rgba(57, 255, 20, 0.05);
+}
+
+.original-btn.active {
+  border-color: #39FF14;
+  color: #39FF14;
+  background: rgba(57, 255, 20, 0.05);
+}
+
+.start-over-btn {
   background: #161B22;
   border: 1px solid #30363D;
   border-radius: 6px;

@@ -275,15 +275,14 @@ export default function App() {
                       </button>
                     )}
 
-                    {/* "Original" tab (always last) */}
+                    {/* Original and Start over buttons on the right */}
                     <button
-                      class={`contract-tab ${isOriginalTab ? 'active' : ''}`}
+                      class={`original-btn ${isOriginalTab ? 'active' : ''}`}
                       onClick={() => setActiveContractTab(totalTabs - 1)}
                     >
-                      <span class="tab-name">Original</span>
+                      Original
                     </button>
 
-                    {/* Start over button */}
                     <button class="start-over-btn" onClick={handleReset}>
                       Start over
                     </button>
