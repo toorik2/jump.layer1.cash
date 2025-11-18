@@ -312,16 +312,6 @@ export default function App() {
                         const contract = sortedContracts()[activeContractTab()];
                         return (
                           <>
-                            <div class="contract-meta">
-                              <div class="contract-role">{contract.role}</div>
-                              <div class="contract-purpose">{contract.purpose}</div>
-                              {contract.validationError && (
-                                <div class="contract-error">
-                                  Validation Error: {contract.validationError}
-                                </div>
-                              )}
-                            </div>
-
                             {contract.dependencies.length > 0 && (
                               <div class="contract-dependencies">
                                 <strong>Dependencies:</strong> {contract.dependencies.join(', ')}

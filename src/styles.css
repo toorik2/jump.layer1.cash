@@ -518,39 +518,6 @@ footer a:hover {
   margin-bottom: 1.5rem;
 }
 
-.contract-meta {
-  margin-bottom: 1rem;
-}
-
-.contract-role {
-  display: inline-block;
-  background: #30363D;
-  color: #39FF14;
-  padding: 0.25rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.5rem;
-}
-
-.contract-purpose {
-  color: #9CA3AF;
-  font-size: 0.9375rem;
-  line-height: 1.6;
-}
-
-.contract-error {
-  background: rgba(255, 107, 107, 0.1);
-  border: 1px solid rgba(255, 107, 107, 0.3);
-  color: #FF6B6B;
-  padding: 0.75rem;
-  border-radius: 6px;
-  margin-top: 0.75rem;
-  font-size: 0.875rem;
-}
-
 .contract-dependencies {
   background: #161B22;
   padding: 0.75rem 1rem;
