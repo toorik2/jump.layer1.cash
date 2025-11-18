@@ -246,12 +246,6 @@ export default function App() {
 
               return (
                 <>
-                  {isMulti && (
-                    <div class="multi-contract-badge">
-                      Multi-Contract System ({(r as MultiContractResult).contracts.length} contracts)
-                    </div>
-                  )}
-
                   {/* Unified tabs for all results */}
                   <div class="contract-tabs">
                     {isMulti ? (

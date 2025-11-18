@@ -424,17 +424,6 @@ footer a:hover {
 }
 
 /* Multi-contract styles */
-.multi-contract-badge {
-  background: linear-gradient(90deg, #39FF14, #2ed910);
-  color: #000;
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 0.875rem;
-  display: inline-block;
-  margin-bottom: 1.5rem;
-}
-
 .contract-tabs {
   display: flex;
   gap: 0.5rem;
