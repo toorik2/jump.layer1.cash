@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show } from 'solid-js';
+import { createSignal, createEffect, createMemo, For, Show } from 'solid-js';
 import { codeToHtml } from 'shiki';
 import { Copy, Check, X } from 'lucide-solid';
 import { API_URL } from './config';
@@ -82,6 +82,20 @@ export default function App() {
   const [contractHighlightedHTML, setContractHighlightedHTML] = createSignal<{[key: string]: string}>({});
   const [artifactHTML, setArtifactHTML] = createSignal('');
   const [activeContractTab, setActiveContractTab] = createSignal(0);
+
+  // Sorted contracts: primary first, then helper, then state
+  const sortedContracts = createMemo(() => {
+    const r = result();
+    if (!r || !isMultiContractResult(r)) return [];
+
+    const rolePriority = { primary: 0, helper: 1, state: 2 };
+    return [...r.contracts].sort((a, b) => {
+      const priorityDiff = (rolePriority[a.role as keyof typeof rolePriority] || 999) -
+                          (rolePriority[b.role as keyof typeof rolePriority] || 999);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.deploymentOrder - b.deploymentOrder; // Same role: sort by deployment order
+    });
+  });
 
   const copyToClipboard = async (text: string) => {
     await navigator.clipboard.writeText(text);
@@ -242,15 +256,6 @@ export default function App() {
                         <div class="detail-content">{(result() as SingleContractResult).explanation}</div>
                       </details>
 
-                      {(result() as SingleContractResult).considerations.length > 0 && (
-                        <details class="detail-section">
-                          <summary class="detail-summary">Considerations ({(result() as SingleContractResult).considerations.length})</summary>
-                          <ul class="detail-list">
-                            {(result() as SingleContractResult).considerations.map(item => <li>{item}</li>)}
-                          </ul>
-                        </details>
-                      )}
-
                       {(result() as SingleContractResult).alternatives.length > 0 && (
                         <details class="detail-section">
                           <summary class="detail-summary">Alternative Implementations ({(result() as SingleContractResult).alternatives.length})</summary>
@@ -298,7 +303,7 @@ export default function App() {
                       </div>
 
                       <div class="contract-tabs">
-                        <For each={multiResult.contracts}>
+                        <For each={sortedContracts()}>
                           {(contract, idx) => (
                             <button
                               class={`contract-tab ${activeContractTab() === idx() ? 'active' : ''}`}
@@ -316,7 +321,7 @@ export default function App() {
 
                       <div class="contract-card">
                         {(() => {
-                          const contract = multiResult.contracts[activeContractTab()];
+                          const contract = sortedContracts()[activeContractTab()];
                           return (
                             <>
                               <div class="contract-meta">
@@ -444,15 +449,6 @@ export default function App() {
                           <summary class="detail-summary">System Explanation</summary>
                           <div class="detail-content">{multiResult.explanation}</div>
                         </details>
-
-                        {multiResult.considerations.length > 0 && (
-                          <details class="detail-section">
-                            <summary class="detail-summary">Considerations ({multiResult.considerations.length})</summary>
-                            <ul class="detail-list">
-                              {multiResult.considerations.map(item => <li>{item}</li>)}
-                            </ul>
-                          </details>
-                        )}
                       </div>
                     </>
                   );
