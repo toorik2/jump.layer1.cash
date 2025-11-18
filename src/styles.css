@@ -69,6 +69,28 @@ header {
   text-decoration: underline;
 }
 
+/* Tablet navigation positioning */
+@media (max-width: 768px) {
+  .header-nav {
+    top: 1rem;
+    right: 1rem;
+    gap: 1rem;
+  }
+}
+
+/* Mobile navigation positioning */
+@media (max-width: 480px) {
+  .header-nav {
+    top: 0.5rem;
+    right: 0.5rem;
+    gap: 0.5rem;
+  }
+
+  .nav-link {
+    font-size: 0.75rem;
+  }
+}
+
 h1 {
   font-size: 4rem;
   font-weight: 700;
