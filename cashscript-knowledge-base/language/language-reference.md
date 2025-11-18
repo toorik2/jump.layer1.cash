@@ -96,6 +96,39 @@ require(tx.outputs[0].nftCommitment == bytes4(newID) + restOfCommitment);
 - `new LockingBytecodeP2SH32(bytes32 scriptHash)` - Pay to script hash (32-byte)
 - `new LockingBytecodeNullData(bytes[] chunks)` - OP_RETURN data output
 
+### CRITICAL: P2SH32 Address Type (HARDCODED CONTRACT ADDRESSES)
+
+When storing contract addresses for **cross-contract validation** (multi-contract systems), ALWAYS use `bytes32` type. This is a CRITICAL rule:
+
+```cashscript
+// ✓ CORRECT - bytes32 type for P2SH32 addresses
+bytes32 votingBoothAddress = 0x1234567890123456789012345678901234567890123456789012345678901234;
+require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2SH32(votingBoothAddress));
+
+// ✗ WRONG - bytes type will cause compilation error!
+bytes votingBoothAddress = 0x1234567890123456789012345678901234567890123456789012345678901234;
+require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2SH32(votingBoothAddress));
+// Error: Found parameters (bytes) where (bytes32) expected
+
+// ✓ CORRECT - bytes20 type for P2PKH addresses
+bytes20 chairpersonPkh = 0x1234567890123456789012345678901234567890;
+require(tx.inputs[1].lockingBytecode == new LockingBytecodeP2PKH(chairpersonPkh));
+```
+
+**Why this matters**: Multi-contract systems (like BCHess, CashStarter, voting systems) embed other contract addresses for validation. Using the wrong type (`bytes` instead of `bytes32`) causes a type mismatch error that will fail compilation.
+
+**Production pattern** (from BCHess/CashStarter):
+```cashscript
+// In contracts that reference other contracts by address:
+contract BallotInitializer(bytes20 chairpersonPkh) {
+    function initialize(...) {
+        // Hardcoded contract address (deployed first)
+        bytes32 votingBoothHash = 0xabc...;  // Must be bytes32!
+        require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2SH32(votingBoothHash));
+    }
+}
+```
+
 **CashToken Capabilities**:
 - **Immutable** (no capability byte): Cannot modify NFT commitment when spent
 - **Mutable** (0x01): Can create ONE replacement NFT per spending, can downgrade to immutable

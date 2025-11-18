@@ -111,9 +111,18 @@ function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
   return parsed.contracts && Array.isArray(parsed.contracts);
 }
 
-function validateMultiContractResponse(parsed: MultiContractResponse): { allValid: boolean; firstError?: string } {
+function validateMultiContractResponse(parsed: MultiContractResponse): {
+  allValid: boolean;
+  firstError?: string;
+  validCount: number;
+  failedCount: number;
+  failedContracts: string[];
+} {
   let allValid = true;
   let firstError: string | undefined;
+  let validCount = 0;
+  let failedCount = 0;
+  const failedContracts: string[] = [];
 
   for (const contract of parsed.contracts) {
     const validation = validateContract(contract.code);
@@ -121,8 +130,11 @@ function validateMultiContractResponse(parsed: MultiContractResponse): { allVali
     if (validation.valid) {
       contract.bytecodeSize = validation.bytecodeSize;
       contract.artifact = validation.artifact;
+      validCount++;
     } else {
       contract.validationError = validation.error;
+      failedCount++;
+      failedContracts.push(contract.name);
       if (allValid) {
         allValid = false;
         firstError = `${contract.name}: ${validation.error}`;
@@ -130,7 +142,7 @@ function validateMultiContractResponse(parsed: MultiContractResponse): { allVali
     }
   }
 
-  return { allValid, firstError };
+  return { allValid, firstError, validCount, failedCount, failedContracts };
 }
 
 app.post('/api/convert', async (req, res) => {
@@ -362,6 +374,11 @@ Use your best judgment. Include deployment order and parameter sources for multi
       validationPassed = multiValidation.allValid;
       validationError = multiValidation.firstError;
 
+      if (!validationPassed) {
+        console.log(`[Conversion] Multi-contract validation: ${multiValidation.validCount} valid, ${multiValidation.failedCount} failed`);
+        console.log(`[Conversion] Failed contracts: ${multiValidation.failedContracts.join(', ')}`);
+      }
+
       // Log validation result (don't wait)
       const firstContract = parsed.contracts[0];
       logValidationResult(conversionId, validationPassed, validationError, firstContract?.bytecodeSize).catch(err =>
@@ -396,7 +413,51 @@ Use your best judgment. Include deployment order and parameter sources for multi
       const unusedVarMatch = validationError?.match(/Unused variable (\w+) at Line (\d+), Column (\d+)/);
 
       let retryMessage: string;
-      if (unusedVarMatch) {
+
+      // Build retry message based on response type
+      if (isMultiContract) {
+        // For multi-contract responses, provide detailed context
+        const validContracts = parsed.contracts.filter(c => c.validated);
+        const failedContracts = parsed.contracts.filter(c => !c.validated);
+
+        console.log(`[Conversion] Multi-contract retry: ${validContracts.length} valid, ${failedContracts.length} failed`);
+
+        retryMessage = `Original EVM contract:\n${contract}\n\n`;
+        retryMessage += `Your previous multi-contract translation generated ${parsed.contracts.length} contracts:\n\n`;
+
+        // List all contracts with their status
+        parsed.contracts.forEach(c => {
+          retryMessage += `- ${c.name} (${c.role}): ${c.validated ? '✓ VALID' : '✗ FAILED'}\n`;
+        });
+
+        retryMessage += `\n`;
+
+        // Include valid contracts for context
+        if (validContracts.length > 0) {
+          retryMessage += `The following contracts compiled successfully (keep these in your response):\n\n`;
+          validContracts.forEach(c => {
+            retryMessage += `CONTRACT: ${c.name}\n`;
+            retryMessage += `ROLE: ${c.role}\n`;
+            retryMessage += `CODE:\n${c.code}\n\n`;
+          });
+        }
+
+        // Detail failed contracts with errors
+        retryMessage += `The following ${failedContracts.length === 1 ? 'contract has' : 'contracts have'} compilation errors:\n\n`;
+        failedContracts.forEach(c => {
+          retryMessage += `CONTRACT: ${c.name}\n`;
+          retryMessage += `ERROR: ${c.validationError}\n`;
+          retryMessage += `FAILED CODE:\n${c.code}\n\n`;
+        });
+
+        retryMessage += `INSTRUCTIONS:\n`;
+        retryMessage += `1. Keep ALL ${validContracts.length} valid contracts EXACTLY as shown above\n`;
+        retryMessage += `2. Fix ONLY the ${failedContracts.length} failed ${failedContracts.length === 1 ? 'contract' : 'contracts'}\n`;
+        retryMessage += `3. Maintain the same multi-contract architecture (${parsed.contracts.length} contracts total)\n`;
+        retryMessage += `4. Return the COMPLETE multi-contract JSON response with all ${parsed.contracts.length} contracts\n`;
+        retryMessage += `5. Ensure the deployment order and dependencies remain consistent\n\n`;
+        retryMessage += `Fix the compilation errors and provide the corrected multi-contract response.`;
+      } else if (unusedVarMatch) {
         const [_, varName, line, column] = unusedVarMatch;
         retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a critical error:
 
@@ -408,7 +469,7 @@ CashScript strictly requires that ALL function parameters must be used (similar 
 
 Please fix this specific issue and provide a corrected translation. Make sure every parameter you declare is actually used in the code.`;
       } else {
-        // Generic retry message for other errors
+        // Generic retry message for single-contract errors
         retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a syntax error:\n${validationError}\n\nPlease fix the syntax error and provide a corrected translation.`;
       }
 
@@ -451,6 +512,13 @@ Please fix this specific issue and provide a corrected translation. Make sure ev
         retryValidationPassed = retryMultiValidation.allValid;
         retryValidationError = retryMultiValidation.firstError;
         retryBytecodeSize = parsed.contracts[0]?.bytecodeSize;
+
+        if (retryValidationPassed) {
+          console.log(`[Conversion] Retry successful: All ${parsed.contracts.length} contracts valid`);
+        } else {
+          console.log(`[Conversion] Retry validation: ${retryMultiValidation.validCount} valid, ${retryMultiValidation.failedCount} failed`);
+          console.log(`[Conversion] Still failing: ${retryMultiValidation.failedContracts.join(', ')}`);
+        }
       } else {
         const retryValidation = validateContract(parsed.primaryContract);
         retryValidationPassed = retryValidation.valid;
