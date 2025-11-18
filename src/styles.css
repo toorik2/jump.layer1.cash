@@ -52,6 +52,7 @@ header {
 }
 
 .nav-link {
+  font-family: 'Inter';
   color: #9CA3AF;
   text-decoration: none;
   font-size: 0.875rem;
