@@ -318,36 +318,6 @@ export default function App() {
                               </div>
                             )}
 
-                            {contract.constructorParams.length > 0 && (
-                              <div class="contract-params">
-                                <strong>Constructor Parameters:</strong>
-                                <table class="params-table">
-                                  <thead>
-                                    <tr>
-                                      <th>Name</th>
-                                      <th>Type</th>
-                                      <th>Source</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    <For each={contract.constructorParams}>
-                                      {(param) => (
-                                        <tr>
-                                          <td>{param.name}</td>
-                                          <td><code>{param.type}</code></td>
-                                          <td>
-                                            {param.source === 'from-contract'
-                                              ? `From: ${param.sourceContractId}`
-                                              : param.source}
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </For>
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-
                             <div class="code-container">
                               <div class="code-block" innerHTML={contractHighlightedHTML()[contract.id] || ''} />
                               <button
