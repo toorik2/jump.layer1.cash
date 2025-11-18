@@ -288,6 +288,11 @@ export default function App() {
                     >
                       <span class="tab-name">Original</span>
                     </button>
+
+                    {/* Start over button */}
+                    <button class="start-over-btn" onClick={handleReset}>
+                      Start over
+                    </button>
                   </div>
 
                   {/* Contract card (active tab content) */}
