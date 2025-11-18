@@ -101,6 +101,7 @@ export default function App() {
   };
 
   const handleReset = () => {
+    setEvmContract('');
     setResult(null);
     setError('');
     setHighlightedHTML('');
