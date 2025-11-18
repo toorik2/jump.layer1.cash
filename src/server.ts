@@ -387,8 +387,20 @@ CRITICAL RULES:
     - Trustless cross-contract validation via hardcoded category IDs
     - Compile-time trust establishment
 
-PROFESSIONAL DOCUMENTATION REQUIREMENTS:
-EVERY CashScript contract MUST include BCHess-style professional documentation:
+DOCUMENTATION SCALING - MATCH OUTPUT VERBOSITY TO INPUT COMPLEXITY:
+- Simple contracts (constants, basic getters, trivial logic) → Minimal code only
+  * pragma + clean code, no excessive comments
+  * No BCH vs Ethereum explanations unless conversion logic is non-obvious
+  * No documentation blocks for trivial contracts
+  * Example: 7-line Solidity constant → ~15 line CashScript, not 100+ lines
+
+- Complex contracts (state machines, covenants, multi-contract systems) → Full documentation
+  * Apply BCHess-style documentation (see below)
+  * Include NFT state blocks, input/output tables, inline comments
+  * Explain state transitions and validation logic
+
+PROFESSIONAL DOCUMENTATION REQUIREMENTS (for complex contracts only):
+When contract complexity warrants it, include BCHess-style professional documentation:
 
 1. NFT STATE BLOCK (before contract declaration):
    /*  --- ContractName [Mutable/Immutable/none] NFT State ---

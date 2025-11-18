@@ -34,11 +34,38 @@ body {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 2rem;
+  position: relative;
 }
 
 header {
   text-align: center;
   padding: 6rem 0 4rem 0;
+}
+
+.header-nav {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.nav-link {
+  color: #9CA3AF;
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 400;
+  transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+  color: #CCD1D6;
+}
+
+.nav-link.active {
+  color: #CCD1D6;
+  text-decoration: underline;
 }
 
 h1 {
