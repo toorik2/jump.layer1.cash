@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compileString } from 'cashc';
-import { initializeDatabase, closeDatabase } from './database.js';
+import { initializeDatabase, closeDatabase, updateConversion } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import {
   logConversionStart,
@@ -28,6 +28,15 @@ app.use(express.static('dist'));
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY
 });
+
+// Maximum number of retry attempts when validation fails
+// With prompt caching, retries are cost-effective (90% savings on cache hits)
+const MAX_RETRIES = 10;
+
+// Maximum output tokens per API call
+// Claude Sonnet 4.5 supports up to 8192 output tokens
+// Increased from 8000 to prevent truncation on complex multi-contract responses
+const MAX_OUTPUT_TOKENS = 8192;
 
 let knowledgeBase = '';
 
@@ -250,11 +259,11 @@ app.post('/api/convert', async (req, res) => {
 
   try {
     console.log('[Conversion] Received conversion request');
-    const { contract } = req.body;
+    const { solidityCode } = req.body;
     const metadata = req.metadata!;
 
     // Log conversion start (async, but wait for ID)
-    conversionId = await logConversionStart(metadata, contract);
+    conversionId = await logConversionStart(metadata, solidityCode);
     console.log(`[Conversion] Started with ID ${conversionId}`);
 
     const systemPrompt = `You are a CashScript expert. Convert EVM (Solidity) smart contracts to CashScript.
@@ -490,88 +499,192 @@ Use multi-contract structure when:
 
 Use your best judgment. Include deployment order and parameter sources for multi-contract systems.`;
 
-    // Initial attempt
-    console.log('[Conversion] Calling Anthropic API (initial attempt)...');
-    const apiCallStartTime = Date.now();
-    const apiCallId = await logApiCallStart(conversionId, 1, 'claude-opus-4-1-20250805', 8000, contract);
-
-    let message = await anthropic.beta.messages.create({
-      model: 'claude-opus-4-1-20250805',
-      max_tokens: 8000,
-      system: systemPrompt,
-      betas: ['structured-outputs-2025-11-13'],
-      output_format: outputSchema,
-      messages: [
-        {
-          role: 'user',
-          content: contract
-        }
-      ]
-    });
-
-    let response = message.content[0].type === 'text' ? message.content[0].text : '';
-    const jsonString = response;
-
-    // Log API call completion (don't wait)
-    logApiCallComplete(apiCallId, apiCallStartTime, true, response).catch(err =>
-      console.error('[Logging] Failed to log API call completion:', err)
-    );
-
-    let parsed = JSON.parse(jsonString);
-
-    // Detect response type and validate accordingly
-    const isMultiContract = isMultiContractResponse(parsed);
-    console.log(`[Conversion] Response type: ${isMultiContract ? 'multi-contract' : 'single-contract'}`);
-
+    // Attempt validation with up to MAX_RETRIES attempts
+    let parsed: any;
     let validationPassed = false;
     let validationError: string | undefined;
+    let retryMessage: string = '';
 
-    if (isMultiContract) {
-      // Validate all contracts in multi-contract response
-      console.log(`[Conversion] Validating ${parsed.contracts.length} contracts...`);
-      const multiValidation = validateMultiContractResponse(parsed);
-      validationPassed = multiValidation.allValid;
-      validationError = multiValidation.firstError;
+    for (let attemptNumber = 1; attemptNumber <= MAX_RETRIES; attemptNumber++) {
+      // Determine message content for this attempt
+      const messageContent = attemptNumber === 1 ? solidityCode : retryMessage;
+      const attemptLabel = attemptNumber === 1 ? 'initial attempt' : `retry ${attemptNumber - 1}/${MAX_RETRIES - 1}`;
 
-      if (!validationPassed) {
-        console.log(`[Conversion] Multi-contract validation: ${multiValidation.validCount} valid, ${multiValidation.failedCount} failed`);
-        console.log(`[Conversion] Failed contracts: ${multiValidation.failedContracts.join(', ')}`);
+      console.log(`[Conversion] Calling Anthropic API (${attemptLabel})...`);
+      const apiCallStartTime = Date.now();
+      const apiCallId = await logApiCallStart(conversionId, attemptNumber, 'claude-sonnet-4-5-20250929', MAX_OUTPUT_TOKENS, messageContent);
+
+      const message = await anthropic.beta.messages.create({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: MAX_OUTPUT_TOKENS,
+        system: [
+          {
+            type: "text",
+            text: systemPrompt,
+            cache_control: { type: "ephemeral", ttl: "1h" }
+          }
+        ],
+        betas: ['structured-outputs-2025-11-13'],
+        output_format: outputSchema,
+        messages: [
+          {
+            role: 'user',
+            content: messageContent
+          }
+        ]
+      });
+
+      const response = message.content[0].type === 'text' ? message.content[0].text : '';
+
+      // Log cache usage metrics
+      const usage = message.usage;
+      const apiDuration = ((Date.now() - apiCallStartTime) / 1000).toFixed(2);
+      console.log(`[Cache] API call completed in ${apiDuration}s`);
+      console.log('[Cache] Usage metrics:', {
+        input_tokens: usage.input_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens || 0,
+        cache_read_input_tokens: usage.cache_read_input_tokens || 0,
+        output_tokens: usage.output_tokens
+      });
+      if (usage.cache_creation_input_tokens) {
+        console.log('[Cache] ✓ 1-hour cache created:', usage.cache_creation_input_tokens, 'tokens (2x cost)');
+      }
+      if (usage.cache_read_input_tokens) {
+        console.log('[Cache] ✓ 1-hour cache hit:', usage.cache_read_input_tokens, 'tokens (0.1x cost - 90% savings!)');
       }
 
-      // Log validation result (don't wait)
-      const firstContract = parsed.contracts[0];
-      logValidationResult(conversionId, validationPassed, validationError, firstContract?.bytecodeSize).catch(err =>
-        console.error('[Logging] Failed to log validation result:', err)
-      );
-    } else {
-      // Validate single contract
-      console.log('[Conversion] Validating primary contract...');
-      const validation = validateContract(parsed.primaryContract);
-      validationPassed = validation.valid;
-      validationError = validation.error;
+      // Calculate cost for Sonnet 4.5: $3/MTok input, $15/MTok output
+      // 1-hour cache: write=2x ($6), read=0.1x ($0.30)
+      const inputCost = (usage.input_tokens * 3.0 +
+                        (usage.cache_creation_input_tokens || 0) * 6.0 +
+                        (usage.cache_read_input_tokens || 0) * 0.30) / 1000000;
+      const outputCost = (usage.output_tokens * 15.0) / 1000000;
+      console.log(`[Cache] Cost: $${(inputCost + outputCost).toFixed(4)} (input: $${inputCost.toFixed(4)}, output: $${outputCost.toFixed(4)})`);
 
-      // Log initial validation result (don't wait)
-      logValidationResult(conversionId, validation.valid, validation.error, validation.bytecodeSize).catch(err =>
-        console.error('[Logging] Failed to log validation result:', err)
-      );
+      // Parse JSON response with error handling
+      try {
+        parsed = JSON.parse(response);
+      } catch (parseError) {
+        const errorMsg = parseError instanceof Error ? parseError.message : String(parseError);
+        console.error('[Conversion] JSON parse error:', errorMsg);
+        console.error('[Conversion] Response length:', response.length, 'Max tokens hit:', usage.output_tokens >= 8000);
 
+        // Log API call with error
+        logApiCallComplete(
+          apiCallId,
+          apiCallStartTime,
+          false,
+          undefined,
+          errorMsg,
+          {
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cache_read_tokens: usage.cache_read_input_tokens || 0,
+            cache_write_tokens: usage.cache_creation_input_tokens || 0
+          }
+        ).catch(err => console.error('[Logging] Failed to log API call:', err));
+
+        // Log conversion failure
+        logConversionComplete(conversionId, startTime, 'failed').catch(err =>
+          console.error('[Logging] Failed to log conversion completion:', err)
+        );
+
+        return res.status(500).json({
+          error: 'Response truncated - contract too complex',
+          message: 'The generated contract exceeded token limits. Try a simpler contract or increase max_tokens.',
+          details: errorMsg
+        });
+      }
+
+      // Detect response type and validate accordingly
+      const isMultiContract = isMultiContractResponse(parsed);
+      console.log(`[Conversion] Response type: ${isMultiContract ? 'multi-contract' : 'single-contract'}`);
+
+      // Log API call completion with full metrics (don't wait)
+      logApiCallComplete(
+        apiCallId,
+        apiCallStartTime,
+        true,
+        response,
+        undefined,
+        {
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          cache_read_tokens: usage.cache_read_input_tokens || 0,
+          cache_write_tokens: usage.cache_creation_input_tokens || 0
+        },
+        isMultiContract ? 'multi' : 'single'
+      ).catch(err => console.error('[Logging] Failed to log API call completion:', err));
+
+      if (isMultiContract) {
+        // Update conversion record with multi-contract info
+        updateConversion(conversionId, {
+          is_multi_contract: true,
+          contract_count: parsed.contracts.length
+        });
+
+        // Validate all contracts in multi-contract response
+        console.log(`[Conversion] Validating ${parsed.contracts.length} contracts...`);
+        const multiValidation = validateMultiContractResponse(parsed);
+        validationPassed = multiValidation.allValid;
+        validationError = multiValidation.firstError;
+
+        if (!validationPassed) {
+          console.log(`[Conversion] Multi-contract validation: ${multiValidation.validCount} valid, ${multiValidation.failedCount} failed`);
+          console.log(`[Conversion] Failed contracts: ${multiValidation.failedContracts.join(', ')}`);
+        }
+
+        // Log validation result (don't wait)
+        const firstContract = parsed.contracts[0];
+        logValidationResult(conversionId, validationPassed, validationError, firstContract?.bytecodeSize).catch(err =>
+          console.error('[Logging] Failed to log validation result:', err)
+        );
+      } else {
+        // Validate single contract
+        console.log('[Conversion] Validating primary contract...');
+        const validation = validateContract(parsed.primaryContract);
+        validationPassed = validation.valid;
+        validationError = validation.error;
+
+        // Log validation result (don't wait)
+        logValidationResult(conversionId, validation.valid, validation.error, validation.bytecodeSize).catch(err =>
+          console.error('[Logging] Failed to log validation result:', err)
+        );
+
+        if (validationPassed) {
+          parsed.validated = true;
+          parsed.bytecodeSize = validation.bytecodeSize;
+          parsed.artifact = validation.artifact;
+        }
+      }
+
+      // If validation passed, we're done
       if (validationPassed) {
-        parsed.validated = true;
-        parsed.bytecodeSize = validation.bytecodeSize;
-        parsed.artifact = validation.artifact;
+        console.log(`[Conversion] Validation successful on attempt ${attemptNumber}`);
+        if (attemptNumber > 1) {
+          // Log successful retry
+          logRetryAttempt(conversionId, true).catch(err =>
+            console.error('[Logging] Failed to log retry attempt:', err)
+          );
+        }
+        break;
       }
-    }
 
-    if (!validationPassed) {
-      console.log('[Conversion] Validation failed, retrying with error feedback...');
+      // If this was the last attempt, exit loop
+      if (attemptNumber === MAX_RETRIES) {
+        console.log(`[Conversion] All ${MAX_RETRIES} attempts failed`);
+        // Log final failed retry
+        logRetryAttempt(conversionId, false).catch(err =>
+          console.error('[Logging] Failed to log retry attempt:', err)
+        );
+        break;
+      }
 
-      // Retry with validation error
-      const retryApiCallStartTime = Date.now();
+      // Build retry message for next attempt
+      console.log(`[Conversion] Attempt ${attemptNumber} failed, preparing retry ${attemptNumber + 1}...`);
 
       // Parse error for unused variable to provide specific guidance
       const unusedVarMatch = validationError?.match(/Unused variable (\w+) at Line (\d+), Column (\d+)/);
-
-      let retryMessage: string;
 
       // Build retry message based on response type
       if (isMultiContract) {
@@ -631,96 +744,26 @@ Please fix this specific issue and provide a corrected translation. Make sure ev
         // Generic retry message for single-contract errors
         retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a syntax error:\n${validationError}\n\nPlease fix the syntax error and provide a corrected translation.`;
       }
+    }
 
-      const retryApiCallId = await logApiCallStart(conversionId, 2, 'claude-opus-4-1-20250805', 8000, retryMessage);
+    // After all attempts, check if validation passed
+    if (!validationPassed) {
+      console.log('[Conversion] Validation failed after all attempts');
 
-      message = await anthropic.beta.messages.create({
-        model: 'claude-opus-4-1-20250805',
-        max_tokens: 8000,
-        system: systemPrompt,
-        betas: ['structured-outputs-2025-11-13'],
-        output_format: outputSchema,
-        messages: [
-          {
-            role: 'user',
-            content: retryMessage
-          }
-        ]
+      // Log error (don't wait)
+      logError('validation_error', validationError || 'Unknown validation error', conversionId).catch(err =>
+        console.error('[Logging] Failed to log error:', err)
+      );
+
+      // Log conversion completion (don't wait)
+      logConversionComplete(conversionId, startTime, 'validation_failed').catch(err =>
+        console.error('[Logging] Failed to log conversion completion:', err)
+      );
+
+      return res.status(400).json({
+        error: `Contract validation failed after ${MAX_RETRIES} attempts`,
+        validationError: validationError
       });
-
-      response = message.content[0].type === 'text' ? message.content[0].text : '';
-      const retryJsonString = response;
-
-      // Log retry API call completion (don't wait)
-      logApiCallComplete(retryApiCallId, retryApiCallStartTime, true, response).catch(err =>
-        console.error('[Logging] Failed to log retry API call completion:', err)
-      );
-
-      parsed = JSON.parse(retryJsonString);
-
-      // Validate retry attempt based on response type
-      const retryIsMultiContract = isMultiContractResponse(parsed);
-      let retryValidationPassed = false;
-      let retryValidationError: string | undefined;
-      let retryBytecodeSize: number | undefined;
-
-      if (retryIsMultiContract) {
-        const retryMultiValidation = validateMultiContractResponse(parsed);
-        retryValidationPassed = retryMultiValidation.allValid;
-        retryValidationError = retryMultiValidation.firstError;
-        retryBytecodeSize = parsed.contracts[0]?.bytecodeSize;
-
-        if (retryValidationPassed) {
-          console.log(`[Conversion] Retry successful: All ${parsed.contracts.length} contracts valid`);
-        } else {
-          console.log(`[Conversion] Retry validation: ${retryMultiValidation.validCount} valid, ${retryMultiValidation.failedCount} failed`);
-          console.log(`[Conversion] Still failing: ${retryMultiValidation.failedContracts.join(', ')}`);
-        }
-      } else {
-        const retryValidation = validateContract(parsed.primaryContract);
-        retryValidationPassed = retryValidation.valid;
-        retryValidationError = retryValidation.error;
-        retryBytecodeSize = retryValidation.bytecodeSize;
-
-        if (retryValidationPassed) {
-          parsed.validated = true;
-          parsed.bytecodeSize = retryValidation.bytecodeSize;
-          parsed.artifact = retryValidation.artifact;
-        }
-      }
-
-      // Log retry attempt (don't wait)
-      logRetryAttempt(conversionId, retryValidationPassed).catch(err =>
-        console.error('[Logging] Failed to log retry attempt:', err)
-      );
-
-      // Log retry validation result (don't wait)
-      logValidationResult(conversionId, retryValidationPassed, retryValidationError, retryBytecodeSize).catch(err =>
-        console.error('[Logging] Failed to log retry validation result:', err)
-      );
-
-      if (!retryValidationPassed) {
-        console.log('[Conversion] Retry validation failed');
-
-        // Log error (don't wait)
-        logError('validation_error', retryValidationError || 'Unknown validation error', conversionId).catch(err =>
-          console.error('[Logging] Failed to log error:', err)
-        );
-
-        // Log conversion completion (don't wait)
-        logConversionComplete(conversionId, startTime, 'validation_failed').catch(err =>
-          console.error('[Logging] Failed to log conversion completion:', err)
-        );
-
-        return res.status(400).json({
-          error: 'Contract validation failed after retry',
-          validationError: retryValidationError
-        });
-      }
-
-      console.log('[Conversion] Retry validation successful');
-    } else {
-      console.log('[Conversion] Initial validation successful');
     }
 
     // Log alternatives and considerations (don't wait)
