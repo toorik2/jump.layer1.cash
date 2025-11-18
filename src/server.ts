@@ -363,6 +363,24 @@ FOR MULTI-CONTRACT SYSTEMS (when Solidity pattern requires multiple CashScript c
   "alternatives": [{"name": "Alternative system design", "contracts": [...], "rationale": "Why this alternative"}]
 }
 
+CONTRACT ROLE DEFINITIONS (critical for UI display order):
+- "primary": Main user-facing contracts that handle core logic
+  * Examples: VotingBooth (voting system), Manager/Main (CashStarter), ChessMaster (BCHess)
+  * These are displayed FIRST in the UI tabs
+  * Users interact with these contracts directly
+
+- "helper": Utility contracts that assist primary contracts
+  * Examples: Cancel, Claim, Refund, Stop (CashStarter helpers)
+  * These are displayed SECOND in the UI tabs
+  * Usually have sentinel IDs (0xFFFFFFFFFF) and validate primary contract NFTs
+
+- "state": State storage and registry contracts
+  * Examples: VoterRegistry, ProposalCounter, data holders
+  * These are displayed LAST in the UI tabs
+  * Primarily store and manage state data
+
+IMPORTANT: Assign roles carefully - the UI sorts by role first (primary → helper → state), then by deploymentOrder within each role.
+
 Use multi-contract structure when:
 - Solidity contract has complex state that needs multiple CashScript contracts to manage
 - Pattern requires separate logic contracts (like BCHess piece validators)
