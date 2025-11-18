@@ -110,6 +110,17 @@ bytes votingBoothAddress = 0x123456789012345678901234567890123456789012345678901
 require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2SH32(votingBoothAddress));
 // Error: Found parameters (bytes) where (bytes32) expected
 
+// ✗ WRONG - operations that lose type precision!
+bytes someData = 0x00...;  // 33 bytes total
+bytes32 addressHash = someData.split(1)[1];  // Results in bytes31, NOT bytes32!
+require(tx.outputs[0].lockingBytecode == new LockingBytecodeP2SH32(addressHash));
+// Error: Type 'bytes31' can not be assigned to variable of type 'bytes32'
+
+// ✓ CORRECT - explicit bytes32 cast or direct literal
+bytes32 addressHash = bytes32(someData.split(1)[1]);  // Explicit cast to bytes32
+// OR better: use direct literal assignment
+bytes32 votingBoothHash = 0x1234...;  // Hardcode the address directly
+
 // ✓ CORRECT - bytes20 type for P2PKH addresses
 bytes20 chairpersonPkh = 0x1234567890123456789012345678901234567890;
 require(tx.inputs[1].lockingBytecode == new LockingBytecodeP2PKH(chairpersonPkh));

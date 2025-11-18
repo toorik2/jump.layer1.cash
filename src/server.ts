@@ -217,6 +217,14 @@ CRITICAL RULES:
     - tx.inputs[0].tokenCategory.split(32)[0] = strip to immutable
     - masterCategory + 0x02 = add minting capability
 
+10a. CRITICAL: P2SH32 addresses MUST be bytes32 type - avoid type-losing operations!
+    - ALWAYS use bytes32 for contract addresses in multi-contract systems
+    - ✓ CORRECT: bytes32 votingBoothHash = 0x1234...;
+    - ✗ WRONG: bytes32 hash = someData.split(1)[1]; // Results in bytes31!
+    - ✓ FIX: bytes32 hash = bytes32(someData.split(1)[1]); // Explicit cast
+    - OR BETTER: Use direct literal assignment (hardcode addresses at compile time)
+    - Common error: "Type 'bytes31' can not be assigned to variable of type 'bytes32'"
+
 11. Use chained splits and tuple destructuring for complex commitment parsing.
     - bytes4 pledgeID, bytes5 campaignID = commitment.split(31)[1].split(4)
     - Chained: commitment.split(26)[1].split(4)[0] = skip 26 bytes, take next 4
