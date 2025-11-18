@@ -235,7 +235,18 @@ export default function App() {
           </Show>
 
           <div class="output-section">
-            <span class="output-label">CashScript Output</span>
+            <span class="output-label">
+              CashScript Output
+              {result() && (() => {
+                const r = result()!;
+                const isMulti = isMultiContractResult(r);
+                if (isMulti) {
+                  const count = (r as MultiContractResult).contracts.length;
+                  return ` (${count} contract system)`;
+                }
+                return '';
+              })()}
+            </span>
             {loading() && <div class="loading">Converting your contract...</div>}
             {error() && <div class="error">{error()}</div>}
 
