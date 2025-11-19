@@ -4,6 +4,10 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-y: scroll;
+}
+
 body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: #0D1117;
