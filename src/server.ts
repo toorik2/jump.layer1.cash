@@ -34,9 +34,9 @@ const anthropic = new Anthropic({
 const MAX_RETRIES = 10;
 
 // Maximum output tokens per API call
-// Claude Sonnet 4.5 supports up to 8192 output tokens
-// Increased from 8000 to prevent truncation on complex multi-contract responses
-const MAX_OUTPUT_TOKENS = 8192;
+// Set to 21K - max for non-streaming (SDK requires streaming above ~21,333 for 10min+ operations)
+// Claude Sonnet 4.5 supports up to 64K tokens, but we use 21K to avoid streaming complexity
+const MAX_OUTPUT_TOKENS = 21000;
 
 let knowledgeBase = '';
 
@@ -579,7 +579,7 @@ Use your best judgment. Include deployment order and parameter sources for multi
       } catch (parseError) {
         const errorMsg = parseError instanceof Error ? parseError.message : String(parseError);
         console.error('[Conversion] JSON parse error:', errorMsg);
-        console.error('[Conversion] Response length:', response.length, 'Max tokens hit:', usage.output_tokens >= 8000);
+        console.error('[Conversion] Response length:', response.length, 'Max tokens hit:', usage.output_tokens >= MAX_OUTPUT_TOKENS - 100);
 
         // Log API call with error
         logApiCallComplete(
