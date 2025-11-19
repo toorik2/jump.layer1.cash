@@ -179,7 +179,40 @@ contract Ballot {
     }
 }`;
 
-const NATURAL_LANGUAGE_EXAMPLE = `Create a smart contract that allows users to vote on proposals with delegation support`;
+const NATURAL_LANGUAGE_EXAMPLE = `Create a Bitcoin Cash covenant smart contract for a crowdfunding campaign with the following requirements:
+
+1. Campaign Setup:
+   - The contract should be initialized with a funding goal amount (in satoshis)
+   - Set a campaign deadline (block height or timestamp)
+   - Store the recipient's public key hash who will receive the funds if goal is met
+   - Include a minimum pledge amount to prevent dust
+
+2. Pledge Functionality:
+   - Anyone can pledge BCH to the campaign
+   - Each pledge should be tracked separately
+   - Pledgers should be able to add to their existing pledge
+   - Store each pledger's public key hash for refund purposes
+
+3. Success Conditions:
+   - If the funding goal is reached before the deadline:
+     * All pledged funds can be claimed by the campaign recipient
+     * The recipient must provide a valid signature
+     * The contract should verify the total amount meets or exceeds the goal
+
+4. Refund Mechanism:
+   - If the deadline passes and the goal is NOT met:
+     * Each pledger can claim their pledge back
+     * Pledgers must provide a signature to prove ownership
+     * Refunds should include the exact amount they pledged
+     * Must verify the deadline has actually passed
+
+5. Security Requirements:
+   - Prevent double-spending of pledges
+   - Ensure only legitimate pledgers can claim refunds
+   - Verify the campaign recipient's identity
+   - Check all time locks and amount conditions are properly enforced
+
+Please generate a complete CashScript covenant that implements all these features with proper error handling and validation.`;
 
 // Single contract response type
 type SingleContractResult = {
@@ -354,27 +387,65 @@ export default function App() {
     setArtifactHTML('');
     setActiveContractTab(0);
 
-    console.log(`[Jump] Sending request to ${API_URL}`);
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contract })
-    });
+    try {
+      console.log(`[Jump] Sending request to ${API_URL}`);
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contract })
+      });
 
-    console.log(`[Jump] Response status: ${response.status}`);
-    const data = await response.json();
-    console.log('[Jump] Response data received:', data);
+      console.log(`[Jump] Response status: ${response.status}`);
 
-    if (!response.ok) {
-      console.error('[Jump] Conversion failed:', data.error);
-      setError(data.error || 'Conversion failed');
+      // Handle timeout errors (504, 408, etc.)
+      if (response.status === 504 || response.status === 408) {
+        console.error('[Jump] Request timed out');
+        setError('Request timed out. The conversion is taking longer than expected. This may happen with very complex contracts or during high API load. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Try to parse JSON, but handle HTML error responses
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        // Non-JSON response (likely HTML error page)
+        const text = await response.text();
+        console.error('[Jump] Non-JSON response received:', text.substring(0, 200));
+        setError(`Server error (${response.status}): The server returned an unexpected response. Please try again or contact support if the issue persists.`);
+        setLoading(false);
+        return;
+      }
+
+      console.log('[Jump] Response data received:', data);
+
+      if (!response.ok) {
+        console.error('[Jump] Conversion failed:', data.error);
+        setError(data.error || 'Conversion failed');
+        setLoading(false);
+        return;
+      }
+
+      console.log('[Jump] Conversion successful!');
+      setResult(data);
       setLoading(false);
-      return;
-    }
+    } catch (err) {
+      console.error('[Jump] Conversion error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
-    console.log('[Jump] Conversion successful!');
-    setResult(data);
-    setLoading(false);
+      // Handle network errors
+      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+        setError('Network error: Unable to connect to the server. Please check your internet connection and try again.');
+      } else if (errorMessage.includes('JSON')) {
+        setError('Server error: Received invalid response from server. Please try again.');
+      } else {
+        setError(`Conversion failed: ${errorMessage}`);
+      }
+
+      setLoading(false);
+    }
   };
 
   return (
@@ -594,7 +665,7 @@ export default function App() {
                     <div class="expandable-sections">
                       {isMulti ? (
                         // Deployment guide for multi-contract
-                        <details class="detail-section" open>
+                        <details class="detail-section">
                           <summary class="detail-summary">Deployment Guide</summary>
                           <div class="deployment-guide">
                             <div class="deployment-steps">

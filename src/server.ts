@@ -893,6 +893,12 @@ init().then(() => {
     console.log('[Server] Running on http://localhost:3001');
   });
 
+  // Set timeout to 10 minutes (600 seconds) to handle long conversions
+  // With MAX_RETRIES=10 and ~30s per attempt, we need at least 5 minutes
+  server.timeout = 600000; // 10 minutes in milliseconds
+  server.keepAliveTimeout = 610000; // Slightly longer than timeout
+  server.headersTimeout = 615000; // Slightly longer than keepAliveTimeout
+
   // Graceful shutdown
   process.on('SIGTERM', () => {
     console.log('[Server] SIGTERM received, shutting down gracefully...');

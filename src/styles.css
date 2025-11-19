@@ -378,7 +378,6 @@ h1 {
 
 .loading-details {
   margin-top: 2rem;
-  text-align: left;
   max-width: 500px;
   margin-left: auto;
   margin-right: auto;
@@ -390,6 +389,7 @@ h1 {
   font-size: 0.9rem;
   user-select: none;
   padding: 0.5rem;
+  text-align: center;
   list-style-position: inside;
 }
 
