@@ -3,7 +3,7 @@
   font-family: 'Inter';
   font-style: normal;
   font-weight: 100 900;
-  font-display: optional;
+  font-display: block;
   src: url('/fonts/inter-variable.woff2') format('woff2-variations');
 }
 
@@ -12,7 +12,7 @@
   font-family: 'JetBrains Mono';
   font-style: normal;
   font-weight: 400;
-  font-display: optional;
+  font-display: block;
   src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
 }
 
@@ -20,7 +20,7 @@
   font-family: 'JetBrains Mono';
   font-style: normal;
   font-weight: 500;
-  font-display: optional;
+  font-display: block;
   src: url('/fonts/JetBrainsMono-Medium.woff2') format('woff2');
 }
 
@@ -28,7 +28,7 @@
   font-family: 'JetBrains Mono';
   font-style: normal;
   font-weight: 600;
-  font-display: optional;
+  font-display: block;
   src: url('/fonts/JetBrainsMono-SemiBold.woff2') format('woff2');
 }
 
