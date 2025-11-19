@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compileString } from 'cashc';
-import { initializeDatabase, closeDatabase, updateConversion } from './database.js';
+import { initializeDatabase, closeDatabase, updateConversion, insertContract, generateHash, generateUUID } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import {
   logConversionStart,
@@ -37,6 +37,10 @@ const MAX_RETRIES = 10;
 // Set to 21K - max for non-streaming (SDK requires streaming above ~21,333 for 10min+ operations)
 // Claude Sonnet 4.5 supports up to 64K tokens, but we use 21K to avoid streaming complexity
 const MAX_OUTPUT_TOKENS = 21000;
+
+// Preamble message for initial conversion attempts
+// Explicitly connects the system prompt (rules, knowledge base) to the user's Solidity code
+const CONVERSION_PREAMBLE = "Based on the CashScript language reference and conversion rules provided above, convert the following Solidity smart contract to CashScript:";
 
 let knowledgeBase = '';
 
@@ -519,7 +523,11 @@ Use your best judgment. Include deployment order and parameter sources for multi
 
     for (let attemptNumber = 1; attemptNumber <= MAX_RETRIES; attemptNumber++) {
       // Determine message content for this attempt
-      const messageContent = attemptNumber === 1 ? contract : retryMessage;
+      // Initial attempt: Add preamble to connect system prompt with user's Solidity code
+      // Retry attempts: Use detailed retry message with error context
+      const messageContent = attemptNumber === 1
+        ? `${CONVERSION_PREAMBLE}\n\n${contract}`
+        : retryMessage;
       const attemptLabel = attemptNumber === 1 ? 'initial attempt' : `retry ${attemptNumber - 1}/${MAX_RETRIES - 1}`;
 
       console.log(`[Conversion] Calling Anthropic API (${attemptLabel})...`);
@@ -673,6 +681,55 @@ Use your best judgment. Include deployment order and parameter sources for multi
       // If validation passed, we're done
       if (validationPassed) {
         console.log(`[Conversion] Validation successful on attempt ${attemptNumber}`);
+
+        // Store contracts in database
+        if (isMultiContract) {
+          console.log(`[Conversion] Storing ${parsed.contracts.length} contracts in database...`);
+          for (const contract of parsed.contracts) {
+            const contractUuid = generateUUID();
+            const codeHash = generateHash(contract.code);
+            const lineCount = contract.code.split('\n').length;
+
+            insertContract({
+              conversion_id: conversionId,
+              contract_uuid: contractUuid,
+              produced_by_attempt: attemptNumber,
+              name: contract.name,
+              role: contract.role,
+              purpose: contract.purpose,
+              cashscript_code: contract.code,
+              code_hash: codeHash,
+              deployment_order: contract.deploymentOrder,
+              bytecode_size: contract.bytecodeSize,
+              line_count: lineCount,
+              is_validated: contract.validated || false
+            });
+          }
+          console.log(`[Conversion] ✓ Stored ${parsed.contracts.length} contracts`);
+        } else {
+          // Store single contract
+          console.log('[Conversion] Storing contract in database...');
+          const contractUuid = generateUUID();
+          const codeHash = generateHash(parsed.primaryContract);
+          const lineCount = parsed.primaryContract.split('\n').length;
+
+          insertContract({
+            conversion_id: conversionId,
+            contract_uuid: contractUuid,
+            produced_by_attempt: attemptNumber,
+            name: 'Primary Contract',
+            role: 'primary',
+            purpose: undefined,
+            cashscript_code: parsed.primaryContract,
+            code_hash: codeHash,
+            deployment_order: 1,
+            bytecode_size: parsed.bytecodeSize,
+            line_count: lineCount,
+            is_validated: parsed.validated || false
+          });
+          console.log('[Conversion] ✓ Stored contract');
+        }
+
         if (attemptNumber > 1) {
           // Log successful retry
           logRetryAttempt(conversionId, true).catch(err =>

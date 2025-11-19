@@ -391,7 +391,7 @@ export default function App() {
         </header>
 
         <div class="converter">
-          <Show when={!result()}>
+          <Show when={!result() && !loading()}>
             <div class="input-section">
               <div class="textarea-wrapper">
                 <textarea
@@ -452,7 +452,25 @@ export default function App() {
                 return '';
               })()}
             </span>
-            {loading() && <div class="loading">Converting your contract...</div>}
+            {loading() && (
+              <div class="loading-state">
+                <div class="loading-header">
+                  <div class="loading-spinner"></div>
+                  <span>Converting to CashScript...</span>
+                </div>
+                <p class="loading-estimate">Up to 3 minutes for multi-contract systems</p>
+
+                <details class="loading-details">
+                  <summary>What's happening behind the scenes?</summary>
+                  <ul>
+                    <li>Analyzing your Solidity contract structure</li>
+                    <li>Converting EVM patterns to UTXO-based CashScript</li>
+                    <li>Validating each contract with the CashScript compiler</li>
+                    <li>Automatically retrying if compilation errors occur (up to 10 attempts)</li>
+                  </ul>
+                </details>
+              </div>
+            )}
             {error() && <div class="error">{error()}</div>}
 
             {result() && (() => {

@@ -342,6 +342,87 @@ h1 {
   font-size: 1rem;
 }
 
+.loading-state {
+  padding: 2rem;
+  text-align: center;
+}
+
+.loading-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #39FF14;
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #30363D;
+  border-top-color: #39FF14;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-estimate {
+  color: #9CA3AF;
+  font-size: 0.95rem;
+  margin: 1rem 0 1.5rem 0;
+}
+
+.loading-details {
+  margin-top: 2rem;
+  text-align: left;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.loading-details summary {
+  cursor: pointer;
+  color: #9CA3AF;
+  font-size: 0.9rem;
+  user-select: none;
+  padding: 0.5rem;
+  list-style-position: inside;
+}
+
+.loading-details summary:hover {
+  color: #F0F6FC;
+}
+
+.loading-details[open] summary {
+  margin-bottom: 1rem;
+}
+
+.loading-details ul {
+  list-style: none;
+  padding: 0 1rem;
+  margin: 0;
+}
+
+.loading-details li {
+  padding: 0.5rem 0;
+  color: #9CA3AF;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.loading-details li:before {
+  content: "→";
+  position: absolute;
+  left: 0;
+  color: #39FF14;
+}
+
 .error {
   color: #FF6B6B;
   background: rgba(255, 107, 107, 0.1);
