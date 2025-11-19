@@ -403,7 +403,7 @@ export default function App() {
                 />
                 <div class="example-buttons-overlay">
                   <Show when={!evmContract()}>
-                    <span class="example-label">Or choose an example:</span>
+                    <span class="example-label">...Or choose an example:</span>
                   </Show>
                   <button
                     class="example-btn"
