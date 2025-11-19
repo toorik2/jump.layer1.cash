@@ -156,6 +156,16 @@ h1 {
   pointer-events: none;
 }
 
+.example-label {
+  color: #8B949E;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  text-align: right;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
 .example-btn {
   background: rgba(22, 27, 34, 0.95);
   border: 1px solid #30363D;

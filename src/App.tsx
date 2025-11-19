@@ -402,6 +402,9 @@ export default function App() {
                   spellcheck={false}
                 />
                 <div class="example-buttons-overlay">
+                  <Show when={!evmContract()}>
+                    <span class="example-label">Or choose an example:</span>
+                  </Show>
                   <button
                     class="example-btn"
                     onClick={() => setEvmContract(SIMPLE_EXAMPLE)}
