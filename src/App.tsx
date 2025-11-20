@@ -1,7 +1,7 @@
 import { createSignal, createEffect, createMemo, For, Show } from 'solid-js';
 import { codeToHtml } from 'shiki';
 import { Copy, Check, X } from 'lucide-solid';
-import { API_URL, API_STREAM_URL } from './config.frontend';
+import { API_STREAM_URL } from './config.frontend';
 import './styles.css';
 
 // Example contracts for quick testing
