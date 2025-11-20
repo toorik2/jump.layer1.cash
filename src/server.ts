@@ -300,7 +300,7 @@ const outputSchema = {
         properties: {
           primaryContract: {
             type: "string",
-            description: "Complete CashScript contract code with pragma, documentation, and all functions. PREFER THIS for most translations - only use multi-contract when genuinely required."
+            description: "Complete CashScript contract code with pragma, documentation, and all functions"
           }
         },
         required: ["primaryContract"],
@@ -595,21 +595,6 @@ CashScript Language Reference:
 ${knowledgeBase}
 
 CRITICAL RULES:
-0. ARCHITECTURAL SIMPLICITY - PREFER SINGLE CONTRACT:
-   ALWAYS default to a single contract unless multiple contracts are genuinely required by the Solidity pattern.
-
-   Valid reasons for multi-contract:
-   ✓ Solidity already uses factory pattern deploying child contracts
-   ✓ Solidity has multiple interdependent contracts that cannot be merged
-   ✓ UTXO constraints make single contract genuinely impossible (extremely rare)
-
-   Invalid reasons for multi-contract:
-   ✗ "Separation of concerns" - use clear sections in one contract instead
-   ✗ "Helper functions" - include them in the main contract
-   ✗ "Better organization" - one well-organized contract is simpler than many
-
-   When in doubt, use a single contract. Multi-contract systems are harder to deploy, test, and use.
-
 1. Always use "pragma cashscript ^0.13.0;" at the top of every CashScript contract.
 
 2. EVERY function parameter you declare MUST be used in the function body.
@@ -824,8 +809,6 @@ FOR MULTI-CONTRACT SYSTEMS (when Solidity pattern requires multiple CashScript c
 }
 
 CONTRACT ROLE DEFINITIONS (critical for UI display order):
-NOTE: These roles only apply to multi-contract systems. Most conversions should be single contract.
-
 - "primary": Main user-facing contracts that handle core logic
   * Examples: VotingBooth (voting system), Manager/Main (CashStarter), ChessMaster (BCHess)
   * These are displayed FIRST in the UI tabs
@@ -843,18 +826,13 @@ NOTE: These roles only apply to multi-contract systems. Most conversions should 
 
 IMPORTANT: Assign roles carefully - the UI sorts by role first (primary → helper → state), then by deploymentOrder within each role.
 
-Use multi-contract structure ONLY when:
-- Solidity already has factory pattern deploying child contracts
-- Solidity has multiple interdependent contracts (e.g., BCHess with 8 piece validators)
-- Original Solidity explicitly deploys and manages separate contract instances
+Use multi-contract structure when:
+- Solidity contract has complex state that needs multiple CashScript contracts to manage
+- Pattern requires separate logic contracts (like BCHess piece validators)
+- System needs helper contracts (like CashStarter's cancel/claim/refund)
+- Factory patterns that create child contracts
 
-Most contracts should be single-contract:
-- ERC20 tokens, NFTs → single TokenContract
-- Voting systems → single VotingBooth
-- Escrow/timelock → single EscrowContract
-- Access control → single contract with covenant patterns
-
-Use your best judgment, but prefer simplicity. Include deployment order and parameter sources for multi-contract systems.`;
+Use your best judgment. Include deployment order and parameter sources for multi-contract systems.`;
 
     // Attempt validation with up to max retries attempts
     let parsed: any;
