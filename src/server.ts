@@ -754,41 +754,45 @@ CRITICAL RULES:
     - Compile-time trust establishment
 
 21. TIMELOCK COMPARISON OPERATORS - CRITICAL SYNTAX RULE:
-    **NEVER use < or > for time comparisons with tx.time or this.age. ONLY use >= and <=.**
+    **With tx.time and this.age, you can ONLY use >= operator. You CANNOT use <, >, or <=.**
 
     The CashScript compiler ENFORCES this restriction for Bitcoin Script timelock semantics:
 
-    ❌ WRONG - These cause compilation errors:
+    ❌ WRONG - These ALL cause compilation errors:
     require(tx.time < deadline);         // Error: "Mismatched input '<' expecting '>='"
     require(tx.time > lockTime);         // Error: "Mismatched input '>' expecting '>='"
+    require(tx.time <= deadline);        // Error: "Mismatched input '<=' expecting '>='"
     require(this.age < vestingPeriod);   // Same error
+    require(this.age <= vestingPeriod);  // Same error
 
-    ✅ CORRECT - Use inclusive bounds only:
-    require(tx.time <= deadline);        // Transaction is at or before deadline
+    ✅ CORRECT - Only >= operator is allowed:
     require(tx.time >= lockTime);        // Transaction is at or after lock time
     require(this.age >= vestingPeriod);  // Has aged at least N blocks
+    require(deadline >= tx.time);        // INVERTED: Transaction is before deadline
 
     **Why this restriction exists:**
-    - Bitcoin Script nLocktime semantics require inclusive bounds (>= and <=)
-    - Block time granularity makes strict inequalities (<, >) ambiguous
-    - Prevents off-by-one errors at exact boundary blocks/timestamps
-    - Compiler enforces this best practice to maintain security
+    - Bitcoin Script nLocktime uses OP_CHECKLOCKTIMEVERIFY which only supports >= semantics
+    - The compiler restricts to >= to match the underlying opcode behavior
+    - For "before deadline" logic, you MUST invert the comparison: deadline >= tx.time
 
     **Common time-based patterns:**
     // "Must execute BEFORE deadline" (voting, auctions, pledges):
-    require(tx.time <= votingDeadline);
+    require(deadline >= tx.time);              // ✅ INVERTED comparison!
+    // OR use logical negation:
+    require(!(tx.time >= deadline + 1));       // ✅ Also valid but less readable
 
-    // "Can only execute AFTER deadline" (timelocks, vesting, refunds):
-    require(tx.time >= lockTime);
+    // "Can only execute AFTER locktime" (timelocks, vesting, refunds):
+    require(tx.time >= lockTime);              // ✅ Standard pattern
 
     // "Must wait N blocks" (age-based logic):
-    require(this.age >= vestingPeriod);
+    require(this.age >= vestingPeriod);        // ✅ Standard pattern
 
-    **Loop conditions are different - < is valid there:**
+    **Loop conditions are different - <, >, <= are valid there:**
     while (inputIndex < tx.inputs.length) { }     // ✅ Valid for loops
     require(index < tx.outputs.length);           // ✅ Valid for bounds checking
+    if (amount <= maxValue) { }                   // ✅ Valid for value comparisons
 
-    The restriction ONLY applies to tx.time and this.age comparisons.
+    The >= restriction ONLY applies to tx.time and this.age comparisons.
 
 DOCUMENTATION SCALING - MATCH OUTPUT VERBOSITY TO INPUT COMPLEXITY:
 - Simple contracts (constants, basic getters, trivial logic) → Minimal code only
