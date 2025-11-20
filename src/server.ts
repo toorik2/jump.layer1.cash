@@ -856,6 +856,13 @@ Most contracts should be single-contract:
 
 Use your best judgment, but prefer simplicity. Include deployment order and parameter sources for multi-contract systems.`;
 
+    sendEvent('phase2_complete', { message: 'Code generation complete' });
+
+    // ========================================
+    // PHASE 3: VALIDATION WITH RETRIES
+    // ========================================
+    sendEvent('phase3_start', { message: 'Validating with CashScript compiler...' });
+
     // Attempt validation with up to max retries attempts
     let parsed: any;
     let validationPassed = false;
@@ -863,13 +870,6 @@ Use your best judgment, but prefer simplicity. Include deployment order and para
     let retryMessage: string = '';
 
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
-      if (attemptNumber > 1) {
-        sendEvent('phase2_retry', {
-          attempt: attemptNumber,
-          maxAttempts: ANTHROPIC_CONFIG.phase2.maxRetries,
-          message: `Retry ${attemptNumber - 1}/${ANTHROPIC_CONFIG.phase2.maxRetries - 1}...`
-        });
-      }
 
       const messageContent = attemptNumber === 1
         ? `SEMANTIC SPECIFICATION (what the contract must do):
@@ -1029,7 +1029,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           });
         }
 
-        sendEvent('phase2_complete', { message: 'Code generation complete' });
+        sendEvent('phase3_complete', { message: 'Validation complete' });
         break;
       }
 

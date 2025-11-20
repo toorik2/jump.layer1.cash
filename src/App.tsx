@@ -478,9 +478,9 @@ export default function App() {
                 console.log('[Jump] Phase 2: Code generation started');
                 break;
 
-              case 'phase2_retry':
-                // Don't show retry info during Phase 2
-                console.log(`[Jump] Phase 2: Retry ${data.attempt - 1}/${data.maxAttempts - 1}`);
+              case 'phase3_start':
+                setCurrentPhase(3);
+                console.log('[Jump] Phase 3: Validation started');
                 break;
 
               case 'validation':
@@ -500,6 +500,10 @@ export default function App() {
 
               case 'phase2_complete':
                 console.log('[Jump] Phase 2: Complete');
+                break;
+
+              case 'phase3_complete':
+                console.log('[Jump] Phase 3: Complete');
                 break;
 
               case 'done':
