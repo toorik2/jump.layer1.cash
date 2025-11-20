@@ -622,8 +622,11 @@ export default function App() {
                       Phase 2: Generating CashScript based on semantic understanding and original contract (~2 min)
                     </li>
                     <li class={currentPhase() === 3 ? 'active-phase' : ''}>
-                      Phase 3: Validating each contract with the CashScript compiler
+                      <Show when={retryCount() === 0}>
+                        Phase 3: Validating each contract with the CashScript compiler
+                      </Show>
                       <Show when={retryCount() > 0}>
+                        Phase 3: Refining code based on compiler feedback
                         <span class="retry-indicator">
                           (Attempt {retryCount() + 1}/{maxRetries()})
                         </span>
