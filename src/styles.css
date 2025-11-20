@@ -371,7 +371,7 @@ h1 {
 }
 
 .loading-estimate {
-  color: #9CA3AF;
+  color: #B1B8C0;
   font-size: 0.95rem;
   margin: 1rem 0 1.5rem 0;
 }
@@ -385,7 +385,7 @@ h1 {
 
 .loading-details summary {
   cursor: pointer;
-  color: #9CA3AF;
+  color: #B1B8C0;
   font-size: 0.9rem;
   user-select: none;
   padding: 0.5rem;
@@ -409,7 +409,7 @@ h1 {
 
 .loading-details li {
   padding: 0.5rem 0;
-  color: #9CA3AF;
+  color: #B1B8C0;
   font-size: 0.9rem;
   line-height: 1.5;
   position: relative;
@@ -445,6 +445,18 @@ h1 {
 
 .loading-details li.completed-phase {
   opacity: 0.6;
+}
+
+.loading-details li.note {
+  opacity: 0.55;
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.loading-details .retry-indicator {
+  margin-left: 0.5rem;
+  color: #39FF14;
+  font-size: 0.85em;
 }
 
 .error {

@@ -578,9 +578,9 @@ export default function App() {
                       Phase 1: Extracting semantic intent and business logic (~1 min for complex contracts)
                     </li>
                     <li class={currentPhase() === 2 ? 'active-phase' : currentPhase() > 2 ? 'completed-phase' : ''}>
-                      Phase 2: Generating CashScript based on semantic understanding and original contract
+                      Phase 2: Generating CashScript based on semantic understanding and original contract (~2 min)
                       <Show when={retryCount() > 0}>
-                        <span style="margin-left: 0.5rem; color: #39FF14; font-size: 0.85em;">
+                        <span class="retry-indicator">
                           (Retry {retryCount()}/{maxRetries() - 1})
                         </span>
                       </Show>
@@ -588,7 +588,7 @@ export default function App() {
                     <li class={currentPhase() === 3 ? 'active-phase' : ''}>
                       Phase 3: Validating each contract with the CashScript compiler
                     </li>
-                    <li style="opacity: 0.6;">Automatically refining code based on compiler feedback (up to {maxRetries()} attempts)</li>
+                    <li class="note">Refining code based on compiler feedback (up to 10 attempts)</li>
                   </ul>
                 </details>
               </div>
