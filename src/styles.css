@@ -459,6 +459,40 @@ h1 {
   font-size: 0.85em;
 }
 
+.validation-status {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.validation-summary {
+  color: #B1B8C0;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.contract-status-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.contract-status-list li {
+  padding: 0.25rem 0;
+  font-size: 0.82rem;
+}
+
+.contract-status-list li.contract-valid {
+  color: #39FF14;
+}
+
+.contract-status-list li.contract-failed {
+  color: #FF6B6B;
+}
+
 .error {
   color: #FF6B6B;
   background: rgba(255, 107, 107, 0.1);

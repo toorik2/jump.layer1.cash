@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { compileString } from 'cashc';
 import { initializeDatabase, closeDatabase, updateConversion, insertContract, generateHash, generateUUID, insertSemanticAnalysis } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
+import { rateLimiter } from './middleware/rate-limit.js';
 import {
   logConversionStart,
   logConversionComplete,
@@ -22,7 +23,7 @@ import type { SemanticSpecification } from './types/semantic-spec.js';
 import { ANTHROPIC_CONFIG, SERVER_CONFIG, calculateCost } from './config.js';
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50kb' })); // Explicit size limit for abuse protection
 app.use(cookieParser());
 app.use(loggerMiddleware);
 app.use(express.static('dist'));
@@ -479,16 +480,67 @@ async function executeSemanticAnalysis(
 }
 
 // ============================================================================
+// CONCURRENT REQUEST LIMITING
+// ============================================================================
+
+let activeConversions = 0;
+const MAX_CONCURRENT_CONVERSIONS = 100;
+
+// ============================================================================
+// INPUT VALIDATION HELPERS
+// ============================================================================
+
+function validateContractInput(contract: any): { valid: boolean; error?: string; statusCode?: number } {
+  // Must be a string
+  if (typeof contract !== 'string') {
+    return { valid: false, error: 'Contract must be a string', statusCode: 400 };
+  }
+
+  // Must not be empty
+  if (!contract || contract.trim().length === 0) {
+    return { valid: false, error: 'Contract cannot be empty', statusCode: 400 };
+  }
+
+  // Minimum length check (prevent trivial spam)
+  if (contract.length < 10) {
+    return { valid: false, error: 'Contract must be at least 10 characters', statusCode: 400 };
+  }
+
+  // Maximum length check (50,000 chars ~= 50kb)
+  if (contract.length > 50000) {
+    return { valid: false, error: 'Contract too large. Maximum 50,000 characters allowed.', statusCode: 413 };
+  }
+
+  return { valid: true };
+}
+
+// ============================================================================
 // API ENDPOINT
 // ============================================================================
 
-app.post('/api/convert', async (req, res) => {
+app.post('/api/convert', rateLimiter, async (req, res) => {
+  // Check concurrent request limit
+  if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) {
+    return res.status(503).json({
+      error: 'Server busy',
+      message: `Maximum ${MAX_CONCURRENT_CONVERSIONS} concurrent conversions. Please try again in a moment.`
+    });
+  }
+
+  activeConversions++;
   const startTime = Date.now();
   let conversionId: number | undefined;
 
   try {
     console.log('[Conversion] Received conversion request');
     const { contract } = req.body;
+
+    // Validate input
+    const validation = validateContractInput(contract);
+    if (!validation.valid) {
+      return res.status(validation.statusCode!).json({ error: validation.error });
+    }
+
     const metadata = req.metadata!;
 
     // Log conversion start (async, but wait for ID)
@@ -1189,11 +1241,22 @@ Note: Structure will differ - focus on preserving intentions, not signatures.`;
       error: 'Internal server error',
       message: errorMessage
     });
+  } finally {
+    activeConversions--;
   }
 });
 
 // Streaming conversion endpoint with real-time progress
-app.post('/api/convert-stream', async (req, res) => {
+app.post('/api/convert-stream', rateLimiter, async (req, res) => {
+  // Check concurrent request limit
+  if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) {
+    return res.status(503).json({
+      error: 'Server busy',
+      message: `Maximum ${MAX_CONCURRENT_CONVERSIONS} concurrent conversions. Please try again in a moment.`
+    });
+  }
+
+  activeConversions++;
   const startTime = Date.now();
   let conversionId: number | undefined;
 
@@ -1212,6 +1275,14 @@ app.post('/api/convert-stream', async (req, res) => {
   try {
     console.log('[Conversion] Received streaming conversion request');
     const { contract } = req.body;
+
+    // Validate input
+    const validation = validateContractInput(contract);
+    if (!validation.valid) {
+      sendEvent('error', { message: validation.error });
+      res.end();
+      return;
+    }
     const metadata = req.metadata!;
 
     // Log conversion start
@@ -1570,10 +1641,20 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         validationPassed = multiValidation.allValid;
         validationError = multiValidation.firstError;
 
+        // Build contract status list for display during retries
+        const contractStatus = parsed.contracts.map(c => ({
+          name: c.name,
+          validated: c.validated || false
+        }));
+
         sendEvent('validation', {
           passed: validationPassed,
           validCount: multiValidation.validCount,
-          failedCount: multiValidation.failedCount
+          failedCount: multiValidation.failedCount,
+          attempt: attemptNumber,
+          maxAttempts: ANTHROPIC_CONFIG.phase2.maxRetries,
+          contracts: contractStatus,
+          isMultiContract: true
         });
       } else {
         const validation = validateContract(parsed.primaryContract);
@@ -1581,7 +1662,10 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         validationError = validation.error;
 
         sendEvent('validation', {
-          passed: validationPassed
+          passed: validationPassed,
+          attempt: attemptNumber,
+          maxAttempts: ANTHROPIC_CONFIG.phase2.maxRetries,
+          isMultiContract: false
         });
 
         if (validationPassed) {
@@ -1788,6 +1872,8 @@ Note: Structure will differ - focus on preserving intentions, not signatures.`;
       details: errorMessage
     });
     res.end();
+  } finally {
+    activeConversions--;
   }
 });
 

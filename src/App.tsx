@@ -286,6 +286,12 @@ export default function App() {
   const [currentPhase, setCurrentPhase] = createSignal(1);
   const [retryCount, setRetryCount] = createSignal(0);
   const [maxRetries, setMaxRetries] = createSignal(10);
+  const [validationDetails, setValidationDetails] = createSignal<{
+    isMultiContract: boolean;
+    validCount?: number;
+    failedCount?: number;
+    contracts?: Array<{ name: string; validated: boolean }>;
+  } | null>(null);
 
   // Sorted contracts: primary first, then helper, then state
   const sortedContracts = createMemo(() => {
@@ -393,6 +399,7 @@ export default function App() {
     setActiveContractTab(0);
     setCurrentPhase(1);
     setRetryCount(0);
+    setValidationDetails(null);
 
     try {
       const response = await fetch(API_STREAM_URL, {
@@ -402,7 +409,28 @@ export default function App() {
       });
 
       if (!response.ok || !response.body) {
-        setError('Failed to start conversion stream');
+        // Try to get detailed error info from server
+        let errorMessage = `Failed to start conversion stream (HTTP ${response.status})`;
+
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+            if (errorData.message) {
+              errorMessage += `: ${errorData.message}`;
+            }
+            if (errorData.retryAfter) {
+              errorMessage += ` (retry after ${errorData.retryAfter}s)`;
+            }
+          }
+        } catch (e) {
+          // If we can't parse JSON, use status text
+          if (response.statusText) {
+            errorMessage += `: ${response.statusText}`;
+          }
+        }
+
+        setError(errorMessage);
         setLoading(false);
         return;
       }
@@ -451,13 +479,22 @@ export default function App() {
                 break;
 
               case 'phase2_retry':
-                setRetryCount(data.attempt - 1);
-                setMaxRetries(data.maxAttempts);
+                // Don't show retry info during Phase 2
                 console.log(`[Jump] Phase 2: Retry ${data.attempt - 1}/${data.maxAttempts - 1}`);
                 break;
 
               case 'validation':
                 setCurrentPhase(3);
+                // Update retry tracking for Phase 3 validation display
+                setRetryCount(data.attempt - 1);
+                setMaxRetries(data.maxAttempts);
+                // Store validation details for display
+                setValidationDetails({
+                  isMultiContract: data.isMultiContract || false,
+                  validCount: data.validCount,
+                  failedCount: data.failedCount,
+                  contracts: data.contracts
+                });
                 console.log('[Jump] Phase 3: Validation', data);
                 break;
 
@@ -579,16 +616,31 @@ export default function App() {
                     </li>
                     <li class={currentPhase() === 2 ? 'active-phase' : currentPhase() > 2 ? 'completed-phase' : ''}>
                       Phase 2: Generating CashScript based on semantic understanding and original contract (~2 min)
-                      <Show when={retryCount() > 0}>
-                        <span class="retry-indicator">
-                          (Retry {retryCount()}/{maxRetries() - 1})
-                        </span>
-                      </Show>
                     </li>
                     <li class={currentPhase() === 3 ? 'active-phase' : ''}>
                       Phase 3: Validating each contract with the CashScript compiler
+                      <Show when={retryCount() > 0}>
+                        <span class="retry-indicator">
+                          (Attempt {retryCount() + 1}/{maxRetries()})
+                        </span>
+                      </Show>
+                      <Show when={retryCount() > 0 && validationDetails()?.isMultiContract && validationDetails()?.contracts}>
+                        <div class="validation-status">
+                          <span class="validation-summary">
+                            {validationDetails()?.validCount || 0} valid, {validationDetails()?.failedCount || 0} failed
+                          </span>
+                          <ul class="contract-status-list">
+                            <For each={validationDetails()?.contracts}>
+                              {(contract) => (
+                                <li class={contract.validated ? 'contract-valid' : 'contract-failed'}>
+                                  {contract.validated ? '✓' : '✗'} {contract.name}
+                                </li>
+                              )}
+                            </For>
+                          </ul>
+                        </div>
+                      </Show>
                     </li>
-                    <li class="note">Refining code based on compiler feedback (up to 10 attempts)</li>
                   </ul>
                 </details>
               </div>
