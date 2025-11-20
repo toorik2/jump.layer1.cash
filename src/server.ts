@@ -58,6 +58,49 @@ function validateContract(code: string): { valid: boolean; error?: string; bytec
   }
 }
 
+/**
+ * Extract 3 lines of code context (before, error, after) with visual marker
+ * Fails loudly if line number is invalid - no silent fallbacks
+ */
+function getCodeContext(code: string, errorLine: number): string {
+  const lines = code.split('\n');
+
+  if (errorLine < 1 || errorLine > lines.length) {
+    console.error(`[ERROR] Line ${errorLine} out of bounds. Code has ${lines.length} lines`);
+    throw new Error(`Line number ${errorLine} is out of bounds (code has ${lines.length} lines)`);
+  }
+
+  const startLine = Math.max(1, errorLine - 1);
+  const endLine = Math.min(lines.length, errorLine + 1);
+
+  let context = '';
+  for (let i = startLine; i <= endLine; i++) {
+    const prefix = i === errorLine ? '> ' : '  ';
+    const lineContent = lines[i - 1].trim();
+    context += `${prefix}Line ${i}: ${lineContent}\n`;
+  }
+
+  return context.trim();
+}
+
+/**
+ * Enhance compiler error message with code context
+ * Fails loudly if error format is unexpected - no silent fallbacks
+ */
+function enhanceErrorMessage(error: string, code: string): string {
+  const lineMatch = error.match(/at Line (\d+), Column (\d+)/);
+
+  if (!lineMatch) {
+    console.error('[ERROR] Could not parse line number from compiler error:', error);
+    throw new Error(`Failed to parse line number from compiler error: ${error.substring(0, 100)}`);
+  }
+
+  const lineNum = parseInt(lineMatch[1], 10);
+  const context = getCodeContext(code, lineNum);
+
+  return `${error}\n${context}`;
+}
+
 // Type definitions for multi-contract responses
 interface ContractParam {
   name: string;
@@ -415,7 +458,7 @@ function validateMultiContractResponse(parsed: MultiContractResponse): {
       contract.artifact = validation.artifact;
       validCount++;
     } else {
-      contract.validationError = validation.error;
+      contract.validationError = validation.error ? enhanceErrorMessage(validation.error, contract.code) : validation.error;
       failedCount++;
       failedContracts.push(contract.name);
       if (allValid) {
@@ -967,7 +1010,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       } else {
         const validation = validateContract(parsed.primaryContract);
         validationPassed = validation.valid;
-        validationError = validation.error;
+        validationError = validation.error ? enhanceErrorMessage(validation.error, parsed.primaryContract) : validation.error;
 
         sendEvent('validation', {
           passed: validationPassed,
