@@ -619,7 +619,7 @@ export default function App() {
                       Phase 1: Extracting semantic intent and business logic (~1 min for complex contracts)
                     </li>
                     <li class={currentPhase() === 2 ? 'active-phase' : currentPhase() > 2 ? 'completed-phase' : ''}>
-                      Phase 2: Generating CashScript contracts based on semantic understanding and the original contract (~2 min)
+                      Phase 2: Generating CashScript contracts (~2 min)
                     </li>
                     <li class={currentPhase() === 3 ? 'active-phase' : ''}>
                       <Show when={retryCount() === 0}>
