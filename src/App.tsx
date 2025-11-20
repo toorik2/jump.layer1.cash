@@ -1,7 +1,7 @@
 import { createSignal, createEffect, createMemo, For, Show } from 'solid-js';
 import { codeToHtml } from 'shiki';
 import { Copy, Check, X } from 'lucide-solid';
-import { API_URL } from './config';
+import { API_URL, API_STREAM_URL } from './config.frontend';
 import './styles.css';
 
 // Example contracts for quick testing
@@ -283,6 +283,9 @@ export default function App() {
   const [artifactHTML, setArtifactHTML] = createSignal('');
   const [originalContractHTML, setOriginalContractHTML] = createSignal('');
   const [activeContractTab, setActiveContractTab] = createSignal(0);
+  const [currentPhase, setCurrentPhase] = createSignal(1);
+  const [retryCount, setRetryCount] = createSignal(0);
+  const [maxRetries, setMaxRetries] = createSignal(10);
 
   // Sorted contracts: primary first, then helper, then state
   const sortedContracts = createMemo(() => {
@@ -321,6 +324,8 @@ export default function App() {
     setActiveContractTab(0);
     setCopyStatus('idle');
     setContractCopyStatus({});
+    setCurrentPhase(1);
+    setRetryCount(0);
   };
 
   createEffect(async () => {
@@ -371,7 +376,7 @@ export default function App() {
   });
 
   const handleConvert = async () => {
-    console.log('[Jump] Starting conversion...');
+    console.log('[Jump] Starting conversion with SSE...');
     const contract = evmContract().trim();
     if (!contract) {
       console.log('[Jump] No contract provided');
@@ -386,64 +391,99 @@ export default function App() {
     setContractHighlightedHTML({});
     setArtifactHTML('');
     setActiveContractTab(0);
+    setCurrentPhase(1);
+    setRetryCount(0);
 
     try {
-      console.log(`[Jump] Sending request to ${API_URL}`);
-      const response = await fetch(API_URL, {
+      const response = await fetch(API_STREAM_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contract })
       });
 
-      console.log(`[Jump] Response status: ${response.status}`);
-
-      // Handle timeout errors (504, 408, etc.)
-      if (response.status === 504 || response.status === 408) {
-        console.error('[Jump] Request timed out');
-        setError('Request timed out. The conversion is taking longer than expected. This may happen with very complex contracts or during high API load. Please try again.');
+      if (!response.ok || !response.body) {
+        setError('Failed to start conversion stream');
         setLoading(false);
         return;
       }
 
-      // Try to parse JSON, but handle HTML error responses
-      let data;
-      const contentType = response.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        // Non-JSON response (likely HTML error page)
-        const text = await response.text();
-        console.error('[Jump] Non-JSON response received:', text.substring(0, 200));
-        setError(`Server error (${response.status}): The server returned an unexpected response. Please try again or contact support if the issue persists.`);
-        setLoading(false);
-        return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.trim() || line.startsWith(':')) continue;
+
+          if (line.startsWith('event:')) {
+            const eventType = line.substring(6).trim();
+            continue;
+          }
+
+          if (line.startsWith('data:')) {
+            const data = JSON.parse(line.substring(5).trim());
+            const eventLine = lines[lines.indexOf(line) - 1];
+            const eventType = eventLine ? eventLine.substring(6).trim() : 'unknown';
+
+            console.log(`[Jump] SSE event: ${eventType}`, data);
+
+            switch (eventType) {
+              case 'phase1_start':
+                setCurrentPhase(1);
+                console.log('[Jump] Phase 1: Semantic analysis started');
+                break;
+
+              case 'phase1_complete':
+                setCurrentPhase(2);
+                console.log('[Jump] Phase 1: Complete');
+                break;
+
+              case 'phase2_start':
+                setCurrentPhase(2);
+                console.log('[Jump] Phase 2: Code generation started');
+                break;
+
+              case 'phase2_retry':
+                setRetryCount(data.attempt - 1);
+                setMaxRetries(data.maxAttempts);
+                console.log(`[Jump] Phase 2: Retry ${data.attempt - 1}/${data.maxAttempts - 1}`);
+                break;
+
+              case 'validation':
+                setCurrentPhase(3);
+                console.log('[Jump] Phase 3: Validation', data);
+                break;
+
+              case 'phase2_complete':
+                console.log('[Jump] Phase 2: Complete');
+                break;
+
+              case 'done':
+                console.log('[Jump] Conversion complete!', data);
+                setResult(data);
+                setLoading(false);
+                break;
+
+              case 'error':
+                console.error('[Jump] Error:', data);
+                setError(data.message || 'Conversion failed');
+                setLoading(false);
+                break;
+            }
+          }
+        }
       }
-
-      console.log('[Jump] Response data received:', data);
-
-      if (!response.ok) {
-        console.error('[Jump] Conversion failed:', data.error);
-        setError(data.error || 'Conversion failed');
-        setLoading(false);
-        return;
-      }
-
-      console.log('[Jump] Conversion successful!');
-      setResult(data);
-      setLoading(false);
     } catch (err) {
       console.error('[Jump] Conversion error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-
-      // Handle network errors
-      if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-        setError('Network error: Unable to connect to the server. Please check your internet connection and try again.');
-      } else if (errorMessage.includes('JSON')) {
-        setError('Server error: Received invalid response from server. Please try again.');
-      } else {
-        setError(`Conversion failed: ${errorMessage}`);
-      }
-
+      setError(`Conversion failed: ${errorMessage}`);
       setLoading(false);
     }
   };
@@ -529,15 +569,26 @@ export default function App() {
                   <div class="loading-spinner"></div>
                   <span>Converting to CashScript...</span>
                 </div>
-                <p class="loading-estimate">Up to 3 minutes for multi-contract systems</p>
+                <p class="loading-estimate">Up to 5 minutes for multi-contract systems</p>
 
                 <details class="loading-details">
                   <summary>What's happening behind the scenes?</summary>
                   <ul>
-                    <li>Analyzing your Solidity contract structure</li>
-                    <li>Converting EVM patterns to UTXO-based CashScript</li>
-                    <li>Validating each contract with the CashScript compiler</li>
-                    <li>Automatically retrying if compilation errors occur (up to 10 attempts)</li>
+                    <li class={currentPhase() === 1 ? 'active-phase' : currentPhase() > 1 ? 'completed-phase' : ''}>
+                      Phase 1: Extracting semantic intent and business logic (~1 min for complex contracts)
+                    </li>
+                    <li class={currentPhase() === 2 ? 'active-phase' : currentPhase() > 2 ? 'completed-phase' : ''}>
+                      Phase 2: Generating CashScript based on semantic understanding and original contract
+                      <Show when={retryCount() > 0}>
+                        <span style="margin-left: 0.5rem; color: #39FF14; font-size: 0.85em;">
+                          (Retry {retryCount()}/{maxRetries() - 1})
+                        </span>
+                      </Show>
+                    </li>
+                    <li class={currentPhase() === 3 ? 'active-phase' : ''}>
+                      Phase 3: Validating each contract with the CashScript compiler
+                    </li>
+                    <li style="opacity: 0.6;">Automatically refining code based on compiler feedback (up to {maxRetries()} attempts)</li>
                   </ul>
                 </details>
               </div>

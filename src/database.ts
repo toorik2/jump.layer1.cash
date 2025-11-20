@@ -154,6 +154,21 @@ function createTables() {
     )
   `);
 
+  // 8. SEMANTIC_ANALYSES - Phase 1 semantic extraction results
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS semantic_analyses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversion_id INTEGER NOT NULL,
+      analysis_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      model_used TEXT NOT NULL,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      response_time_ms INTEGER,
+      FOREIGN KEY (conversion_id) REFERENCES conversions(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create indexes for performance
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversions_session ON conversions(session_id);
@@ -179,6 +194,8 @@ function createTables() {
 
     CREATE INDEX IF NOT EXISTS idx_patterns_category ON error_patterns(error_category);
     CREATE INDEX IF NOT EXISTS idx_patterns_signature ON error_patterns(error_signature);
+
+    CREATE INDEX IF NOT EXISTS idx_semantic_conversion ON semantic_analyses(conversion_id);
   `);
 }
 
@@ -648,6 +665,53 @@ export function getCacheSavingsTotal(): number {
 
   const result = stmt.get() as { total_savings: number } | undefined;
   return result?.total_savings || 0;
+}
+
+// ============================================================================
+// SEMANTIC_ANALYSES TABLE
+// ============================================================================
+
+export interface SemanticAnalysisRecord {
+  id?: number;
+  conversion_id: number;
+  analysis_json: string;
+  created_at: string;
+  model_used: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  response_time_ms?: number;
+}
+
+export function insertSemanticAnalysis(record: Omit<SemanticAnalysisRecord, 'id'>): number {
+  const stmt = db.prepare(`
+    INSERT INTO semantic_analyses (
+      conversion_id, analysis_json, created_at, model_used,
+      input_tokens, output_tokens, response_time_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    record.conversion_id,
+    record.analysis_json,
+    record.created_at,
+    record.model_used,
+    record.input_tokens || null,
+    record.output_tokens || null,
+    record.response_time_ms || null
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+export function getSemanticAnalysis(conversionId: number): SemanticAnalysisRecord | undefined {
+  const stmt = db.prepare(`
+    SELECT * FROM semantic_analyses
+    WHERE conversion_id = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `);
+
+  return stmt.get(conversionId) as SemanticAnalysisRecord | undefined;
 }
 
 // ============================================================================

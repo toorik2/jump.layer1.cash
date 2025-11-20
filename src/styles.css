@@ -423,6 +423,30 @@ h1 {
   color: #39FF14;
 }
 
+.loading-details li.active-phase {
+  color: #F0F6FC;
+  font-weight: 500;
+}
+
+.loading-details li.active-phase:before {
+  content: "●";
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.loading-details li.completed-phase:before {
+  content: "✓";
+  color: #39FF14;
+}
+
+.loading-details li.completed-phase {
+  opacity: 0.6;
+}
+
 .error {
   color: #FF6B6B;
   background: rgba(255, 107, 107, 0.1);

@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compileString } from 'cashc';
-import { initializeDatabase, closeDatabase, updateConversion, insertContract, generateHash, generateUUID } from './database.js';
+import { initializeDatabase, closeDatabase, updateConversion, insertContract, generateHash, generateUUID, insertSemanticAnalysis } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import {
   logConversionStart,
@@ -18,6 +18,8 @@ import {
   logRetryAttempt,
   logError,
 } from './services/logging.js';
+import type { SemanticSpecification } from './types/semantic-spec.js';
+import { ANTHROPIC_CONFIG, SERVER_CONFIG, calculateCost } from './config.js';
 
 const app = express();
 app.use(express.json());
@@ -26,17 +28,8 @@ app.use(loggerMiddleware);
 app.use(express.static('dist'));
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
+  apiKey: ANTHROPIC_CONFIG.apiKey
 });
-
-// Maximum number of retry attempts when validation fails
-// With prompt caching, retries are cost-effective (90% savings on cache hits)
-const MAX_RETRIES = 10;
-
-// Maximum output tokens per API call
-// Set to 21K - max for non-streaming (SDK requires streaming above ~21,333 for 10min+ operations)
-// Claude Sonnet 4.5 supports up to 64K tokens, but we use 21K to avoid streaming complexity
-const MAX_OUTPUT_TOKENS = 21000;
 
 // Preamble message for initial conversion attempts
 // Explicitly connects the system prompt (rules, knowledge base) to the user's Solidity code
@@ -117,6 +110,183 @@ interface SingleContractResponse {
 function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
   return parsed.contracts && Array.isArray(parsed.contracts);
 }
+
+// ============================================================================
+// PHASE 1: SEMANTIC ANALYSIS
+// ============================================================================
+
+// JSON Schema for Phase 1: Semantic Specification
+const semanticSpecSchema = {
+  type: "json_schema",
+  schema: {
+    type: "object",
+    properties: {
+      contractPurpose: {
+        type: "string",
+        description: "High-level description of what the contract does"
+      },
+      businessLogic: {
+        type: "array",
+        items: { type: "string" },
+        description: "Critical business rules that must be enforced"
+      },
+      stateVariables: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            type: { type: "string" },
+            mutability: { type: "string", enum: ["constant", "mutable"] },
+            visibility: { type: "string", enum: ["public", "private", "internal"] },
+            usage: { type: "string" },
+            initialValue: { type: "string" }
+          },
+          required: ["name", "type", "mutability", "visibility", "usage"],
+          additionalProperties: false
+        }
+      },
+      functions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            purpose: { type: "string" },
+            parameters: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  type: { type: "string" },
+                  description: { type: "string" }
+                },
+                required: ["name", "type", "description"],
+                additionalProperties: false
+              }
+            },
+            accessControl: {
+              type: "string",
+              enum: ["anyone", "owner", "role-based", "conditional"]
+            },
+            accessControlDetails: { type: "string" },
+            stateChanges: {
+              type: "array",
+              items: { type: "string" }
+            },
+            requires: {
+              type: "array",
+              items: { type: "string" }
+            },
+            ensures: {
+              type: "array",
+              items: { type: "string" }
+            },
+            emits: {
+              type: "array",
+              items: { type: "string" }
+            }
+          },
+          required: ["name", "purpose", "parameters", "accessControl", "stateChanges", "requires", "ensures", "emits"],
+          additionalProperties: false
+        }
+      },
+      accessControlSummary: {
+        type: "object",
+        properties: {
+          roles: {
+            type: "array",
+            items: { type: "string" }
+          },
+          patterns: {
+            type: "array",
+            items: { type: "string" }
+          }
+        },
+        required: ["roles", "patterns"],
+        additionalProperties: false
+      },
+      dataRelationships: {
+        type: "array",
+        items: { type: "string" }
+      },
+      criticalInvariants: {
+        type: "array",
+        items: { type: "string" }
+      }
+    },
+    required: [
+      "contractPurpose",
+      "businessLogic",
+      "stateVariables",
+      "functions",
+      "accessControlSummary",
+      "dataRelationships",
+      "criticalInvariants"
+    ],
+    additionalProperties: false
+  }
+} as const;
+
+// Phase 1 System Prompt: Pure semantic extraction (NO UTXO/CashScript thinking)
+const SEMANTIC_ANALYSIS_PROMPT = `You are an expert Solidity contract analyzer. Your task is to extract the complete semantic understanding of a Solidity smart contract.
+
+DO NOT think about implementation in other languages. Focus ONLY on understanding what this contract does.
+
+Extract the following information:
+
+1. CONTRACT PURPOSE
+   - What problem does this contract solve?
+   - What is the high-level business domain? (token, crowdfunding, voting, etc.)
+   - What are the main use cases?
+
+2. STATE VARIABLES ANALYSIS
+   For EACH state variable:
+   - Name and Solidity type (exact syntax)
+   - Is it constant or mutable?
+   - Visibility (public/private/internal)
+   - How is it used? (read-only, written by single function, etc.)
+   - Initial value (if any)
+
+3. FUNCTION SEMANTICS
+   For EACH function:
+   - Name and purpose (in business terms, not code)
+   - Parameters and their meaning
+   - Access control: who can call this? (anyone/owner/specific role/conditional)
+   - Access control details (e.g., "requires msg.sender == owner")
+   - Which state variables does it read?
+   - Which state variables does it modify?
+   - What are the preconditions (requires)? Express as business rules
+   - What are the postconditions (ensures)? Express as business rules
+   - What events does it emit?
+
+4. ACCESS CONTROL SUMMARY
+   - What roles exist? (owner, admin, user, etc.)
+   - What access control patterns are used? (owner-only, role-based, etc.)
+
+5. DATA RELATIONSHIPS
+   - How do state variables relate to each other?
+   - Are there invariants like "sum of parts = whole"?
+   - Dependencies between variables?
+
+6. CRITICAL INVARIANTS
+   - What MUST ALWAYS be true?
+   - Business rules that cannot be violated
+   - Examples: "total supply = sum of balances", "can only vote once"
+
+IMPORTANT RULES:
+- Extract semantic meaning, not syntax
+- Use business terminology, not code terminology
+- Be comprehensive - missing logic is the #1 problem we're solving
+- Don't make assumptions - if something is unclear, note it in the description
+- Don't suggest implementations - just understand what IS
+
+Output a complete semantic specification as JSON.`;
+
+// ============================================================================
+// PHASE 2: CODE GENERATION
+// ============================================================================
 
 // JSON Schema for structured outputs
 const outputSchema = {
@@ -257,6 +427,61 @@ function validateMultiContractResponse(parsed: MultiContractResponse): {
   return { allValid, firstError, validCount, failedCount, failedContracts };
 }
 
+// ============================================================================
+// PHASE 1 EXECUTION: Semantic Analysis
+// ============================================================================
+
+async function executeSemanticAnalysis(
+  conversionId: number,
+  solidityContract: string
+): Promise<SemanticSpecification> {
+  console.log('[Phase 1] Starting semantic analysis...');
+  const startTime = Date.now();
+
+  const response = await anthropic.beta.messages.create({
+    model: ANTHROPIC_CONFIG.phase1.model,
+    max_tokens: ANTHROPIC_CONFIG.phase1.maxTokens,
+    system: SEMANTIC_ANALYSIS_PROMPT,
+    betas: ANTHROPIC_CONFIG.betas,
+    output_format: semanticSpecSchema,
+    messages: [{
+      role: 'user',
+      content: solidityContract
+    }]
+  });
+
+  const responseText = response.content[0].type === 'text'
+    ? response.content[0].text
+    : '';
+
+  const semanticSpec: SemanticSpecification = JSON.parse(responseText);
+
+  // Log to database
+  const duration = Date.now() - startTime;
+  insertSemanticAnalysis({
+    conversion_id: conversionId,
+    analysis_json: responseText,
+    created_at: new Date().toISOString(),
+    model_used: ANTHROPIC_CONFIG.phase1.model,
+    input_tokens: response.usage.input_tokens,
+    output_tokens: response.usage.output_tokens,
+    response_time_ms: duration
+  });
+
+  console.log('[Phase 1] Semantic analysis complete:', {
+    duration: `${(duration / 1000).toFixed(2)}s`,
+    functions: semanticSpec.functions.length,
+    stateVars: semanticSpec.stateVariables.length,
+    invariants: semanticSpec.criticalInvariants.length
+  });
+
+  return semanticSpec;
+}
+
+// ============================================================================
+// API ENDPOINT
+// ============================================================================
+
 app.post('/api/convert', async (req, res) => {
   const startTime = Date.now();
   let conversionId: number | undefined;
@@ -269,6 +494,40 @@ app.post('/api/convert', async (req, res) => {
     // Log conversion start (async, but wait for ID)
     conversionId = await logConversionStart(metadata, contract);
     console.log(`[Conversion] Started with ID ${conversionId}`);
+
+    // ========================================
+    // PHASE 1: SEMANTIC ANALYSIS
+    // ========================================
+    let semanticSpec: SemanticSpecification;
+    let semanticSpecJSON: string;
+
+    try {
+      semanticSpec = await executeSemanticAnalysis(conversionId, contract);
+      semanticSpecJSON = JSON.stringify(semanticSpec, null, 2);
+    } catch (phase1Error) {
+      console.error('[Phase 1] Semantic analysis failed:', phase1Error);
+
+      // Log error
+      logError('phase1_error',
+        phase1Error instanceof Error ? phase1Error.message : String(phase1Error),
+        conversionId
+      ).catch(err => console.error('[Logging] Failed to log error:', err));
+
+      // Log conversion as failed
+      logConversionComplete(conversionId, startTime, 'failed').catch(err =>
+        console.error('[Logging] Failed to log conversion completion:', err)
+      );
+
+      return res.status(500).json({
+        error: 'Semantic analysis failed',
+        message: 'Could not extract contract semantics. Please check your Solidity code for syntax errors or unusual patterns.',
+        details: phase1Error instanceof Error ? phase1Error.message : String(phase1Error)
+      });
+    }
+
+    // ========================================
+    // PHASE 2: CODE GENERATION WITH SEMANTIC GUIDANCE
+    // ========================================
 
     const systemPrompt = `You are a CashScript expert. Convert EVM (Solidity) smart contracts to CashScript.
 
@@ -515,36 +774,44 @@ Use multi-contract structure when:
 
 Use your best judgment. Include deployment order and parameter sources for multi-contract systems.`;
 
-    // Attempt validation with up to MAX_RETRIES attempts
+    // Attempt validation with up to max retries attempts
     let parsed: any;
     let validationPassed = false;
     let validationError: string | undefined;
     let retryMessage: string = '';
 
-    for (let attemptNumber = 1; attemptNumber <= MAX_RETRIES; attemptNumber++) {
+    for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
       // Determine message content for this attempt
-      // Initial attempt: Add preamble to connect system prompt with user's Solidity code
+      // Initial attempt: Semantic spec + contract with elegant semantic fidelity instruction
       // Retry attempts: Use detailed retry message with error context
       const messageContent = attemptNumber === 1
-        ? `${CONVERSION_PREAMBLE}\n\n${contract}`
+        ? `SEMANTIC SPECIFICATION (what the contract must do):
+${semanticSpecJSON}
+
+ORIGINAL SOLIDITY CONTRACT:
+${contract}
+
+Based on the semantic specification and CashScript language reference provided in the system prompt, generate CashScript that implements the contract above.
+
+Ensure semantic fidelity: Your CashScript must honor all business logic, invariants, and guarantees described in the specification. Structure may differ to fit the UTXO model, but all original contract intentions must be preserved.`
         : retryMessage;
-      const attemptLabel = attemptNumber === 1 ? 'initial attempt' : `retry ${attemptNumber - 1}/${MAX_RETRIES - 1}`;
+      const attemptLabel = attemptNumber === 1 ? 'initial attempt' : `retry ${attemptNumber - 1}/${ANTHROPIC_CONFIG.phase2.maxRetries - 1}`;
 
       console.log(`[Conversion] Calling Anthropic API (${attemptLabel})...`);
       const apiCallStartTime = Date.now();
-      const apiCallId = await logApiCallStart(conversionId, attemptNumber, 'claude-sonnet-4-5-20250929', MAX_OUTPUT_TOKENS, messageContent);
+      const apiCallId = await logApiCallStart(conversionId, attemptNumber, ANTHROPIC_CONFIG.phase2.model, ANTHROPIC_CONFIG.phase2.maxTokens, messageContent);
 
       const message = await anthropic.beta.messages.create({
-        model: 'claude-sonnet-4-5-20250929',
-        max_tokens: MAX_OUTPUT_TOKENS,
+        model: ANTHROPIC_CONFIG.phase2.model,
+        max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
         system: [
           {
             type: "text",
             text: systemPrompt,
-            cache_control: { type: "ephemeral", ttl: "1h" }
+            cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl }
           }
         ],
-        betas: ['structured-outputs-2025-11-13'],
+        betas: ANTHROPIC_CONFIG.betas,
         output_format: outputSchema,
         messages: [
           {
@@ -573,13 +840,14 @@ Use your best judgment. Include deployment order and parameter sources for multi
         console.log('[Cache] ✓ 1-hour cache hit:', usage.cache_read_input_tokens, 'tokens (0.1x cost - 90% savings!)');
       }
 
-      // Calculate cost for Sonnet 4.5: $3/MTok input, $15/MTok output
-      // 1-hour cache: write=2x ($6), read=0.1x ($0.30)
-      const inputCost = (usage.input_tokens * 3.0 +
-                        (usage.cache_creation_input_tokens || 0) * 6.0 +
-                        (usage.cache_read_input_tokens || 0) * 0.30) / 1000000;
-      const outputCost = (usage.output_tokens * 15.0) / 1000000;
-      console.log(`[Cache] Cost: $${(inputCost + outputCost).toFixed(4)} (input: $${inputCost.toFixed(4)}, output: $${outputCost.toFixed(4)})`);
+      // Calculate cost
+      const cost = calculateCost({
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cache_creation_input_tokens: usage.cache_creation_input_tokens,
+        cache_read_input_tokens: usage.cache_read_input_tokens
+      });
+      console.log(`[Cache] Cost: $${cost.totalCost.toFixed(4)} (input: $${cost.inputCost.toFixed(4)}, output: $${cost.outputCost.toFixed(4)})`);
 
       // Parse JSON response with error handling
       try {
@@ -587,7 +855,7 @@ Use your best judgment. Include deployment order and parameter sources for multi
       } catch (parseError) {
         const errorMsg = parseError instanceof Error ? parseError.message : String(parseError);
         console.error('[Conversion] JSON parse error:', errorMsg);
-        console.error('[Conversion] Response length:', response.length, 'Max tokens hit:', usage.output_tokens >= MAX_OUTPUT_TOKENS - 100);
+        console.error('[Conversion] Response length:', response.length, 'Max tokens hit:', usage.output_tokens >= ANTHROPIC_CONFIG.phase2.maxTokens - 100);
 
         // Log API call with error
         logApiCallComplete(
@@ -740,8 +1008,8 @@ Use your best judgment. Include deployment order and parameter sources for multi
       }
 
       // If this was the last attempt, exit loop
-      if (attemptNumber === MAX_RETRIES) {
-        console.log(`[Conversion] All ${MAX_RETRIES} attempts failed`);
+      if (attemptNumber === ANTHROPIC_CONFIG.phase2.maxRetries) {
+        console.log(`[Conversion] All ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts failed`);
         // Log final failed retry
         logRetryAttempt(conversionId, false).catch(err =>
           console.error('[Logging] Failed to log retry attempt:', err)
@@ -763,8 +1031,13 @@ Use your best judgment. Include deployment order and parameter sources for multi
 
         console.log(`[Conversion] Multi-contract retry: ${validContracts.length} valid, ${failedContracts.length} failed`);
 
-        retryMessage = `Original EVM contract:\n${contract}\n\n`;
-        retryMessage += `Your previous multi-contract translation generated ${parsed.contracts.length} contracts:\n\n`;
+        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
+${semanticSpecJSON}
+
+ORIGINAL SOLIDITY CONTRACT:
+${contract}
+
+Your previous multi-contract translation generated ${parsed.contracts.length} contracts:\n\n`;
 
         // List all contracts with their status
         parsed.contracts.forEach(c => {
@@ -797,10 +1070,22 @@ Use your best judgment. Include deployment order and parameter sources for multi
         retryMessage += `3. Maintain the same multi-contract architecture (${parsed.contracts.length} contracts total)\n`;
         retryMessage += `4. Return the COMPLETE multi-contract JSON response with all ${parsed.contracts.length} contracts\n`;
         retryMessage += `5. Ensure the deployment order and dependencies remain consistent\n\n`;
-        retryMessage += `Fix the compilation errors and provide the corrected multi-contract response.`;
+        retryMessage += `Fix the compilation errors while preserving semantic fidelity.\n\n`;
+        retryMessage += `Before finalizing, verify:\n`;
+        retryMessage += `✓ All business logic from the semantic spec is achievable\n`;
+        retryMessage += `✓ All invariants are enforced\n`;
+        retryMessage += `✓ All access control requirements are met\n`;
+        retryMessage += `✓ All state transitions are possible\n`;
+        retryMessage += `Note: Structure will differ - focus on preserving intentions, not signatures.`;
       } else if (unusedVarMatch) {
         const [_, varName, line, column] = unusedVarMatch;
-        retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a critical error:
+        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
+${semanticSpecJSON}
+
+ORIGINAL SOLIDITY CONTRACT:
+${contract}
+
+Your previous CashScript translation has a critical error:
 
 UNUSED PARAMETER ERROR: The variable '${varName}' at Line ${line}, Column ${column} is declared in your function signature but never used in the function body.
 
@@ -808,10 +1093,33 @@ CashScript strictly requires that ALL function parameters must be used (similar 
 1. Use the '${varName}' parameter somewhere in your function logic
 2. Remove '${varName}' from the function signature if it's not needed for the contract logic
 
-Please fix this specific issue and provide a corrected translation. Make sure every parameter you declare is actually used in the code.`;
+Please fix this specific issue while preserving semantic fidelity.
+
+Before finalizing, verify:
+✓ All business logic from the semantic spec is achievable
+✓ All invariants are enforced
+✓ All access control requirements are met
+✓ All state transitions are possible
+Note: Structure will differ - focus on preserving intentions, not signatures.`;
       } else {
         // Generic retry message for single-contract errors
-        retryMessage = `Original EVM contract:\n${contract}\n\nYour previous CashScript translation has a syntax error:\n${validationError}\n\nPlease fix the syntax error and provide a corrected translation.`;
+        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
+${semanticSpecJSON}
+
+ORIGINAL SOLIDITY CONTRACT:
+${contract}
+
+Your previous CashScript translation has a syntax error:
+${validationError}
+
+Please fix the syntax error while preserving semantic fidelity.
+
+Before finalizing, verify:
+✓ All business logic from the semantic spec is achievable
+✓ All invariants are enforced
+✓ All access control requirements are met
+✓ All state transitions are possible
+Note: Structure will differ - focus on preserving intentions, not signatures.`;
       }
     }
 
@@ -830,7 +1138,7 @@ Please fix this specific issue and provide a corrected translation. Make sure ev
       );
 
       return res.status(400).json({
-        error: `Contract validation failed after ${MAX_RETRIES} attempts`,
+        error: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts`,
         validationError: validationError
       });
     }
@@ -884,20 +1192,619 @@ Please fix this specific issue and provide a corrected translation. Make sure ev
   }
 });
 
+// Streaming conversion endpoint with real-time progress
+app.post('/api/convert-stream', async (req, res) => {
+  const startTime = Date.now();
+  let conversionId: number | undefined;
+
+  // Set up SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Helper to send SSE events
+  const sendEvent = (event: string, data: any) => {
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    console.log('[Conversion] Received streaming conversion request');
+    const { contract } = req.body;
+    const metadata = req.metadata!;
+
+    // Log conversion start
+    conversionId = await logConversionStart(metadata, contract);
+    console.log(`[Conversion] Started with ID ${conversionId}`);
+
+    // ========================================
+    // PHASE 1: SEMANTIC ANALYSIS
+    // ========================================
+    sendEvent('phase1_start', { message: 'Extracting semantic intent...' });
+
+    let semanticSpec: SemanticSpecification;
+    let semanticSpecJSON: string;
+
+    try {
+      semanticSpec = await executeSemanticAnalysis(conversionId, contract);
+      semanticSpecJSON = JSON.stringify(semanticSpec, null, 2);
+      sendEvent('phase1_complete', { message: 'Semantic analysis complete' });
+    } catch (phase1Error) {
+      console.error('[Phase 1] Semantic analysis failed:', phase1Error);
+      sendEvent('error', {
+        phase: 1,
+        message: 'Semantic analysis failed',
+        details: phase1Error instanceof Error ? phase1Error.message : String(phase1Error)
+      });
+      res.end();
+      return;
+    }
+
+    // ========================================
+    // PHASE 2: CODE GENERATION
+    // ========================================
+    sendEvent('phase2_start', { message: 'Generating CashScript...' });
+
+    const systemPrompt = `You are a CashScript expert. Convert EVM (Solidity) smart contracts to CashScript.
+
+CashScript Language Reference:
+${knowledgeBase}
+
+CRITICAL RULES:
+1. Always use "pragma cashscript ^0.13.0;" at the top of every CashScript contract.
+
+2. EVERY function parameter you declare MUST be used in the function body.
+   - CashScript compiler strictly enforces this requirement (similar to Rust)
+   - If a parameter is not needed in the function logic, do NOT declare it
+   - This is the most common cause of compilation failures
+   - Example: function transfer(pubkey recipient, sig senderSig) requires BOTH recipient and senderSig to be used
+
+3. BCH is UTXO-based (stateless), NOT account-based like Ethereum.
+   - Solidity state variables that can be updated → CashScript MUST use covenant patterns
+   - "Update" means: spend old UTXO, enforce output creates new UTXO with new constructor params
+   - Use tx.outputs constraints to enforce recreation (see STATE VARIABLES section in reference)
+   - Remove "read" functions - reading is done off-chain by inspecting constructor parameters
+
+4. For DATA STORAGE, use NFT commitments, NOT OP_RETURN.
+   - OP_RETURN is provably unspendable (funds burned) - use ONLY for event logging
+   - NFT commitments provide local transferrable state (40 bytes, 128 bytes planned 2026)
+   - Pattern: tx.inputs[i].nftCommitment → tx.outputs[i].nftCommitment
+   - Solidity state → Store in NFT commitment, validate/update via covenant
+
+5. No visibility modifiers (public/private/internal/external) in CashScript.
+   - All functions callable by anyone who constructs valid transaction
+   - Use require(checkSig(s, pk)) for access control
+   - Solidity private → CashScript function with signature gate
+
+6. ALWAYS validate this.activeInputIndex and exact input/output counts.
+   - require(this.activeInputIndex == 0) - Contract must be expected input position
+   - require(tx.inputs.length == 2) - Use == not >= for exact validation
+   - require(tx.outputs.length <= 3) - Strict output constraints
+   - This prevents malicious transaction construction
+
+7. UTXO-based authorization is PREFERRED over signatures for user actions.
+   - Instead of: require(checkSig(s, userPk))
+   - Prefer: require(tx.inputs[1].lockingBytecode == new LockingBytecodeP2PKH(userPkh))
+   - User proves ownership by spending their UTXO, no signature parameter needed
+   - Only use checkSig for fixed admin/oracle keys
+
+8. Pack structured data into 40-byte NFT commitments.
+   - Plan byte layout: [pubkeyhash(20) + reserved(18) + blocks(2)] = 40 bytes
+   - Write: tx.outputs[0].nftCommitment == userPkh + bytes18(0) + bytes2(blocks)
+   - Read: bytes20(tx.inputs[0].nftCommitment.split(20)[0]) for first 20 bytes
+   - Use .split(N)[1] to skip N bytes and get remainder
+
+9. Account for dust and fees explicitly.
+   - require(tx.outputs[0].value == 1000) - Minimum dust for token UTXOs
+   - require(amount >= 5000) - Enough sats for future fees
+   - require(tx.outputs[0].value == tx.inputs[0].value - 3000) - Explicit fee subtraction
+
+10. Manipulate token capabilities with .split(32)[0].
+    - tx.inputs[0].tokenCategory.split(32)[0] + 0x01 = strip capability, add mutable
+    - tx.inputs[0].tokenCategory.split(32)[0] = strip to immutable
+    - masterCategory + 0x02 = add minting capability
+
+10a. CRITICAL: P2SH32 addresses MUST be bytes32 type - avoid type-losing operations!
+    - ALWAYS use bytes32 for contract addresses in multi-contract systems
+    - ✓ CORRECT: bytes32 votingBoothHash = 0x1234...;
+    - ✗ WRONG: bytes32 hash = someData.split(1)[1]; // Results in bytes31!
+    - ✓ FIX: bytes32 hash = bytes32(someData.split(1)[1]); // Explicit cast
+    - OR BETTER: Use direct literal assignment (hardcode addresses at compile time)
+    - Common error: "Type 'bytes31' can not be assigned to variable of type 'bytes32'"
+
+11. Use chained splits and tuple destructuring for complex commitment parsing.
+    - bytes4 pledgeID, bytes5 campaignID = commitment.split(31)[1].split(4)
+    - Chained: commitment.split(26)[1].split(4)[0] = skip 26 bytes, take next 4
+    - Tuple: bytes20 addr, bytes remaining = data.split(20) = single split, two vars
+
+12. Validate Script Number minimal encoding bounds (MSB constraint).
+    - require(amount <= 140737488355327) - Max bytes6 (2^47-1, MSB reserved for sign)
+    - require(newID != 2147483647) - Max bytes4 (2^31-1)
+    - Auto-increment: int newID = int(oldID) + 1; require(newID < max); then use
+
+13. IMPLICIT NFT BURNING - Not recreating NFT in outputs = destroyed.
+    - if (no_pledges) require(tx.outputs.length == 1); // Don't include NFT = burn
+    - Key UTXO insight: anything not explicitly recreated ceases to exist
+    - Use output count to control burn vs preserve behavior
+
+14. NFT CAPABILITY AS STATE MACHINE - Capability encodes contract state.
+    - MINTING (0x02) = Active state (can modify freely)
+    - MUTABLE (0x01) = Stopped state (restricted modifications)
+    - IMMUTABLE (no byte) = Final state (receipt/proof)
+    - Downgrade: .split(32)[0] + 0x01 (minting→mutable) or .split(32)[0] (→immutable)
+    - Verify state: bytes capability = tokenCategory.split(32)[1]; require(capability == 0x02);
+
+15. VALUE-BASED STATE DETECTION - Satoshi amount indicates state.
+    - if (tx.inputs[1].value == 1000) = initial/empty state (dust only)
+    - if (tx.inputs[1].value > 1000) = modified state (has accumulated funds)
+    - Design initial values to be identifiable (e.g., exactly 1000 sats)
+
+16. RECEIPT NFT PATTERN - Immutable NFTs as cryptographic proofs.
+    - Create: tx.outputs[1].tokenCategory == category.split(32)[0]; // No capability = immutable
+    - Store proof data in commitment: pledgeAmount + padding + metadata
+    - Verify later: require(capability2 == 0x); // Must be immutable
+
+17. PERMISSIONLESS CONTRACTS - Some protocols need ZERO authorization.
+    - No checkSig, no UTXO ownership checks - pure constraint validation
+    - Anyone can call if transaction structure is valid
+    - Use for: games, public goods, open protocols, deterministic state machines
+    - Authorization via constraints, not signatures
+
+18. STATELESS LOGIC CONTRACTS - Separate logic from state.
+    - Logic contracts: contract PureLogic() { } - NO constructor params
+    - State contracts: contract State(bytes categoryID) { } - embed trust anchors
+    - Pattern: State contracts hold data, logic contracts validate rules
+
+19. UTXO ORDERING AS DATA STRUCTURE - Input position encodes information.
+    - tx.inputs[this.activeInputIndex - 1] = previous input
+    - tx.inputs[this.activeInputIndex + 1] = next input
+    - Sequential UTXOs represent paths (source → intermediates → destination)
+    - Use for: path validation, sequential processes, graph traversal
+
+20. CONSTRUCTOR PARAMETERS AS TRUST ANCHORS - Embed category IDs at compile time.
+    - contract X(bytes tokenCategory01) { require(tx.inputs[i].tokenCategory == tokenCategory01); }
+    - Trustless cross-contract validation via hardcoded category IDs
+    - Compile-time trust establishment
+
+DOCUMENTATION SCALING - MATCH OUTPUT VERBOSITY TO INPUT COMPLEXITY:
+- Simple contracts (constants, basic getters, trivial logic) → Minimal code only
+  * pragma + clean code, no excessive comments
+  * No BCH vs Ethereum explanations unless conversion logic is non-obvious
+  * No documentation blocks for trivial contracts
+  * Example: 7-line Solidity constant → ~15 line CashScript, not 100+ lines
+
+- Complex contracts (state machines, covenants, multi-contract systems) → Full documentation
+  * Apply BCHess-style documentation (see below)
+  * Include NFT state blocks, input/output tables, inline comments
+  * Explain state transitions and validation logic
+
+PROFESSIONAL DOCUMENTATION REQUIREMENTS (for complex contracts only):
+When contract complexity warrants it, include BCHess-style professional documentation:
+
+1. NFT STATE BLOCK (before contract declaration):
+   /*  --- ContractName [Mutable/Immutable/none] NFT State ---
+       type variableName = defaultValue        // optional comment
+   */
+   - Use "Mutable" if contract modifies nftCommitment
+   - Use "Immutable" if contract has fixed constructor params only
+   - Use "none" if no NFT state exists
+   - List ALL state variables with types and default values
+
+2. FUNCTION DOCUMENTATION (before each function):
+   //////////////////////////////////////////////////////////////////////////////////////////
+   //  Brief description of what the function does and why.
+   //
+   //inputs:
+   //  idx   Name                      [TYPE]      (from source)
+   //outputs:
+   //  idx   Name                      [TYPE]      (to destination)
+   //////////////////////////////////////////////////////////////////////////////////////////
+
+   - Separator: min 78 chars, extend to match longest line
+   - Column alignment: Index @4, Name @30, Type @42
+   - Index notation: 0-N (fixed), ? (variable), ranges (2-65)
+   - Type annotations: [NFT], [BCH], [FT]
+   - Source/destination: ALWAYS specify (from X), (to X)
+   - Optional outputs: Mark with {optional}
+
+3. INLINE COMMENTS:
+   - Explain validation logic: require(x) // Why this check matters
+   - Document state transitions: int newCount = old + 1; // Increment
+   - Clarify business logic: if (value == 1000) // No pledges = initial state
+
+4. MULTI-CONTRACT DOCUMENTATION:
+   - Show clear UTXO flow between contracts
+   - Document input/output for each function in every contract
+   - Consistent naming across related contracts
+   - NFT state blocks for all contracts in the system
+
+Examples in knowledge base: BCHess contracts (8 contracts), CashStarter (6 contracts)
+
+Respond with valid JSON. Use ONE of these structures:
+
+FOR SINGLE CONTRACT (simple translations):
+{
+  "primaryContract": "string - Complete CashScript code with pragma, documentation, and all functions"
+}
+
+FOR MULTI-CONTRACT SYSTEMS (when Solidity pattern requires multiple CashScript contracts):
+{
+  "contracts": [
+    {
+      "id": "unique-id",
+      "name": "Human Readable Name",
+      "purpose": "What this contract does in the system",
+      "code": "pragma cashscript ^0.13.0;...",
+      "role": "primary | helper | state",
+      "deploymentOrder": 1,
+      "dependencies": ["other-contract-id"],
+      "constructorParams": [
+        {
+          "name": "paramName",
+          "type": "pubkey | bytes | bytes32 | int",
+          "description": "What this parameter is for",
+          "source": "user-provided | from-contract | computed",
+          "sourceContractId": "null or id of contract that produces this value"
+        }
+      ]
+    }
+  ],
+  "deploymentGuide": {
+    "steps": [
+      {
+        "order": 1,
+        "contractId": "contract-id",
+        "description": "Step description",
+        "prerequisites": ["What must exist before this step"],
+        "outputs": ["What this step produces (e.g., tokenCategory ID)"]
+      }
+    ],
+    "warnings": ["Important deployment considerations"],
+    "testingNotes": ["How to verify the system works"]
+  }
+}
+
+CONTRACT ROLE DEFINITIONS (critical for UI display order):
+- "primary": Main user-facing contracts that handle core logic
+  * Examples: VotingBooth (voting system), Manager/Main (CashStarter), ChessMaster (BCHess)
+  * These are displayed FIRST in the UI tabs
+  * Users interact with these contracts directly
+
+- "helper": Utility contracts that assist primary contracts
+  * Examples: Cancel, Claim, Refund, Stop (CashStarter helpers)
+  * These are displayed SECOND in the UI tabs
+  * Usually have sentinel IDs (0xFFFFFFFFFF) and validate primary contract NFTs
+
+- "state": State storage and registry contracts
+  * Examples: VoterRegistry, ProposalCounter, data holders
+  * These are displayed LAST in the UI tabs
+  * Primarily store and manage state data
+
+IMPORTANT: Assign roles carefully - the UI sorts by role first (primary → helper → state), then by deploymentOrder within each role.
+
+Use multi-contract structure when:
+- Solidity contract has complex state that needs multiple CashScript contracts to manage
+- Pattern requires separate logic contracts (like BCHess piece validators)
+- System needs helper contracts (like CashStarter's cancel/claim/refund)
+- Factory patterns that create child contracts
+
+Use your best judgment. Include deployment order and parameter sources for multi-contract systems.`;
+
+    // Attempt validation with up to max retries attempts
+    let parsed: any;
+    let validationPassed = false;
+    let validationError: string | undefined;
+    let retryMessage: string = '';
+
+    for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
+      if (attemptNumber > 1) {
+        sendEvent('phase2_retry', {
+          attempt: attemptNumber,
+          maxAttempts: ANTHROPIC_CONFIG.phase2.maxRetries,
+          message: `Retry ${attemptNumber - 1}/${ANTHROPIC_CONFIG.phase2.maxRetries - 1}...`
+        });
+      }
+
+      const messageContent = attemptNumber === 1
+        ? `SEMANTIC SPECIFICATION (what the contract must do):
+${semanticSpecJSON}
+
+ORIGINAL SOLIDITY CONTRACT:
+${contract}
+
+Based on the semantic specification and CashScript language reference provided in the system prompt, generate CashScript that implements the contract above.
+
+Ensure semantic fidelity: Your CashScript must honor all business logic, invariants, and guarantees described in the specification. Structure may differ to fit the UTXO model, but all original contract intentions must be preserved.`
+        : retryMessage;
+
+      const apiCallStartTime = Date.now();
+      const apiCallId = await logApiCallStart(conversionId, attemptNumber, ANTHROPIC_CONFIG.phase2.model, ANTHROPIC_CONFIG.phase2.maxTokens, messageContent);
+
+      const message = await anthropic.beta.messages.create({
+        model: ANTHROPIC_CONFIG.phase2.model,
+        max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
+        system: [
+          {
+            type: "text",
+            text: systemPrompt,
+            cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl }
+          }
+        ],
+        betas: ANTHROPIC_CONFIG.betas,
+        output_format: outputSchema,
+        messages: [
+          {
+            role: 'user',
+            content: messageContent
+          }
+        ]
+      });
+
+      const response = message.content[0].type === 'text' ? message.content[0].text : '';
+      const usage = message.usage;
+
+      // Parse response
+      try {
+        parsed = JSON.parse(response);
+      } catch (parseError) {
+        sendEvent('error', {
+          phase: 2,
+          message: 'Response truncated - contract too complex',
+          details: parseError instanceof Error ? parseError.message : String(parseError)
+        });
+        res.end();
+        return;
+      }
+
+      // Validate
+      const isMultiContract = isMultiContractResponse(parsed);
+
+      if (isMultiContract) {
+        updateConversion(conversionId, {
+          is_multi_contract: true,
+          contract_count: parsed.contracts.length
+        });
+
+        const multiValidation = validateMultiContractResponse(parsed);
+        validationPassed = multiValidation.allValid;
+        validationError = multiValidation.firstError;
+
+        sendEvent('validation', {
+          passed: validationPassed,
+          validCount: multiValidation.validCount,
+          failedCount: multiValidation.failedCount
+        });
+      } else {
+        const validation = validateContract(parsed.primaryContract);
+        validationPassed = validation.valid;
+        validationError = validation.error;
+
+        sendEvent('validation', {
+          passed: validationPassed
+        });
+
+        if (validationPassed) {
+          parsed.validated = true;
+          parsed.bytecodeSize = validation.bytecodeSize;
+          parsed.artifact = validation.artifact;
+        }
+      }
+
+      // Log API call
+      logApiCallComplete(
+        apiCallId,
+        apiCallStartTime,
+        true,
+        response,
+        undefined,
+        {
+          input_tokens: usage.input_tokens,
+          output_tokens: usage.output_tokens,
+          cache_read_tokens: usage.cache_read_input_tokens || 0,
+          cache_write_tokens: usage.cache_creation_input_tokens || 0
+        },
+        isMultiContract ? 'multi' : 'single'
+      ).catch(err => console.error('[Logging] Failed to log API call completion:', err));
+
+      if (validationPassed) {
+        // Store contracts in database
+        if (isMultiContract) {
+          for (const contract of parsed.contracts) {
+            const contractUuid = generateUUID();
+            const codeHash = generateHash(contract.code);
+            const lineCount = contract.code.split('\n').length;
+
+            insertContract({
+              conversion_id: conversionId,
+              contract_uuid: contractUuid,
+              produced_by_attempt: attemptNumber,
+              name: contract.name,
+              role: contract.role,
+              purpose: contract.purpose,
+              cashscript_code: contract.code,
+              code_hash: codeHash,
+              deployment_order: contract.deploymentOrder,
+              bytecode_size: contract.bytecodeSize,
+              line_count: lineCount,
+              is_validated: contract.validated || false
+            });
+          }
+        } else {
+          const contractUuid = generateUUID();
+          const codeHash = generateHash(parsed.primaryContract);
+          const lineCount = parsed.primaryContract.split('\n').length;
+
+          insertContract({
+            conversion_id: conversionId,
+            contract_uuid: contractUuid,
+            produced_by_attempt: attemptNumber,
+            name: 'Primary Contract',
+            role: 'primary',
+            purpose: undefined,
+            cashscript_code: parsed.primaryContract,
+            code_hash: codeHash,
+            deployment_order: 1,
+            bytecode_size: parsed.bytecodeSize,
+            line_count: lineCount,
+            is_validated: parsed.validated || false
+          });
+        }
+
+        sendEvent('phase2_complete', { message: 'Code generation complete' });
+        break;
+      }
+
+      // Build retry message if validation failed
+      if (attemptNumber === ANTHROPIC_CONFIG.phase2.maxRetries) {
+        sendEvent('error', {
+          phase: 2,
+          message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts`,
+          details: validationError
+        });
+        res.end();
+        return;
+      }
+
+      // Build retry message for next attempt
+      const unusedVarMatch = validationError?.match(/Unused variable (\w+) at Line (\d+), Column (\d+)/);
+
+      if (isMultiContract) {
+        const validContracts = parsed.contracts.filter(c => c.validated);
+        const failedContracts = parsed.contracts.filter(c => !c.validated);
+
+        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
+${semanticSpecJSON}
+
+ORIGINAL SOLIDITY CONTRACT:
+${contract}
+
+Your previous multi-contract translation generated ${parsed.contracts.length} contracts:\n\n`;
+
+        parsed.contracts.forEach(c => {
+          retryMessage += `- ${c.name} (${c.role}): ${c.validated ? '✓ VALID' : '✗ FAILED'}\n`;
+        });
+
+        retryMessage += `\n`;
+
+        if (validContracts.length > 0) {
+          retryMessage += `The following contracts compiled successfully (keep these in your response):\n\n`;
+          validContracts.forEach(c => {
+            retryMessage += `CONTRACT: ${c.name}\n`;
+            retryMessage += `ROLE: ${c.role}\n`;
+            retryMessage += `CODE:\n${c.code}\n\n`;
+          });
+        }
+
+        retryMessage += `The following ${failedContracts.length === 1 ? 'contract has' : 'contracts have'} compilation errors:\n\n`;
+        failedContracts.forEach(c => {
+          retryMessage += `CONTRACT: ${c.name}\n`;
+          retryMessage += `ERROR: ${c.validationError}\n`;
+          retryMessage += `FAILED CODE:\n${c.code}\n\n`;
+        });
+
+        retryMessage += `INSTRUCTIONS:\n`;
+        retryMessage += `1. Keep ALL ${validContracts.length} valid contracts EXACTLY as shown above\n`;
+        retryMessage += `2. Fix ONLY the ${failedContracts.length} failed ${failedContracts.length === 1 ? 'contract' : 'contracts'}\n`;
+        retryMessage += `3. Maintain the same multi-contract architecture (${parsed.contracts.length} contracts total)\n`;
+        retryMessage += `4. Return the COMPLETE multi-contract JSON response with all ${parsed.contracts.length} contracts\n`;
+        retryMessage += `5. Ensure the deployment order and dependencies remain consistent\n\n`;
+        retryMessage += `Fix the compilation errors while preserving semantic fidelity.\n\n`;
+        retryMessage += `Before finalizing, verify:\n`;
+        retryMessage += `✓ All business logic from the semantic spec is achievable\n`;
+        retryMessage += `✓ All invariants are enforced\n`;
+        retryMessage += `✓ All access control requirements are met\n`;
+        retryMessage += `✓ All state transitions are possible\n`;
+        retryMessage += `Note: Structure will differ - focus on preserving intentions, not signatures.`;
+      } else if (unusedVarMatch) {
+        const [_, varName, line, column] = unusedVarMatch;
+        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
+${semanticSpecJSON}
+
+ORIGINAL SOLIDITY CONTRACT:
+${contract}
+
+Your previous CashScript translation has a critical error:
+
+UNUSED PARAMETER ERROR: The variable '${varName}' at Line ${line}, Column ${column} is declared in your function signature but never used in the function body.
+
+CashScript strictly requires that ALL function parameters must be used (similar to Rust). You have two options:
+1. Use the '${varName}' parameter somewhere in your function logic
+2. Remove '${varName}' from the function signature if it's not needed for the contract logic
+
+Please fix this specific issue while preserving semantic fidelity.
+
+Before finalizing, verify:
+✓ All business logic from the semantic spec is achievable
+✓ All invariants are enforced
+✓ All access control requirements are met
+✓ All state transitions are possible
+Note: Structure will differ - focus on preserving intentions, not signatures.`;
+      } else {
+        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
+${semanticSpecJSON}
+
+ORIGINAL SOLIDITY CONTRACT:
+${contract}
+
+Your previous CashScript translation has a syntax error:
+${validationError}
+
+Please fix the syntax error while preserving semantic fidelity.
+
+Before finalizing, verify:
+✓ All business logic from the semantic spec is achievable
+✓ All invariants are enforced
+✓ All access control requirements are met
+✓ All state transitions are possible
+Note: Structure will differ - focus on preserving intentions, not signatures.`;
+      }
+    }
+
+    // Send final result
+    logConversionComplete(conversionId, startTime, 'success', parsed.primaryContract, parsed.explanation).catch(err =>
+      console.error('[Logging] Failed to log conversion completion:', err)
+    );
+
+    sendEvent('done', parsed);
+    res.end();
+
+  } catch (error) {
+    console.error('[Conversion] Error:', error);
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (conversionId) {
+      logError('unknown_error', errorMessage, conversionId).catch(err =>
+        console.error('[Logging] Failed to log error:', err)
+      );
+      logConversionComplete(conversionId, startTime, 'error').catch(err =>
+        console.error('[Logging] Failed to log conversion completion:', err)
+      );
+    }
+
+    sendEvent('error', {
+      message: 'Internal server error',
+      details: errorMessage
+    });
+    res.end();
+  }
+});
+
 app.get('*', (_req, res) => {
   res.sendFile(join(process.cwd(), 'dist', 'index.html'));
 });
 
 init().then(() => {
-  const server = app.listen(3001, () => {
-    console.log('[Server] Running on http://localhost:3001');
+  const server = app.listen(SERVER_CONFIG.port, () => {
+    console.log(`[Server] Running on http://localhost:${SERVER_CONFIG.port}`);
   });
 
-  // Set timeout to 10 minutes (600 seconds) to handle long conversions
-  // With MAX_RETRIES=10 and ~30s per attempt, we need at least 5 minutes
-  server.timeout = 600000; // 10 minutes in milliseconds
-  server.keepAliveTimeout = 610000; // Slightly longer than timeout
-  server.headersTimeout = 615000; // Slightly longer than keepAliveTimeout
+  // Set timeout to handle long conversions
+  // With max retries and ~30s per attempt, we need sufficient time
+  server.timeout = SERVER_CONFIG.timeout;
+  server.keepAliveTimeout = SERVER_CONFIG.keepAliveTimeout;
+  server.headersTimeout = SERVER_CONFIG.headersTimeout;
 
   // Graceful shutdown
   process.on('SIGTERM', () => {
