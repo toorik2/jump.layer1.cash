@@ -856,13 +856,6 @@ Most contracts should be single-contract:
 
 Use your best judgment, but prefer simplicity. Include deployment order and parameter sources for multi-contract systems.`;
 
-    sendEvent('phase2_complete', { message: 'Code generation complete' });
-
-    // ========================================
-    // PHASE 3: VALIDATION WITH RETRIES
-    // ========================================
-    sendEvent('phase3_start', { message: 'Validating with CashScript compiler...' });
-
     // Attempt validation with up to max retries attempts
     let parsed: any;
     let validationPassed = false;
@@ -920,6 +913,12 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         });
         res.end();
         return;
+      }
+
+      // After first attempt, mark Phase 2 complete and start Phase 3
+      if (attemptNumber === 1) {
+        sendEvent('phase2_complete', { message: 'Code generation complete' });
+        sendEvent('phase3_start', { message: 'Validating with CashScript compiler...' });
       }
 
       // Validate
