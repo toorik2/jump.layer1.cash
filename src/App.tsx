@@ -643,7 +643,7 @@ export default function App() {
                               {(contract) => (
                                 <li class={contract.validated ? 'contract-valid' : 'contract-failed'}>
                                   {contract.validated ? '✓' : '✗'} {contract.name}
-                                  {!contract.validated && contract.attempt && contract.attempt > 1 && (
+                                  {!contract.validated && contract.attempt && (
                                     <span class="contract-attempt"> (fixing - attempt {contract.attempt})</span>
                                   )}
                                 </li>
