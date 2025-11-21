@@ -438,6 +438,7 @@ export default function App() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let currentEventType = '';  // Save event type across chunks
 
       while (true) {
         const { done, value } = await reader.read();
@@ -451,14 +452,13 @@ export default function App() {
           if (!line.trim() || line.startsWith(':')) continue;
 
           if (line.startsWith('event:')) {
-            const eventType = line.substring(6).trim();
+            currentEventType = line.substring(6).trim();  // Save for next data line
             continue;
           }
 
           if (line.startsWith('data:')) {
             const data = JSON.parse(line.substring(5).trim());
-            const eventLine = lines[lines.indexOf(line) - 1];
-            const eventType = eventLine ? eventLine.substring(6).trim() : 'unknown';
+            const eventType = currentEventType || 'unknown';  // Use saved event type
 
             console.log(`[Jump] SSE event: ${eventType}`, data);
 
@@ -622,16 +622,18 @@ export default function App() {
                       Phase 2: Generating CashScript contracts (~2 min)
                     </li>
                     <li class={currentPhase() === 3 ? 'active-phase' : ''}>
-                      <Show when={retryCount() === 0}>
+                      <Show when={retryCount() === 0 && (!validationDetails() || validationDetails()?.failedCount === 0)}>
                         Phase 3: Validating each contract with the CashScript compiler
                       </Show>
-                      <Show when={retryCount() > 0}>
+                      <Show when={retryCount() > 0 || (validationDetails() && validationDetails()?.failedCount! > 0)}>
                         Phase 3: Refining code based on compiler feedback
-                        <span class="retry-indicator">
-                          (Attempt {retryCount() + 1}/{maxRetries()})
-                        </span>
+                        <Show when={retryCount() > 0}>
+                          <span class="retry-indicator">
+                            (Attempt {retryCount() + 1}/{maxRetries()})
+                          </span>
+                        </Show>
                       </Show>
-                      <Show when={retryCount() > 0 && validationDetails()?.isMultiContract && validationDetails()?.contracts}>
+                      <Show when={validationDetails()?.isMultiContract && validationDetails()?.contracts && validationDetails()?.failedCount! > 0}>
                         <div class="validation-status">
                           <span class="validation-summary">
                             {validationDetails()?.validCount || 0} valid, {validationDetails()?.failedCount || 0} failed

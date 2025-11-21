@@ -276,6 +276,8 @@ const semanticSpecSchema = {
 // Phase 1 System Prompt: Pure semantic extraction (NO UTXO/CashScript thinking)
 const SEMANTIC_ANALYSIS_PROMPT = `You are an expert Solidity contract analyzer. Your task is to extract the complete semantic understanding of a Solidity smart contract.
 
+CRITICAL CONTEXT: This analysis will be used to generate a fully functional, production-ready smart contract. Your semantic specification MUST capture ALL business logic, state transitions, and validation rules so that the resulting contract is complete and deployable. Do NOT omit any logic or create simplified/placeholder descriptions - every detail matters for production use.
+
 DO NOT think about implementation in other languages. Focus ONLY on understanding what this contract does.
 
 Extract the following information:
@@ -325,6 +327,7 @@ IMPORTANT RULES:
 - Be comprehensive - missing logic is the #1 problem we're solving
 - Don't make assumptions - if something is unclear, note it in the description
 - Don't suggest implementations - just understand what IS
+- CRITICAL: Your specification will produce production code with real value - capture EVERY detail, validation, and invariant
 
 Output a complete semantic specification as JSON.`;
 
@@ -434,6 +437,73 @@ const outputSchema = {
         additionalProperties: false
       }
     ]
+  }
+} as const;
+
+// Minimal schemas for retry attempts (only request fixed contracts back)
+const retryOutputSchemaMulti = {
+  type: "json_schema",
+  schema: {
+    type: "object",
+    properties: {
+      contracts: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            purpose: { type: "string" },
+            code: { type: "string" },
+            role: {
+              type: "string",
+              enum: ["primary", "helper", "state"]
+            },
+            deploymentOrder: { type: "integer" },
+            dependencies: {
+              type: "array",
+              items: { type: "string" }
+            },
+            constructorParams: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  type: { type: "string" },
+                  description: { type: "string" },
+                  source: { type: "string" },
+                  sourceContractId: {
+                    type: ["string", "null"]
+                  }
+                },
+                required: ["name", "type", "description", "source", "sourceContractId"],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ["id", "name", "purpose", "code", "role", "deploymentOrder", "dependencies", "constructorParams"],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ["contracts"],
+    additionalProperties: false
+  }
+} as const;
+
+const retryOutputSchemaSingle = {
+  type: "json_schema",
+  schema: {
+    type: "object",
+    properties: {
+      primaryContract: {
+        type: "string",
+        description: "Complete CashScript contract code with pragma, documentation, and all functions"
+      }
+    },
+    required: ["primaryContract"],
+    additionalProperties: false
   }
 } as const;
 
@@ -639,6 +709,12 @@ ${knowledgeBase}
 
 CRITICAL RULES:
 1. Always use "pragma cashscript ^0.13.0;" at the top of every CashScript contract.
+
+1a. NEVER create placeholder/stub/dummy contracts. EVERY contract MUST be production-ready.
+   - ❌ FORBIDDEN: function placeholder() { require(false); }
+   - ❌ FORBIDDEN: Empty contracts that just hold NFTs without real logic
+   - If you cannot implement a contract's full logic, DO NOT create it as a placeholder
+   - This is PRODUCTION CODE - users will deploy and use these contracts with real BCH
 
 2. EVERY function parameter you declare MUST be used in the function body.
    - CashScript compiler strictly enforces this requirement (similar to Rust)
@@ -923,6 +999,9 @@ Use your best judgment. Include deployment order and parameter sources for multi
     let validationPassed = false;
     let validationError: string | undefined;
     let retryMessage: string = '';
+    let savedValidContracts: any[] = [];  // Track valid contracts across retries
+    let isMultiContractMode = false;      // Track if we're in multi-contract mode
+    let savedDeploymentGuide: any = null; // Track deployment guide from first attempt
 
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
 
@@ -941,6 +1020,16 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       const apiCallStartTime = Date.now();
       const apiCallId = await logApiCallStart(conversionId, attemptNumber, ANTHROPIC_CONFIG.phase2.model, ANTHROPIC_CONFIG.phase2.maxTokens, messageContent);
 
+      // Select schema based on attempt number and contract mode
+      let selectedSchema;
+      if (attemptNumber === 1) {
+        // First attempt: use full schema (can return single or multi)
+        selectedSchema = outputSchema;
+      } else {
+        // Retries: use minimal schema based on contract mode
+        selectedSchema = isMultiContractMode ? retryOutputSchemaMulti : retryOutputSchemaSingle;
+      }
+
       const message = await anthropic.beta.messages.create({
         model: ANTHROPIC_CONFIG.phase2.model,
         max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
@@ -952,7 +1041,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           }
         ],
         betas: ANTHROPIC_CONFIG.betas,
-        output_format: outputSchema,
+        output_format: selectedSchema,
         messages: [
           {
             role: 'user',
@@ -981,6 +1070,36 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       if (attemptNumber === 1) {
         sendEvent('phase2_complete', { message: 'Code generation complete' });
         sendEvent('phase3_start', { message: 'Validating with CashScript compiler...' });
+
+        // Detect and save contract mode from first attempt
+        isMultiContractMode = isMultiContractResponse(parsed);
+        if (isMultiContractMode && parsed.deploymentGuide) {
+          savedDeploymentGuide = parsed.deploymentGuide;
+        }
+      } else if (attemptNumber > 1 && isMultiContractMode) {
+        // Retry attempt: merge saved valid contracts with newly fixed contracts
+        const fixedContracts = parsed.contracts || [];
+
+        // Create merged contract list
+        const mergedContracts = [...savedValidContracts];
+
+        // Replace/add fixed contracts by matching on name
+        for (const fixedContract of fixedContracts) {
+          const existingIndex = mergedContracts.findIndex(c => c.name === fixedContract.name);
+          if (existingIndex >= 0) {
+            // Replace existing contract with fixed version
+            mergedContracts[existingIndex] = fixedContract;
+          } else {
+            // Add new contract (shouldn't normally happen, but handle it)
+            mergedContracts.push(fixedContract);
+          }
+        }
+
+        // Reconstruct full multi-contract response
+        parsed = {
+          contracts: mergedContracts,
+          deploymentGuide: savedDeploymentGuide
+        };
       }
 
       // Validate
@@ -1028,6 +1147,12 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           parsed.bytecodeSize = validation.bytecodeSize;
           parsed.artifact = validation.artifact;
         }
+      }
+
+      // Save valid contracts after validation for use in retries
+      if (isMultiContract && !validationPassed) {
+        // Save valid contracts to avoid regenerating them in retries
+        savedValidContracts = parsed.contracts.filter(c => c.validated);
       }
 
       // Log API call
@@ -1105,98 +1230,21 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         return;
       }
 
-      // Build retry message for next attempt
-      const unusedVarMatch = validationError?.match(/Unused variable (\w+) at Line (\d+), Column (\d+)/);
-
+      // Build minimal retry message for next attempt (ULTRA-AGGRESSIVE OPTIMIZATION)
+      // Only send error messages with 3-line code context - no semantic spec, no Solidity, no valid contract codes
       if (isMultiContract) {
-        const validContracts = parsed.contracts.filter(c => c.validated);
         const failedContracts = parsed.contracts.filter(c => !c.validated);
 
-        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
-${semanticSpecJSON}
+        retryMessage = `Fix the following ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'} with compilation errors:\n\n`;
 
-ORIGINAL SOLIDITY CONTRACT:
-${contract}
-
-Your previous multi-contract translation generated ${parsed.contracts.length} contracts:\n\n`;
-
-        parsed.contracts.forEach(c => {
-          retryMessage += `- ${c.name} (${c.role}): ${c.validated ? '✓ VALID' : '✗ FAILED'}\n`;
-        });
-
-        retryMessage += `\n`;
-
-        if (validContracts.length > 0) {
-          retryMessage += `The following contracts compiled successfully (keep these in your response):\n\n`;
-          validContracts.forEach(c => {
-            retryMessage += `CONTRACT: ${c.name}\n`;
-            retryMessage += `ROLE: ${c.role}\n`;
-            retryMessage += `CODE:\n${c.code}\n\n`;
-          });
-        }
-
-        retryMessage += `The following ${failedContracts.length === 1 ? 'contract has' : 'contracts have'} compilation errors:\n\n`;
         failedContracts.forEach(c => {
           retryMessage += `CONTRACT: ${c.name}\n`;
-          retryMessage += `ERROR: ${c.validationError}\n`;
-          retryMessage += `FAILED CODE:\n${c.code}\n\n`;
+          retryMessage += `ERROR:\n${c.validationError}\n\n`;
         });
 
-        retryMessage += `INSTRUCTIONS:\n`;
-        retryMessage += `1. Keep ALL ${validContracts.length} valid contracts EXACTLY as shown above\n`;
-        retryMessage += `2. Fix ONLY the ${failedContracts.length} failed ${failedContracts.length === 1 ? 'contract' : 'contracts'}\n`;
-        retryMessage += `3. Maintain the same multi-contract architecture (${parsed.contracts.length} contracts total)\n`;
-        retryMessage += `4. Return the COMPLETE multi-contract JSON response with all ${parsed.contracts.length} contracts\n`;
-        retryMessage += `5. Ensure the deployment order and dependencies remain consistent\n\n`;
-        retryMessage += `Fix the compilation errors while preserving semantic fidelity.\n\n`;
-        retryMessage += `Before finalizing, verify:\n`;
-        retryMessage += `✓ All business logic from the semantic spec is achievable\n`;
-        retryMessage += `✓ All invariants are enforced\n`;
-        retryMessage += `✓ All access control requirements are met\n`;
-        retryMessage += `✓ All state transitions are possible\n`;
-        retryMessage += `Note: Structure will differ - focus on preserving intentions, not signatures.`;
-      } else if (unusedVarMatch) {
-        const [_, varName, line, column] = unusedVarMatch;
-        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
-${semanticSpecJSON}
-
-ORIGINAL SOLIDITY CONTRACT:
-${contract}
-
-Your previous CashScript translation has a critical error:
-
-UNUSED PARAMETER ERROR: The variable '${varName}' at Line ${line}, Column ${column} is declared in your function signature but never used in the function body.
-
-CashScript strictly requires that ALL function parameters must be used (similar to Rust). You have two options:
-1. Use the '${varName}' parameter somewhere in your function logic
-2. Remove '${varName}' from the function signature if it's not needed for the contract logic
-
-Please fix this specific issue while preserving semantic fidelity.
-
-Before finalizing, verify:
-✓ All business logic from the semantic spec is achievable
-✓ All invariants are enforced
-✓ All access control requirements are met
-✓ All state transitions are possible
-Note: Structure will differ - focus on preserving intentions, not signatures.`;
+        retryMessage += `Return ONLY the fixed ${failedContracts.length === 1 ? 'contract' : 'contracts'} as a JSON array.`;
       } else {
-        retryMessage = `SEMANTIC SPECIFICATION (what the contract must do):
-${semanticSpecJSON}
-
-ORIGINAL SOLIDITY CONTRACT:
-${contract}
-
-Your previous CashScript translation has a syntax error:
-${validationError}
-
-Please fix the syntax error while preserving semantic fidelity.
-
-Before finalizing, verify:
-✓ All business logic from the semantic spec is achievable
-✓ All invariants are enforced
-✓ All access control requirements are met
-✓ All state transitions are possible
-Note: Structure will differ - focus on preserving intentions, not signatures.`;
+        retryMessage = `Fix the following compilation error:\n\n${validationError}\n\nReturn the corrected contract code.`;
       }
     }
 
