@@ -9,6 +9,7 @@ dist/
 
 # Database
 data/
+*.db
 
 # Logs
 *.log
