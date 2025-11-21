@@ -627,11 +627,6 @@ export default function App() {
                       </Show>
                       <Show when={retryCount() > 0 || (validationDetails() && validationDetails()?.failedCount! > 0)}>
                         Phase 3: Refining code based on compiler feedback
-                        <Show when={retryCount() > 0}>
-                          <span class="retry-indicator">
-                            (Attempt {retryCount() + 1}/{maxRetries()})
-                          </span>
-                        </Show>
                       </Show>
                       <Show when={validationDetails()?.isMultiContract && validationDetails()?.contracts && validationDetails()?.failedCount! > 0}>
                         <div class="validation-status">
