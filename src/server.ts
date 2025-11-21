@@ -1002,6 +1002,8 @@ Use your best judgment. Include deployment order and parameter sources for multi
     let savedValidContracts: any[] = [];  // Track valid contracts across retries
     let isMultiContractMode = false;      // Track if we're in multi-contract mode
     let savedDeploymentGuide: any = null; // Track deployment guide from first attempt
+    let originalContractOrder: string[] = []; // Track original order from attempt 1
+    let contractAttempts: Map<string, number> = new Map(); // Track per-contract attempt numbers
 
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
 
@@ -1075,25 +1077,39 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         isMultiContractMode = isMultiContractResponse(parsed);
         if (isMultiContractMode && parsed.deploymentGuide) {
           savedDeploymentGuide = parsed.deploymentGuide;
+          // Save original order of contract names from first attempt
+          originalContractOrder = parsed.contracts.map((c: any) => c.name);
+          // Initialize attempt tracking (all start at attempt 1)
+          parsed.contracts.forEach((c: any) => {
+            contractAttempts.set(c.name, 1);
+          });
         }
       } else if (attemptNumber > 1 && isMultiContractMode) {
         // Retry attempt: merge saved valid contracts with newly fixed contracts
         const fixedContracts = parsed.contracts || [];
 
-        // Create merged contract list
-        const mergedContracts = [...savedValidContracts];
-
-        // Replace/add fixed contracts by matching on name
+        // Update attempt numbers for fixed contracts
         for (const fixedContract of fixedContracts) {
-          const existingIndex = mergedContracts.findIndex(c => c.name === fixedContract.name);
-          if (existingIndex >= 0) {
-            // Replace existing contract with fixed version
-            mergedContracts[existingIndex] = fixedContract;
-          } else {
-            // Add new contract (shouldn't normally happen, but handle it)
-            mergedContracts.push(fixedContract);
-          }
+          contractAttempts.set(fixedContract.name, attemptNumber);
         }
+
+        // Create contract map for easy lookup
+        const contractMap = new Map();
+
+        // Add all saved valid contracts
+        for (const contract of savedValidContracts) {
+          contractMap.set(contract.name, contract);
+        }
+
+        // Add/replace with fixed contracts
+        for (const fixedContract of fixedContracts) {
+          contractMap.set(fixedContract.name, fixedContract);
+        }
+
+        // Rebuild contracts array in ORIGINAL order
+        const mergedContracts = originalContractOrder
+          .map(name => contractMap.get(name))
+          .filter(c => c !== undefined); // Filter out any missing contracts
 
         // Reconstruct full multi-contract response
         parsed = {
@@ -1118,7 +1134,8 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         // Build contract status list for display during retries
         const contractStatus = parsed.contracts.map(c => ({
           name: c.name,
-          validated: c.validated || false
+          validated: c.validated || false,
+          attempt: contractAttempts.get(c.name) || attemptNumber // Include per-contract attempt number
         }));
 
         sendEvent('validation', {

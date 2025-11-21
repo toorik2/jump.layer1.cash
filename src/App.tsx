@@ -290,7 +290,7 @@ export default function App() {
     isMultiContract: boolean;
     validCount?: number;
     failedCount?: number;
-    contracts?: Array<{ name: string; validated: boolean }>;
+    contracts?: Array<{ name: string; validated: boolean; attempt?: number }>;
   } | null>(null);
 
   // Sorted contracts: primary first, then helper, then state
@@ -643,6 +643,9 @@ export default function App() {
                               {(contract) => (
                                 <li class={contract.validated ? 'contract-valid' : 'contract-failed'}>
                                   {contract.validated ? '✓' : '✗'} {contract.name}
+                                  {!contract.validated && contract.attempt && contract.attempt > 1 && (
+                                    <span class="contract-attempt"> (fixing - attempt {contract.attempt})</span>
+                                  )}
                                 </li>
                               )}
                             </For>
