@@ -714,6 +714,21 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     }
   };
 
+  // Helper to safely end the response stream
+  const endResponse = () => {
+    if (!res.writable) {
+      console.log('[SSE] Response already closed, skipping res.end()');
+      return;
+    }
+
+    try {
+      endResponse();
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[SSE] Failed to end response:', errorMsg);
+    }
+  };
+
   try {
     console.log('[Conversion] Received streaming conversion request');
     const { contract } = req.body;
@@ -722,7 +737,7 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     const validation = validateContractInput(contract);
     if (!validation.valid) {
       sendEvent('error', { message: validation.error });
-      res.end();
+      endResponse();
       return;
     }
     const metadata = req.metadata!;
@@ -756,7 +771,7 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
         message: 'Semantic analysis failed',
         details: phase1Error instanceof Error ? phase1Error.message : String(phase1Error)
       });
-      res.end();
+      endResponse();
       return;
     }
 
@@ -1171,7 +1186,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           message: 'Response truncated - contract too complex',
           details: parseError instanceof Error ? parseError.message : String(parseError)
         });
-        res.end();
+      endResponse();
         return;
       }
 
@@ -1422,7 +1437,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts. This is not a deterministic system, so just try again - it's likely to work!`,
           details: validationError
         });
-        res.end();
+      endResponse();
         return;
       }
 
@@ -1468,7 +1483,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
     );
 
     sendEvent('done', parsed);
-    res.end();
+      endResponse();
 
   } catch (error) {
     console.error('[Conversion] Error:', error);
@@ -1488,7 +1503,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       message: 'Internal server error',
       details: errorMessage
     });
-    res.end();
+      endResponse();
   } finally {
     activeConversions--;
   }
