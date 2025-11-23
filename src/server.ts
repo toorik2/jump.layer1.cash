@@ -1419,7 +1419,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       if (attemptNumber === ANTHROPIC_CONFIG.phase2.maxRetries) {
         sendEvent('error', {
           phase: 2,
-          message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts`,
+          message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts. This is not a deterministic system, so just try again - it's likely to work!`,
           details: validationError
         });
         res.end();
