@@ -884,7 +884,7 @@ export default function App() {
                                 <p>
                                   {attemptNum && attemptNum > 1
                                     ? `Fixing contract - attempt ${attemptNum}`
-                                    : 'Validating contract...'}
+                                    : 'Fixing contract...'}
                                 </p>
                               </div>
                             </div>
