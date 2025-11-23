@@ -1414,21 +1414,39 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         return;
       }
 
-      // Build minimal retry message for next attempt (ULTRA-AGGRESSIVE OPTIMIZATION)
-      // Only send error messages with 3-line code context - no semantic spec, no Solidity, no valid contract codes
+      // Build retry message for next attempt with MINIMAL CHANGE instructions
+      // Include current contract code so AI can make targeted fixes instead of rewriting from scratch
       if (isMultiContract) {
         const failedContracts = parsed.contracts.filter(c => !c.validated);
+        const failedContractNames = failedContracts.map(c => c.name).join(', ');
 
-        retryMessage = `Fix the following ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'} with compilation errors:\n\n`;
+        retryMessage = `Fix ONLY the specific compilation errors in the following ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}:\n\n`;
 
         failedContracts.forEach(c => {
           retryMessage += `CONTRACT: ${c.name}\n`;
-          retryMessage += `ERROR:\n${c.validationError}\n\n`;
+          retryMessage += `CURRENT CODE:\n${c.code}\n\n`;
+          retryMessage += `COMPILATION ERROR:\n${c.validationError}\n\n`;
+          retryMessage += `INSTRUCTIONS: Make MINIMAL changes to fix ONLY this specific error. Do NOT restructure the contract, change function logic, or modify working code. Only fix what the compiler is complaining about.\n\n`;
+          retryMessage += `---\n\n`;
         });
 
-        retryMessage += `Return ONLY the fixed ${failedContracts.length === 1 ? 'contract' : 'contracts'} as a JSON array.`;
+        retryMessage += `CRITICAL RULES:\n`;
+        retryMessage += `1. Return ONLY these ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}: ${failedContractNames}\n`;
+        retryMessage += `2. Do NOT include any already-validated contracts in your response\n`;
+        retryMessage += `3. Make MINIMAL changes - only fix the specific compilation error\n`;
+        retryMessage += `4. Do NOT change contract structure, logic, or working code\n`;
+        retryMessage += `5. If the error is about an unused variable, remove ONLY that variable\n`;
+        retryMessage += `6. If the error is about a missing parameter, add ONLY that parameter\n`;
+        retryMessage += `7. Do NOT rewrite functions, change business logic, or alter contract behavior`;
       } else {
-        retryMessage = `Fix the following compilation error:\n\n${validationError}\n\nReturn the corrected contract code.`;
+        retryMessage = `Fix the following compilation error:\n\n`;
+        retryMessage += `CURRENT CODE:\n${parsed.primaryContract}\n\n`;
+        retryMessage += `COMPILATION ERROR:\n${validationError}\n\n`;
+        retryMessage += `INSTRUCTIONS:\n`;
+        retryMessage += `Make MINIMAL changes to fix ONLY this specific error.\n`;
+        retryMessage += `Do NOT restructure the contract or change its logic.\n`;
+        retryMessage += `Only fix what the compiler is complaining about.\n\n`;
+        retryMessage += `Return the corrected contract code.`;
       }
     }
 
