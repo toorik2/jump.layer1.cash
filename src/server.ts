@@ -664,8 +664,9 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   res.flushHeaders();
 
   // Detect client disconnect (e.g., user clicked "Start Over")
+  // Listen on 'res' (response), not 'req' (request) - SSE keeps response stream open
   let clientDisconnected = false;
-  req.on('close', () => {
+  res.on('close', () => {
     console.log('[Conversion] Client disconnected - aborting processing');
     clientDisconnected = true;
   });

@@ -510,6 +510,12 @@ export default function App() {
 
     console.log(`[Jump] Contract length: ${contract.length} characters`);
 
+    // Abort any existing controller before creating a new one
+    const existingController = currentAbortController();
+    if (existingController) {
+      existingController.abort();
+    }
+
     // Create AbortController to allow cancellation
     const abortController = new AbortController();
     setCurrentAbortController(abortController);
