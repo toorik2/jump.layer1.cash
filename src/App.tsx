@@ -838,7 +838,12 @@ export default function App() {
               const isMulti = hasIncrementalData ? isMultiContract() : (r && isMultiContractResult(r));
               const contractsToDisplay = hasIncrementalData ? allContracts() : (isMulti && r ? sortedContracts() : []);
               const totalTabs = isMulti ? contractsToDisplay.length + 1 : 2; // +1 for "Original" tab
-              const isOriginalTab = activeContractTab() === totalTabs - 1;
+              // Fix: Use >= instead of === to handle incremental contract loading
+              // When contracts arrive during retries, contractsToDisplay.length grows,
+              // but activeContractTab stays the same, causing wrong tab to display
+              const isOriginalTab = isMulti
+                ? activeContractTab() >= contractsToDisplay.length
+                : activeContractTab() === 1;
 
               return (
                 <>
