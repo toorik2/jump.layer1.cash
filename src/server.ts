@@ -508,7 +508,10 @@ const retryOutputSchemaSingle = {
   }
 } as const;
 
-function validateMultiContractResponse(parsed: MultiContractResponse): {
+function validateMultiContractResponse(
+  parsed: MultiContractResponse,
+  alreadySentContracts?: Set<string>
+): {
   allValid: boolean;
   firstError?: string;
   validCount: number;
@@ -533,6 +536,28 @@ function validateMultiContractResponse(parsed: MultiContractResponse): {
   const failedContracts: string[] = [];
 
   for (const contract of parsed.contracts) {
+    // CRITICAL FIX: Skip re-validation for already-sent contracts
+    // These contracts were already validated and sent to the user - DON'T touch them
+    if (alreadySentContracts && alreadySentContracts.has(contract.name)) {
+      // Contract was already validated in a previous attempt
+      // Trust the existing validation status, don't re-validate
+      if (contract.validated) {
+        validCount++;
+        console.log(`[Validation] Skipping re-validation of already-sent contract "${contract.name}"`);
+      } else {
+        // This shouldn't happen - already-sent contracts should be validated
+        console.warn(`[Validation] WARNING: Already-sent contract "${contract.name}" has validated=false!`);
+        failedCount++;
+        failedContracts.push(contract.name);
+        if (allValid) {
+          allValid = false;
+          firstError = `${contract.name}: Already-sent contract is not validated`;
+        }
+      }
+      continue; // Skip to next contract
+    }
+
+    // Validate contracts that haven't been sent yet
     const validation = validateContract(contract.code);
     contract.validated = validation.valid;
     if (validation.valid) {
@@ -1170,20 +1195,37 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         // Create contract map for easy lookup
         const contractMap = new Map();
 
-        // Add all saved valid contracts
+        // CRITICAL FIX: Deep copy saved valid contracts to prevent mutation
+        // Shallow references would allow validateMultiContractResponse to mutate the originals
         for (const contract of savedValidContracts) {
-          contractMap.set(contract.name, contract);
+          // Deep copy the contract object to isolate it from future mutations
+          const contractCopy = {
+            ...contract,
+            dependencies: contract.dependencies ? [...contract.dependencies] : [],
+            constructorParams: contract.constructorParams ? [...contract.constructorParams] : []
+          };
+          contractMap.set(contract.name, contractCopy);
+          console.log(`[Merge] Preserving already-validated contract "${contract.name}" (deep copy)`);
         }
 
-        // Add/replace with fixed contracts
+        // Add/replace with newly fixed contracts
         for (const fixedContract of fixedContracts) {
-          contractMap.set(fixedContract.name, fixedContract);
+          const wasValidated = savedValidContracts.some(c => c.name === fixedContract.name);
+          if (wasValidated) {
+            console.warn(`[Merge] WARNING: AI returned already-validated contract "${fixedContract.name}" - ignoring AI version, keeping original`);
+            // Don't overwrite - keep the validated version from savedValidContracts
+          } else {
+            contractMap.set(fixedContract.name, fixedContract);
+            console.log(`[Merge] Adding newly-fixed contract "${fixedContract.name}"`);
+          }
         }
 
         // Rebuild contracts array in ORIGINAL order
         const mergedContracts = originalContractOrder
           .map(name => contractMap.get(name))
           .filter(c => c !== undefined); // Filter out any missing contracts
+
+        console.log(`[Merge] Merged ${mergedContracts.length} contracts (${savedValidContracts.length} preserved, ${fixedContracts.filter(fc => !savedValidContracts.some(c => c.name === fc.name)).length} newly fixed)`);
 
         // Reconstruct full multi-contract response
         parsed = {
@@ -1201,7 +1243,18 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           contract_count: parsed.contracts.length
         });
 
-        const multiValidation = validateMultiContractResponse(parsed);
+        // CRITICAL FIX: Save valid contracts BEFORE validation to prevent corruption
+        // If validation mutates contract objects, we need a clean copy saved first
+        if (attemptNumber > 1) {
+          // On retry attempts, preserve currently valid contracts before re-validation
+          const currentlyValid = parsed.contracts.filter(c => c.validated);
+          if (currentlyValid.length > 0) {
+            console.log(`[Phase 3] Saving ${currentlyValid.length} currently valid contracts before validation (attempt ${attemptNumber})`);
+          }
+        }
+
+        // Pass sentContracts to skip re-validation of already-sent contracts
+        const multiValidation = validateMultiContractResponse(parsed, sentContracts);
         validationPassed = multiValidation.allValid;
         validationError = multiValidation.firstError;
 
