@@ -696,10 +696,22 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     clientDisconnected = true;
   });
 
-  // Helper to send SSE events
+  // Helper to send SSE events (safe - checks if stream is writable)
   const sendEvent = (event: string, data: any) => {
-    res.write(`event: ${event}\n`);
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    // Check if response stream is still writable
+    if (!res.writable) {
+      console.log(`[SSE] Cannot send event '${event}' - stream not writable (client disconnected)`);
+      return;
+    }
+
+    try {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (error) {
+      // Stream closed mid-write - log but don't crash
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[SSE] Failed to send event '${event}':`, errorMsg);
+    }
   };
 
   try {
