@@ -372,6 +372,7 @@ export default function App() {
     setEvmContract('');
     setResult(null);
     setError('');
+    setLoading(false);
     setHighlightedHTML('');
     setContractHighlightedHTML({});
     setArtifactHTML('');
@@ -381,6 +382,8 @@ export default function App() {
     setContractCopyStatus({});
     setCurrentPhase(1);
     setRetryCount(0);
+    setMaxRetries(10);
+    setValidationDetails(null);
     // Clear incremental state
     setValidatedContracts([]);
     setPendingContracts([]);
