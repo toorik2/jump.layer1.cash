@@ -409,6 +409,26 @@ export default function App() {
     }
   });
 
+  // Auto-switch to first validated contract tab when results appear
+  createEffect(() => {
+    const validated = validatedContracts();
+    const all = allContracts();
+
+    // When we have validated contracts, ensure active tab shows a validated one
+    if (validated.length > 0 && all.length > 0) {
+      const currentTab = activeContractTab();
+      const currentContract = all[currentTab];
+
+      // If current tab is pending/invalid, switch to first validated contract
+      if (!currentContract || !currentContract.validated) {
+        const firstValidatedIndex = all.findIndex(c => c.validated);
+        if (firstValidatedIndex !== -1) {
+          setActiveContractTab(firstValidatedIndex);
+        }
+      }
+    }
+  });
+
   // Syntax highlighting for legacy result() flow (backward compatibility)
   createEffect(async () => {
     const r = result();
