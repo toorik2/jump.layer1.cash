@@ -409,21 +409,25 @@ export default function App() {
     }
   });
 
-  // Auto-switch to first validated contract tab when results appear
+  // Track if we've done the initial auto-switch to first validated contract
+  let hasAutoSwitched = false;
+
+  // Auto-switch to first validated contract ONCE when results first appear
   createEffect(() => {
     const validated = validatedContracts();
     const all = allContracts();
 
-    // When we have validated contracts, ensure active tab shows a validated one
-    if (validated.length > 0 && all.length > 0) {
+    // Only auto-switch once, when we first get validated contracts
+    if (!hasAutoSwitched && validated.length > 0 && all.length > 0) {
       const currentTab = activeContractTab();
       const currentContract = all[currentTab];
 
-      // If current tab is pending/invalid, switch to first validated contract
+      // If current tab is pending, switch to first validated contract
       if (!currentContract || !currentContract.validated) {
         const firstValidatedIndex = all.findIndex(c => c.validated);
         if (firstValidatedIndex !== -1) {
           setActiveContractTab(firstValidatedIndex);
+          hasAutoSwitched = true; // Don't interfere with user clicks after this
         }
       }
     }
@@ -756,7 +760,7 @@ export default function App() {
                     </li>
                     <li class={currentPhase() === 3 ? 'active-phase' : ''}>
                       <Show when={retryCount() === 0 && (!validationDetails() || validationDetails()?.failedCount === 0)}>
-                        Phase 3: Validating each contract with the CashScript compiler. Moving to the results page as soon as there is a validated contract to show.
+                        Phase 3: Validating each contract with the CashScript compiler. Moving to the results page as soon as there is a validated contract.
                       </Show>
                       <Show when={retryCount() > 0 || (validationDetails() && validationDetails()?.failedCount! > 0)}>
                         Phase 3: Refining code based on compiler feedback
