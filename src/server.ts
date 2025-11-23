@@ -515,6 +515,17 @@ function validateMultiContractResponse(parsed: MultiContractResponse): {
   failedCount: number;
   failedContracts: string[];
 } {
+  // Empty contracts array is a failure, not success
+  if (!parsed.contracts || parsed.contracts.length === 0) {
+    return {
+      allValid: false,
+      firstError: 'AI returned empty contracts array - no contracts to validate',
+      validCount: 0,
+      failedCount: 0,
+      failedContracts: []
+    };
+  }
+
   let allValid = true;
   let firstError: string | undefined;
   let validCount = 0;
