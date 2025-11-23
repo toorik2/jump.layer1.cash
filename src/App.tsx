@@ -357,6 +357,13 @@ export default function App() {
     });
   });
 
+  // Helper to escape HTML entities for plain text fallback
+  const escapeHtml = (text: string): string => {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  };
+
   const copyToClipboard = async (text: string) => {
     await navigator.clipboard.writeText(text);
     setCopyStatus('copied');
@@ -415,7 +422,7 @@ export default function App() {
         console.log('[Jump] Highlighting', contractsToHighlight.length, 'new contracts');
 
         for (const contract of contractsToHighlight) {
-          console.log('[Jump] Syntax highlighting contract:', contract);
+          console.log('[Jump] Syntax highlighting contract:', contract.name, 'code length:', contract.code.length);
           if (!contract.id) {
             console.error('[Jump] Contract missing id field:', contract);
             throw new Error(`Contract missing id field: ${contract.name}`);
@@ -425,11 +432,19 @@ export default function App() {
             throw new Error(`Contract missing code field: ${contract.name}`);
           }
 
-          const html = await codeToHtml(contract.code, {
-            lang: 'javascript',
-            theme: 'dark-plus'
-          });
-          console.log('[Jump] Generated HTML length:', html.length, 'for contract:', contract.id);
+          let html: string;
+          try {
+            html = await codeToHtml(contract.code, {
+              lang: 'javascript',
+              theme: 'dark-plus'
+            });
+            console.log('[Jump] ✓ Generated HTML length:', html.length, 'for contract:', contract.id);
+          } catch (error) {
+            // Fallback: If Shiki fails (large contract, memory limit, etc.), use plain text
+            console.error('[Jump] ✗ Shiki highlighting failed for contract:', contract.id, error);
+            console.log('[Jump] Using plain text fallback for large contract');
+            html = `<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(contract.code)}</code></pre>`;
+          }
 
           // Update incrementally - add this contract without losing others
           setContractHighlightedHTML(prev => ({
@@ -475,28 +490,48 @@ export default function App() {
         // Multi-contract response
         const contractHtmls: {[key: string]: string} = {};
         for (const contract of r.contracts) {
-          const html = await codeToHtml(contract.code, {
-            lang: 'javascript',
-            theme: 'dark-plus'
-          });
+          let html: string;
+          try {
+            html = await codeToHtml(contract.code, {
+              lang: 'javascript',
+              theme: 'dark-plus'
+            });
+          } catch (error) {
+            console.error('[Jump] ✗ Shiki highlighting failed for legacy multi-contract:', contract.id, error);
+            html = `<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(contract.code)}</code></pre>`;
+          }
           contractHtmls[contract.id] = html;
         }
         setContractHighlightedHTML(contractHtmls);
       } else {
         // Single contract response
-        const html = await codeToHtml(r.primaryContract, {
-          lang: 'javascript',
-          theme: 'dark-plus'
-        });
+        console.log('[Jump] Highlighting single contract, code length:', r.primaryContract.length);
+        let html: string;
+        try {
+          html = await codeToHtml(r.primaryContract, {
+            lang: 'javascript',
+            theme: 'dark-plus'
+          });
+          console.log('[Jump] ✓ Single contract highlighted, HTML length:', html.length);
+        } catch (error) {
+          console.error('[Jump] ✗ Shiki highlighting failed for single contract:', error);
+          console.log('[Jump] Using plain text fallback for large single contract');
+          html = `<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(r.primaryContract)}</code></pre>`;
+        }
         setHighlightedHTML(html);
 
         if (r.artifact) {
           const artifactJson = JSON.stringify(r.artifact, null, 2);
-          const artifactHtml = await codeToHtml(artifactJson, {
-            lang: 'json',
-            theme: 'dark-plus'
-          });
-          setArtifactHTML(artifactHtml);
+          try {
+            const artifactHtml = await codeToHtml(artifactJson, {
+              lang: 'json',
+              theme: 'dark-plus'
+            });
+            setArtifactHTML(artifactHtml);
+          } catch (error) {
+            console.error('[Jump] ✗ Shiki highlighting failed for artifact:', error);
+            setArtifactHTML(`<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(artifactJson)}</code></pre>`);
+          }
         }
       }
     }
@@ -507,11 +542,17 @@ export default function App() {
     const contract = evmContract();
     const hasResults = result() || validatedContracts().length > 0;
     if (hasResults && contract) {
-      const html = await codeToHtml(contract, {
-        lang: 'solidity',
-        theme: 'dark-plus'
-      });
-      setOriginalContractHTML(html);
+      try {
+        const html = await codeToHtml(contract, {
+          lang: 'solidity',
+          theme: 'dark-plus'
+        });
+        setOriginalContractHTML(html);
+      } catch (error) {
+        console.error('[Jump] ✗ Shiki highlighting failed for original Solidity contract:', error);
+        const html = `<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(contract)}</code></pre>`;
+        setOriginalContractHTML(html);
+      }
     }
   });
 
