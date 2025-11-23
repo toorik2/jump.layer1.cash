@@ -400,15 +400,24 @@ export default function App() {
     if (validated.length > 0) {
       const contractHtmls: {[key: string]: string} = {};
       for (const contract of validated) {
-        if (contract.code && contract.id) {
-          const html = await codeToHtml(contract.code, {
-            lang: 'javascript',
-            theme: 'dark-plus'
-          });
-          contractHtmls[contract.id] = html;
+        console.log('[Jump] Syntax highlighting contract:', contract);
+        if (!contract.id) {
+          console.error('[Jump] Contract missing id field:', contract);
+          throw new Error(`Contract missing id field: ${contract.name}`);
         }
+        if (!contract.code) {
+          console.error('[Jump] Contract missing code field:', contract);
+          throw new Error(`Contract missing code field: ${contract.name}`);
+        }
+        const html = await codeToHtml(contract.code, {
+          lang: 'javascript',
+          theme: 'dark-plus'
+        });
+        console.log('[Jump] Generated HTML length:', html.length, 'for contract:', contract.id);
+        contractHtmls[contract.id] = html;
       }
       setContractHighlightedHTML(contractHtmls);
+      console.log('[Jump] Set contractHighlightedHTML:', Object.keys(contractHtmls));
     }
   });
 
@@ -763,7 +772,7 @@ export default function App() {
                     </li>
                     <li class={currentPhase() === 3 ? 'active-phase' : ''}>
                       <Show when={retryCount() === 0 && (!validationDetails() || validationDetails()?.failedCount === 0)}>
-                        Phase 3: Validating each contract with the CashScript compiler. Moving to the results page as soon as there is a validated contract.
+                        Phase 3: Validating {totalExpected() > 0 ? `${totalExpected()} ${totalExpected() === 1 ? 'contract' : 'contracts'}` : 'contracts'} with the CashScript compiler. Moving to the results page as soon as there is a validated contract.
                       </Show>
                       <Show when={retryCount() > 0 || (validationDetails() && validationDetails()?.failedCount! > 0)}>
                         Phase 3: Refining code based on compiler feedback
@@ -903,7 +912,7 @@ export default function App() {
                             )}
 
                             <div class="code-container">
-                              <div class="code-block" innerHTML={contractHighlightedHTML()[contract.id] || ''} />
+                              <div class="code-block" innerHTML={contractHighlightedHTML()[contract.id]} />
                               <button
                                 class={`code-copy-btn ${contractCopyStatus()[contract.id] === 'copied' ? 'copied' : ''}`}
                                 onClick={() => copyContractToClipboard(contract.code, contract.id)}

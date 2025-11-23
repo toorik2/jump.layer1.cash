@@ -1193,11 +1193,16 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           if (!sentContracts.has('primary')) {
             sendEvent('contract_ready', {
               contract: {
+                id: 'primary',
                 name: 'Primary Contract',
                 code: parsed.primaryContract,
                 validated: true,
                 bytecodeSize: parsed.bytecodeSize,
-                artifact: parsed.artifact
+                artifact: parsed.artifact,
+                role: 'primary',
+                deploymentOrder: 1,
+                dependencies: [],
+                constructorParams: []
               },
               totalExpected: 1,
               readySoFar: 1
