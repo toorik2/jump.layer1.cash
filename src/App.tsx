@@ -829,7 +829,7 @@ export default function App() {
                     onClick={() => setEvmContract(NATURAL_LANGUAGE_EXAMPLE)}
                     title="Try natural language description (experimental)"
                   >
-                    Natural language
+                    Natural language (experimental)
                   </button>
                 </div>
               </div>
