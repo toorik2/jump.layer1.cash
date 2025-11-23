@@ -727,7 +727,11 @@ CRITICAL RULES:
    - Solidity state variables that can be updated → CashScript MUST use covenant patterns
    - "Update" means: spend old UTXO, enforce output creates new UTXO with new constructor params
    - Use tx.outputs constraints to enforce recreation (see STATE VARIABLES section in reference)
-   - Remove "read" functions - reading is done off-chain by inspecting constructor parameters
+   - COMPLETELY OMIT "read" functions - they are IMPOSSIBLE in UTXO model
+     * Solidity view/pure functions → DELETE entirely from CashScript
+     * DO NOT create placeholder/stub functions (violates Rule 1a)
+     * Examples to DELETE: getBalance(), viewData(), currentState()
+     * Reading is done off-chain by inspecting constructor parameters
 
 4. For DATA STORAGE, use NFT commitments, NOT OP_RETURN.
    - OP_RETURN is provably unspendable (funds burned) - use ONLY for event logging
