@@ -85,14 +85,15 @@ function getCodeContext(code: string, errorLine: number): string {
 
 /**
  * Enhance compiler error message with code context
- * Fails loudly if error format is unexpected - no silent fallbacks
+ * Returns original message if no line number is present (e.g., for warnings)
  */
 function enhanceErrorMessage(error: string, code: string): string {
   const lineMatch = error.match(/at Line (\d+), Column (\d+)/);
 
   if (!lineMatch) {
-    console.error('[ERROR] Could not parse line number from compiler error:', error);
-    throw new Error(`Failed to parse line number from compiler error: ${error.substring(0, 100)}`);
+    // Some compiler messages (like warnings) don't have line numbers - that's okay
+    console.log('[Compiler] Message without line number:', error);
+    return error;
   }
 
   const lineNum = parseInt(lineMatch[1], 10);
