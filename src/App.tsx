@@ -944,7 +944,7 @@ export default function App() {
                     {/* Original and Start over buttons on the right */}
                     <button
                       class={`original-btn ${isOriginalTab ? 'active' : ''}`}
-                      onClick={() => setActiveContractTab(totalTabs - 1)}
+                      onClick={() => setActiveContractTab(9999)}
                     >
                       Original
                     </button>
