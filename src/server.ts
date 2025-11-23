@@ -1339,10 +1339,14 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
 
           // Send contract_ready event for single contract
           if (!sentContracts.has('primary')) {
+            // Extract actual contract name from CashScript code
+            const contractNameMatch = parsed.primaryContract.match(/contract\s+(\w+)/);
+            const contractName = contractNameMatch ? contractNameMatch[1] : 'Primary Contract';
+
             sendEvent('contract_ready', {
               contract: {
                 id: 'primary',
-                name: 'Primary Contract',
+                name: contractName,
                 code: parsed.primaryContract,
                 validated: true,
                 bytecodeSize: parsed.bytecodeSize,

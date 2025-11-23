@@ -469,6 +469,12 @@ export default function App() {
     // Only auto-switch once, when we first get validated contracts
     if (!hasAutoSwitched && validated.length > 0 && all.length > 0) {
       const currentTab = activeContractTab();
+
+      // Don't interfere if user intentionally set tab to Original (tab >= all.length)
+      if (currentTab >= all.length) {
+        return;
+      }
+
       const currentContract = all[currentTab];
 
       // If current tab is pending, switch to first validated contract
