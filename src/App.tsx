@@ -405,26 +405,41 @@ export default function App() {
   createEffect(async () => {
     const validated = validatedContracts();
     if (validated.length > 0) {
-      const contractHtmls: {[key: string]: string} = {};
-      for (const contract of validated) {
-        console.log('[Jump] Syntax highlighting contract:', contract);
-        if (!contract.id) {
-          console.error('[Jump] Contract missing id field:', contract);
-          throw new Error(`Contract missing id field: ${contract.name}`);
+      // Get current highlighted contracts to preserve existing ones
+      const currentHighlighted = contractHighlightedHTML();
+
+      // Only highlight contracts that don't already have HTML
+      const contractsToHighlight = validated.filter(c => !currentHighlighted[c.id]);
+
+      if (contractsToHighlight.length > 0) {
+        console.log('[Jump] Highlighting', contractsToHighlight.length, 'new contracts');
+
+        for (const contract of contractsToHighlight) {
+          console.log('[Jump] Syntax highlighting contract:', contract);
+          if (!contract.id) {
+            console.error('[Jump] Contract missing id field:', contract);
+            throw new Error(`Contract missing id field: ${contract.name}`);
+          }
+          if (!contract.code) {
+            console.error('[Jump] Contract missing code field:', contract);
+            throw new Error(`Contract missing code field: ${contract.name}`);
+          }
+
+          const html = await codeToHtml(contract.code, {
+            lang: 'javascript',
+            theme: 'dark-plus'
+          });
+          console.log('[Jump] Generated HTML length:', html.length, 'for contract:', contract.id);
+
+          // Update incrementally - add this contract without losing others
+          setContractHighlightedHTML(prev => ({
+            ...prev,
+            [contract.id]: html
+          }));
         }
-        if (!contract.code) {
-          console.error('[Jump] Contract missing code field:', contract);
-          throw new Error(`Contract missing code field: ${contract.name}`);
-        }
-        const html = await codeToHtml(contract.code, {
-          lang: 'javascript',
-          theme: 'dark-plus'
-        });
-        console.log('[Jump] Generated HTML length:', html.length, 'for contract:', contract.id);
-        contractHtmls[contract.id] = html;
+
+        console.log('[Jump] Contract highlighting complete. Total highlighted:', Object.keys(contractHighlightedHTML()).length);
       }
-      setContractHighlightedHTML(contractHtmls);
-      console.log('[Jump] Set contractHighlightedHTML:', Object.keys(contractHtmls));
     }
   });
 
@@ -939,6 +954,17 @@ export default function App() {
                           );
                         }
 
+                        // Debug: Check if highlighting HTML exists for this contract
+                        const highlightedHtml = contractHighlightedHTML()[contract.id];
+                        const availableKeys = Object.keys(contractHighlightedHTML());
+                        if (!highlightedHtml) {
+                          console.error('[Jump] No highlighted HTML found for contract:', contract.id);
+                          console.error('[Jump] Available highlighted keys:', availableKeys);
+                          console.error('[Jump] Contract object:', contract);
+                        } else {
+                          console.log('[Jump] Rendering contract:', contract.id, 'HTML length:', highlightedHtml.length);
+                        }
+
                         return (
                           <>
                             {contract.dependencies && contract.dependencies.length > 0 && (
@@ -948,7 +974,7 @@ export default function App() {
                             )}
 
                             <div class="code-container">
-                              <div class="code-block" innerHTML={contractHighlightedHTML()[contract.id]} />
+                              <div class="code-block" innerHTML={highlightedHtml} />
                               <button
                                 class={`code-copy-btn ${contractCopyStatus()[contract.id] === 'copied' ? 'copied' : ''}`}
                                 onClick={() => copyContractToClipboard(contract.code, contract.id)}
