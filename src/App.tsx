@@ -408,6 +408,9 @@ export default function App() {
     }
   };
 
+  // Track which contracts are currently being highlighted to prevent duplicates
+  const highlightingInProgress = new Set<string>();
+
   // Syntax highlighting for incremental contracts
   createEffect(async () => {
     const validated = validatedContracts();
@@ -415,11 +418,16 @@ export default function App() {
       // Get current highlighted contracts to preserve existing ones
       const currentHighlighted = contractHighlightedHTML();
 
-      // Only highlight contracts that don't already have HTML
-      const contractsToHighlight = validated.filter(c => !currentHighlighted[c.id]);
+      // Only highlight contracts that don't already have HTML AND aren't being highlighted
+      const contractsToHighlight = validated.filter(c =>
+        !currentHighlighted[c.id] && !highlightingInProgress.has(c.id)
+      );
 
       if (contractsToHighlight.length > 0) {
         console.log('[Jump] Highlighting', contractsToHighlight.length, 'new contracts');
+
+        // Mark all as in-progress before starting async work
+        contractsToHighlight.forEach(c => highlightingInProgress.add(c.id));
 
         for (const contract of contractsToHighlight) {
           console.log('[Jump] Syntax highlighting contract:', contract.name, 'code length:', contract.code.length);
@@ -451,6 +459,9 @@ export default function App() {
             ...prev,
             [contract.id]: html
           }));
+
+          // Remove from in-progress tracking
+          highlightingInProgress.delete(contract.id);
         }
 
         console.log('[Jump] Contract highlighting complete. Total highlighted:', Object.keys(contractHighlightedHTML()).length);
@@ -1010,14 +1021,11 @@ export default function App() {
                           );
                         }
 
-                        // Debug: Check if highlighting HTML exists for this contract
+                        // Get highlighting HTML (may be empty if still in progress)
                         const highlightedHtml = contractHighlightedHTML()[contract.id];
-                        const availableKeys = Object.keys(contractHighlightedHTML());
-                        if (!highlightedHtml) {
-                          console.error('[Jump] No highlighted HTML found for contract:', contract.id);
-                          console.error('[Jump] Available highlighted keys:', availableKeys);
-                          console.error('[Jump] Contract object:', contract);
-                        } else {
+
+                        // Only log successful renders, not the expected "waiting for highlight" states
+                        if (highlightedHtml) {
                           console.log('[Jump] Rendering contract:', contract.id, 'HTML length:', highlightedHtml.length);
                         }
 
