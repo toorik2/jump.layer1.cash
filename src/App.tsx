@@ -293,17 +293,66 @@ export default function App() {
     contracts?: Array<{ name: string; validated: boolean; attempt?: number }>;
   } | null>(null);
 
+  // Incremental display state
+  const [validatedContracts, setValidatedContracts] = createSignal<any[]>([]);
+  const [pendingContracts, setPendingContracts] = createSignal<string[]>([]);
+  const [deploymentGuide, setDeploymentGuide] = createSignal<any>(null);
+  const [totalExpected, setTotalExpected] = createSignal(0);
+  const [allComplete, setAllComplete] = createSignal(false);
+  const [contractAttempts, setContractAttempts] = createSignal<Map<string, number>>(new Map());
+  const [isMultiContract, setIsMultiContract] = createSignal(false);
+
   // Sorted contracts: primary first, then helper, then state
   const sortedContracts = createMemo(() => {
-    const r = result();
-    if (!r || !isMultiContractResult(r)) return [];
+    // For incremental display, use validatedContracts
+    const validated = validatedContracts();
+    if (validated.length === 0) {
+      // Fallback to old result() for compatibility
+      const r = result();
+      if (!r || !isMultiContractResult(r)) return [];
+      const rolePriority = { primary: 0, helper: 1, state: 2 };
+      return [...r.contracts].sort((a, b) => {
+        const priorityDiff = (rolePriority[a.role as keyof typeof rolePriority] || 999) -
+                            (rolePriority[b.role as keyof typeof rolePriority] || 999);
+        if (priorityDiff !== 0) return priorityDiff;
+        return a.deploymentOrder - b.deploymentOrder;
+      });
+    }
 
+    // Use validated contracts for incremental display
     const rolePriority = { primary: 0, helper: 1, state: 2 };
-    return [...r.contracts].sort((a, b) => {
+    return [...validated].sort((a, b) => {
       const priorityDiff = (rolePriority[a.role as keyof typeof rolePriority] || 999) -
                           (rolePriority[b.role as keyof typeof rolePriority] || 999);
       if (priorityDiff !== 0) return priorityDiff;
-      return a.deploymentOrder - b.deploymentOrder; // Same role: sort by deployment order
+      return a.deploymentOrder - b.deploymentOrder;
+    });
+  });
+
+  // All contracts (validated + pending) for tab display
+  const allContracts = createMemo(() => {
+    const validated = validatedContracts();
+    const pending = pendingContracts();
+
+    if (validated.length === 0 && pending.length === 0) return [];
+
+    // Create pending contract stubs
+    const pendingStubs = pending.map(name => ({
+      name,
+      validated: false,
+      code: '',
+      role: 'unknown',
+      deploymentOrder: 999 // Will be updated when contract arrives
+    }));
+
+    // Combine and sort
+    const combined = [...validated, ...pendingStubs];
+    const rolePriority = { primary: 0, helper: 1, state: 2, unknown: 3 };
+    return combined.sort((a, b) => {
+      const priorityDiff = (rolePriority[a.role as keyof typeof rolePriority] || 999) -
+                          (rolePriority[b.role as keyof typeof rolePriority] || 999);
+      if (priorityDiff !== 0) return priorityDiff;
+      return (a.deploymentOrder || 999) - (b.deploymentOrder || 999);
     });
   });
 
@@ -332,8 +381,35 @@ export default function App() {
     setContractCopyStatus({});
     setCurrentPhase(1);
     setRetryCount(0);
+    // Clear incremental state
+    setValidatedContracts([]);
+    setPendingContracts([]);
+    setDeploymentGuide(null);
+    setTotalExpected(0);
+    setAllComplete(false);
+    setContractAttempts(new Map());
+    setIsMultiContract(false);
   };
 
+  // Syntax highlighting for incremental contracts
+  createEffect(async () => {
+    const validated = validatedContracts();
+    if (validated.length > 0) {
+      const contractHtmls: {[key: string]: string} = {};
+      for (const contract of validated) {
+        if (contract.code && contract.id) {
+          const html = await codeToHtml(contract.code, {
+            lang: 'javascript',
+            theme: 'dark-plus'
+          });
+          contractHtmls[contract.id] = html;
+        }
+      }
+      setContractHighlightedHTML(contractHtmls);
+    }
+  });
+
+  // Syntax highlighting for legacy result() flow (backward compatibility)
   createEffect(async () => {
     const r = result();
     if (r) {
@@ -368,11 +444,11 @@ export default function App() {
     }
   });
 
-  // Highlight original Solidity contract when result is shown
+  // Highlight original Solidity contract when results are shown
   createEffect(async () => {
     const contract = evmContract();
-    const r = result();
-    if (r && contract) {
+    const hasResults = result() || validatedContracts().length > 0;
+    if (hasResults && contract) {
       const html = await codeToHtml(contract, {
         lang: 'solidity',
         theme: 'dark-plus'
@@ -495,7 +571,43 @@ export default function App() {
                   failedCount: data.failedCount,
                   contracts: data.contracts
                 });
+                // Update contract attempts and pending list
+                if (data.contracts && Array.isArray(data.contracts)) {
+                  const attempts = new Map(contractAttempts());
+                  const pending: string[] = [];
+                  data.contracts.forEach((c: any) => {
+                    if (c.attempt) {
+                      attempts.set(c.name, c.attempt);
+                    }
+                    if (!c.validated) {
+                      pending.push(c.name);
+                    }
+                  });
+                  setContractAttempts(attempts);
+                  setPendingContracts(pending);
+                }
                 console.log('[Jump] Phase 3: Validation', data);
+                break;
+
+              case 'contract_ready':
+                console.log('[Jump] Contract ready!', data);
+                // Add validated contract
+                setValidatedContracts(prev => [...prev, data.contract]);
+                // Update deployment guide if present
+                if (data.deploymentGuide) {
+                  setDeploymentGuide(data.deploymentGuide);
+                }
+                // Update total expected
+                if (data.totalExpected) {
+                  setTotalExpected(data.totalExpected);
+                  setIsMultiContract(data.totalExpected > 1);
+                }
+                // Remove from pending list
+                setPendingContracts(prev => prev.filter(name => name !== data.contract.name));
+                // Transition to results view if this is the first contract
+                if (validatedContracts().length === 0) {
+                  setLoading(false);
+                }
                 break;
 
               case 'phase2_complete':
@@ -509,6 +621,7 @@ export default function App() {
               case 'done':
                 console.log('[Jump] Conversion complete!', data);
                 setResult(data);
+                setAllComplete(true);
                 setLoading(false);
                 break;
 
@@ -543,7 +656,7 @@ export default function App() {
         </header>
 
         <div class="converter">
-          <Show when={!result() && !loading()}>
+          <Show when={!result() && !loading() && validatedContracts().length === 0}>
             <div class="input-section">
               <div class="textarea-wrapper">
                 <textarea
@@ -604,7 +717,7 @@ export default function App() {
                 return '';
               })()}
             </span>
-            {loading() && (
+            {loading() && validatedContracts().length === 0 && (
               <div class="loading-state">
                 <div class="loading-header">
                   <div class="loading-spinner"></div>
@@ -623,16 +736,13 @@ export default function App() {
                     </li>
                     <li class={currentPhase() === 3 ? 'active-phase' : ''}>
                       <Show when={retryCount() === 0 && (!validationDetails() || validationDetails()?.failedCount === 0)}>
-                        Phase 3: Validating each contract with the CashScript compiler
+                        Phase 3: Validating each contract with the CashScript compiler. Moving to the results page as soon as there is a validated contract to show.
                       </Show>
                       <Show when={retryCount() > 0 || (validationDetails() && validationDetails()?.failedCount! > 0)}>
                         Phase 3: Refining code based on compiler feedback
                       </Show>
                       <Show when={validationDetails()?.isMultiContract && validationDetails()?.contracts && validationDetails()?.failedCount! > 0}>
                         <div class="validation-status">
-                          <span class="validation-summary">
-                            {validationDetails()?.validCount || 0} valid, {validationDetails()?.failedCount || 0} failed
-                          </span>
                           <ul class="contract-status-list">
                             <For each={validationDetails()?.contracts}>
                               {(contract) => (
@@ -654,10 +764,13 @@ export default function App() {
             )}
             {error() && <div class="error">{error()}</div>}
 
-            {result() && (() => {
-              const r = result()!;
-              const isMulti = isMultiContractResult(r);
-              const totalTabs = isMulti ? sortedContracts().length + 1 : 2; // +1 for "Original" tab
+            {(result() || validatedContracts().length > 0) && (() => {
+              // Use incremental state if available, otherwise fall back to result()
+              const hasIncrementalData = validatedContracts().length > 0;
+              const r = result();
+              const isMulti = hasIncrementalData ? isMultiContract() : (r && isMultiContractResult(r));
+              const contractsToDisplay = hasIncrementalData ? allContracts() : (isMulti && r ? sortedContracts() : []);
+              const totalTabs = isMulti ? contractsToDisplay.length + 1 : 2; // +1 for "Original" tab
               const isOriginalTab = activeContractTab() === totalTabs - 1;
 
               return (
@@ -666,18 +779,28 @@ export default function App() {
                   <div class="contract-tabs">
                     {isMulti ? (
                       // Multi-contract tabs
-                      <For each={sortedContracts()}>
-                        {(contract, idx) => (
-                          <button
-                            class={`contract-tab ${activeContractTab() === idx() ? 'active' : ''}`}
-                            onClick={() => setActiveContractTab(idx())}
-                          >
-                            <span class="tab-name">{contract.name}</span>
-                            <span class={`tab-status ${contract.validated ? 'valid' : 'invalid'}`}>
-                              {contract.validated ? '✓' : '✗'}
-                            </span>
-                          </button>
-                        )}
+                      <For each={contractsToDisplay}>
+                        {(contract, idx) => {
+                          const attemptNum = contractAttempts().get(contract.name);
+                          return (
+                            <button
+                              class={`contract-tab ${activeContractTab() === idx() ? 'active' : ''} ${!contract.validated ? 'pending' : ''}`}
+                              onClick={() => setActiveContractTab(idx())}
+                            >
+                              <span class="tab-name">{contract.name}</span>
+                              {contract.validated ? (
+                                <span class="tab-status valid">✓</span>
+                              ) : (
+                                <span class="tab-status pending">
+                                  <span class="tab-spinner"></span>
+                                  {attemptNum && attemptNum > 1 && (
+                                    <span class="attempt-badge">attempt {attemptNum}</span>
+                                  )}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        }}
                       </For>
                     ) : (
                       // Single contract tab
@@ -723,10 +846,30 @@ export default function App() {
                     ) : isMulti ? (
                       // Show multi-contract content
                       (() => {
-                        const contract = sortedContracts()[activeContractTab()];
+                        const contract = contractsToDisplay[activeContractTab()];
+                        if (!contract) return null;
+
+                        // Show loading state for pending contracts
+                        if (!contract.validated) {
+                          const attemptNum = contractAttempts().get(contract.name);
+                          return (
+                            <div class="pending-contract-state">
+                              <div class="pending-spinner"></div>
+                              <div class="pending-message">
+                                <strong>{contract.name}</strong>
+                                <p>
+                                  {attemptNum && attemptNum > 1
+                                    ? `Fixing contract - attempt ${attemptNum}`
+                                    : 'Validating contract...'}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        }
+
                         return (
                           <>
-                            {contract.dependencies.length > 0 && (
+                            {contract.dependencies && contract.dependencies.length > 0 && (
                               <div class="contract-dependencies">
                                 <strong>Dependencies:</strong> {contract.dependencies.join(', ')}
                               </div>
@@ -760,7 +903,12 @@ export default function App() {
                         <div class="code-block" innerHTML={highlightedHTML()} />
                         <button
                           class={`code-copy-btn ${copyStatus() === 'copied' ? 'copied' : copyStatus() === 'error' ? 'error' : ''}`}
-                          onClick={() => copyToClipboard((r as SingleContractResult).primaryContract)}
+                          onClick={() => {
+                            const code = hasIncrementalData && validatedContracts()[0]
+                              ? validatedContracts()[0].code
+                              : (r as SingleContractResult)?.primaryContract;
+                            if (code) copyToClipboard(code);
+                          }}
                           disabled={copyStatus() === 'copied'}
                           title={copyStatus() === 'copied' ? 'Copied!' : 'Copy to clipboard'}
                         >
@@ -775,58 +923,65 @@ export default function App() {
                     <div class="expandable-sections">
                       {isMulti ? (
                         // Deployment guide for multi-contract
-                        <details class="detail-section">
-                          <summary class="detail-summary">Deployment Guide</summary>
-                          <div class="deployment-guide">
-                            <div class="deployment-steps">
-                              <strong>Deployment Steps:</strong>
-                              <ol>
-                                <For each={(r as MultiContractResult).deploymentGuide.steps}>
-                                  {(step) => (
-                                    <li>
-                                      <div class="step-description">{step.description}</div>
-                                      {step.prerequisites.length > 0 && (
-                                        <div class="step-prereqs">
-                                          Prerequisites: {step.prerequisites.join(', ')}
-                                        </div>
-                                      )}
-                                      {step.outputs.length > 0 && (
-                                        <div class="step-outputs">
-                                          Outputs: {step.outputs.join(', ')}
-                                        </div>
-                                      )}
-                                    </li>
-                                  )}
-                                </For>
-                              </ol>
-                            </div>
+                        (() => {
+                          const guide = hasIncrementalData ? deploymentGuide() : (r as MultiContractResult)?.deploymentGuide;
+                          if (!guide) return null;
 
-                            {(r as MultiContractResult).deploymentGuide.warnings.length > 0 && (
-                              <div class="deployment-warnings">
-                                <strong>Warnings:</strong>
-                                <ul>
-                                  <For each={(r as MultiContractResult).deploymentGuide.warnings}>
-                                    {(warning) => <li class="warning-item">{warning}</li>}
-                                  </For>
-                                </ul>
-                              </div>
-                            )}
+                          return (
+                            <details class="detail-section">
+                              <summary class="detail-summary">Deployment Guide</summary>
+                              <div class="deployment-guide">
+                                <div class="deployment-steps">
+                                  <strong>Deployment Steps:</strong>
+                                  <ol>
+                                    <For each={guide.steps}>
+                                      {(step) => (
+                                        <li>
+                                          <div class="step-description">{step.description}</div>
+                                          {step.prerequisites.length > 0 && (
+                                            <div class="step-prereqs">
+                                              Prerequisites: {step.prerequisites.join(', ')}
+                                            </div>
+                                          )}
+                                          {step.outputs.length > 0 && (
+                                            <div class="step-outputs">
+                                              Outputs: {step.outputs.join(', ')}
+                                            </div>
+                                          )}
+                                        </li>
+                                      )}
+                                    </For>
+                                  </ol>
+                                </div>
 
-                            {(r as MultiContractResult).deploymentGuide.testingNotes.length > 0 && (
-                              <div class="deployment-testing">
-                                <strong>Testing Notes:</strong>
-                                <ul>
-                                  <For each={(r as MultiContractResult).deploymentGuide.testingNotes}>
-                                    {(note) => <li>{note}</li>}
-                                  </For>
-                                </ul>
+                                {guide.warnings.length > 0 && (
+                                  <div class="deployment-warnings">
+                                    <strong>Warnings:</strong>
+                                    <ul>
+                                      <For each={guide.warnings}>
+                                        {(warning) => <li class="warning-item">{warning}</li>}
+                                      </For>
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {guide.testingNotes.length > 0 && (
+                                  <div class="deployment-testing">
+                                    <strong>Testing Notes:</strong>
+                                    <ul>
+                                      <For each={guide.testingNotes}>
+                                        {(note) => <li>{note}</li>}
+                                      </For>
+                                    </ul>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                        </details>
+                            </details>
+                          );
+                        })()
                       ) : (
                         // Artifact for single contract
-                        (r as SingleContractResult).artifact && (
+                        r && (r as SingleContractResult).artifact && (
                           <details class="detail-section">
                             <summary class="detail-summary">Compiled Artifact</summary>
                             <div class="code-container">

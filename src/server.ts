@@ -1004,6 +1004,8 @@ Use your best judgment. Include deployment order and parameter sources for multi
     let savedDeploymentGuide: any = null; // Track deployment guide from first attempt
     let originalContractOrder: string[] = []; // Track original order from attempt 1
     let contractAttempts: Map<string, number> = new Map(); // Track per-contract attempt numbers
+    let sentContracts: Set<string> = new Set(); // Track which contracts have been sent via contract_ready
+    let totalExpectedContracts = 0; // Total number of contracts expected
 
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
 
@@ -1071,7 +1073,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       // After first attempt, mark Phase 2 complete and start Phase 3
       if (attemptNumber === 1) {
         sendEvent('phase2_complete', { message: 'Code generation complete' });
-        sendEvent('phase3_start', { message: 'Validating with CashScript compiler...' });
+        sendEvent('phase3_start', { message: 'Validating contracts... You\'ll be redirected to results as soon as we have something to show. We\'ll keep working on the rest in the background.' });
 
         // Detect and save contract mode from first attempt
         isMultiContractMode = isMultiContractResponse(parsed);
@@ -1079,10 +1081,14 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           savedDeploymentGuide = parsed.deploymentGuide;
           // Save original order of contract names from first attempt
           originalContractOrder = parsed.contracts.map((c: any) => c.name);
+          // Set total expected contracts
+          totalExpectedContracts = parsed.contracts.length;
           // Initialize attempt tracking (all start at attempt 1)
           parsed.contracts.forEach((c: any) => {
             contractAttempts.set(c.name, 1);
           });
+        } else if (!isMultiContractMode) {
+          totalExpectedContracts = 1;
         }
       } else if (attemptNumber > 1 && isMultiContractMode) {
         // Retry attempt: merge saved valid contracts with newly fixed contracts
@@ -1147,6 +1153,25 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           contracts: contractStatus,
           isMultiContract: true
         });
+
+        // Send contract_ready events for newly validated contracts
+        for (const contract of parsed.contracts) {
+          if (contract.validated && !sentContracts.has(contract.name)) {
+            const contractReadyData: any = {
+              contract: contract,
+              totalExpected: totalExpectedContracts,
+              readySoFar: sentContracts.size + 1
+            };
+
+            // Include deployment guide only with the FIRST contract
+            if (sentContracts.size === 0 && savedDeploymentGuide) {
+              contractReadyData.deploymentGuide = savedDeploymentGuide;
+            }
+
+            sendEvent('contract_ready', contractReadyData);
+            sentContracts.add(contract.name);
+          }
+        }
       } else {
         const validation = validateContract(parsed.primaryContract);
         validationPassed = validation.valid;
@@ -1163,6 +1188,22 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           parsed.validated = true;
           parsed.bytecodeSize = validation.bytecodeSize;
           parsed.artifact = validation.artifact;
+
+          // Send contract_ready event for single contract
+          if (!sentContracts.has('primary')) {
+            sendEvent('contract_ready', {
+              contract: {
+                name: 'Primary Contract',
+                code: parsed.primaryContract,
+                validated: true,
+                bytecodeSize: parsed.bytecodeSize,
+                artifact: parsed.artifact
+              },
+              totalExpected: 1,
+              readySoFar: 1
+            });
+            sentContracts.add('primary');
+          }
         }
       }
 
