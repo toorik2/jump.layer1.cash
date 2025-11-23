@@ -424,13 +424,10 @@ export default function App() {
       );
 
       if (contractsToHighlight.length > 0) {
-        console.log('[Jump] Highlighting', contractsToHighlight.length, 'new contracts');
-
         // Mark all as in-progress before starting async work
         contractsToHighlight.forEach(c => highlightingInProgress.add(c.id));
 
         for (const contract of contractsToHighlight) {
-          console.log('[Jump] Syntax highlighting contract:', contract.name, 'code length:', contract.code.length);
           if (!contract.id) {
             console.error('[Jump] Contract missing id field:', contract);
             throw new Error(`Contract missing id field: ${contract.name}`);
@@ -446,11 +443,9 @@ export default function App() {
               lang: 'javascript',
               theme: 'dark-plus'
             });
-            console.log('[Jump] ✓ Generated HTML length:', html.length, 'for contract:', contract.id);
           } catch (error) {
             // Fallback: If Shiki fails (large contract, memory limit, etc.), use plain text
             console.error('[Jump] ✗ Shiki highlighting failed for contract:', contract.id, error);
-            console.log('[Jump] Using plain text fallback for large contract');
             html = `<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(contract.code)}</code></pre>`;
           }
 
@@ -463,8 +458,6 @@ export default function App() {
           // Remove from in-progress tracking
           highlightingInProgress.delete(contract.id);
         }
-
-        console.log('[Jump] Contract highlighting complete. Total highlighted:', Object.keys(contractHighlightedHTML()).length);
       }
     }
   });
@@ -522,17 +515,14 @@ export default function App() {
         setContractHighlightedHTML(contractHtmls);
       } else {
         // Single contract response
-        console.log('[Jump] Highlighting single contract, code length:', r.primaryContract.length);
         let html: string;
         try {
           html = await codeToHtml(r.primaryContract, {
             lang: 'javascript',
             theme: 'dark-plus'
           });
-          console.log('[Jump] ✓ Single contract highlighted, HTML length:', html.length);
         } catch (error) {
           console.error('[Jump] ✗ Shiki highlighting failed for single contract:', error);
-          console.log('[Jump] Using plain text fallback for large single contract');
           html = `<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(r.primaryContract)}</code></pre>`;
         }
         setHighlightedHTML(html);
@@ -574,14 +564,10 @@ export default function App() {
   });
 
   const handleConvert = async () => {
-    console.log('[Jump] Starting conversion with SSE...');
     const contract = evmContract().trim();
     if (!contract) {
-      console.log('[Jump] No contract provided');
       return;
     }
-
-    console.log(`[Jump] Contract length: ${contract.length} characters`);
 
     // Abort any existing controller before creating a new one
     const existingController = currentAbortController();
@@ -664,33 +650,26 @@ export default function App() {
             const data = JSON.parse(line.substring(5).trim());
             const eventType = currentEventType || 'unknown';  // Use saved event type
 
-            console.log(`[Jump] SSE event: ${eventType}`, data);
-
             // Ignore stale events if user clicked "Start Over"
             if (!loading()) {
-              console.log('[Jump] Ignoring stale event - user clicked Start Over');
               continue;
             }
 
             switch (eventType) {
               case 'phase1_start':
                 setCurrentPhase(1);
-                console.log('[Jump] Phase 1: Semantic analysis started');
                 break;
 
               case 'phase1_complete':
                 setCurrentPhase(2);
-                console.log('[Jump] Phase 1: Complete');
                 break;
 
               case 'phase2_start':
                 setCurrentPhase(2);
-                console.log('[Jump] Phase 2: Code generation started');
                 break;
 
               case 'phase3_start':
                 setCurrentPhase(3);
-                console.log('[Jump] Phase 3: Validation started');
                 break;
 
               case 'validation':
@@ -720,11 +699,9 @@ export default function App() {
                   setContractAttempts(attempts);
                   setPendingContracts(pending);
                 }
-                console.log('[Jump] Phase 3: Validation', data);
                 break;
 
               case 'contract_ready':
-                console.log('[Jump] Contract ready!', data);
                 // Add validated contract
                 setValidatedContracts(prev => [...prev, data.contract]);
                 // Update deployment guide if present
@@ -745,15 +722,12 @@ export default function App() {
                 break;
 
               case 'phase2_complete':
-                console.log('[Jump] Phase 2: Complete');
                 break;
 
               case 'phase3_complete':
-                console.log('[Jump] Phase 3: Complete');
                 break;
 
               case 'done':
-                console.log('[Jump] Conversion complete!', data);
                 setResult(data);
                 setAllComplete(true);
                 setLoading(false);
@@ -771,7 +745,6 @@ export default function App() {
     } catch (err) {
       // Handle abort separately - not an error, user clicked "Start Over"
       if (err instanceof Error && err.name === 'AbortError') {
-        console.log('[Jump] Conversion aborted by user (Start Over clicked)');
         return;
       }
 
@@ -1023,11 +996,6 @@ export default function App() {
 
                         // Get highlighting HTML (may be empty if still in progress)
                         const highlightedHtml = contractHighlightedHTML()[contract.id];
-
-                        // Only log successful renders, not the expected "waiting for highlight" states
-                        if (highlightedHtml) {
-                          console.log('[Jump] Rendering contract:', contract.id, 'HTML length:', highlightedHtml.length);
-                        }
 
                         return (
                           <>

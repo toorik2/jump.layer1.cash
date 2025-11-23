@@ -543,7 +543,6 @@ function validateMultiContractResponse(
       // Trust the existing validation status, don't re-validate
       if (contract.validated) {
         validCount++;
-        console.log(`[Validation] Skipping re-validation of already-sent contract "${contract.name}"`);
       } else {
         // This shouldn't happen - already-sent contracts should be validated
         console.warn(`[Validation] WARNING: Already-sent contract "${contract.name}" has validated=false!`);
@@ -692,7 +691,6 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   // Listen on 'res' (response), not 'req' (request) - SSE keeps response stream open
   let clientDisconnected = false;
   res.on('close', () => {
-    console.log('[Conversion] Client disconnected - aborting processing');
     clientDisconnected = true;
   });
 
@@ -700,7 +698,6 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   const sendEvent = (event: string, data: any) => {
     // Check if response stream is still writable
     if (!res.writable) {
-      console.log(`[SSE] Cannot send event '${event}' - stream not writable (client disconnected)`);
       return;
     }
 
@@ -717,7 +714,6 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   // Helper to safely end the response stream
   const endResponse = () => {
     if (!res.writable) {
-      console.log('[SSE] Response already closed, skipping res.end()');
       return;
     }
 
@@ -734,7 +730,6 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   let sentContracts = new Set<string>();
 
   try {
-    console.log('[Conversion] Received streaming conversion request');
     const { contract } = req.body;
 
     // Validate input
@@ -748,7 +743,6 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
 
     // Log conversion start
     conversionId = await logConversionStart(metadata, contract);
-    console.log(`[Conversion] Started with ID ${conversionId}`);
 
     // ========================================
     // PHASE 1: SEMANTIC ANALYSIS
@@ -761,7 +755,6 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     try {
       // Check if client disconnected before expensive Phase 1 API call
       if (clientDisconnected) {
-        console.log('[Conversion] Aborting Phase 1 - client disconnected');
         return;
       }
 
@@ -1123,7 +1116,6 @@ Use your best judgment. Include deployment order and parameter sources for multi
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
       // Check if client disconnected
       if (clientDisconnected) {
-        console.log('[Conversion] Aborting retry loop - client disconnected');
         return;
       }
 
@@ -1144,7 +1136,6 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
 
       // Check if client disconnected before expensive Phase 2 API call
       if (clientDisconnected) {
-        console.log('[Conversion] Aborting Phase 2 - client disconnected');
         return;
       }
 
@@ -1236,7 +1227,6 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
             constructorParams: contract.constructorParams ? [...contract.constructorParams] : []
           };
           contractMap.set(contract.name, contractCopy);
-          console.log(`[Merge] Preserving already-validated contract "${contract.name}" (deep copy)`);
         }
 
         // Add/replace with newly fixed contracts
@@ -1247,7 +1237,6 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
             // Don't overwrite - keep the validated version from savedValidContracts
           } else {
             contractMap.set(fixedContract.name, fixedContract);
-            console.log(`[Merge] Adding newly-fixed contract "${fixedContract.name}"`);
           }
         }
 
@@ -1255,8 +1244,6 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         const mergedContracts = originalContractOrder
           .map(name => contractMap.get(name))
           .filter(c => c !== undefined); // Filter out any missing contracts
-
-        console.log(`[Merge] Merged ${mergedContracts.length} contracts (${savedValidContracts.length} preserved, ${fixedContracts.filter(fc => !savedValidContracts.some(c => c.name === fc.name)).length} newly fixed)`);
 
         // Reconstruct full multi-contract response
         parsed = {
@@ -1279,9 +1266,6 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         if (attemptNumber > 1) {
           // On retry attempts, preserve currently valid contracts before re-validation
           const currentlyValid = parsed.contracts.filter(c => c.validated);
-          if (currentlyValid.length > 0) {
-            console.log(`[Phase 3] Saving ${currentlyValid.length} currently valid contracts before validation (attempt ${attemptNumber})`);
-          }
         }
 
         // Pass sentContracts to skip re-validation of already-sent contracts
@@ -1388,7 +1372,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           cache_write_tokens: usage.cache_creation_input_tokens || 0
         },
         isMultiContract ? 'multi' : 'single'
-      ).catch(err => console.error('[Logging] Failed to log API call completion:', err));
+      ).catch(() => {});
 
       if (validationPassed) {
         // Store contracts in database
@@ -1486,9 +1470,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
     }
 
     // Send final result
-    logConversionComplete(conversionId, startTime, 'success', parsed.primaryContract, parsed.explanation).catch(err =>
-      console.error('[Logging] Failed to log conversion completion:', err)
-    );
+    logConversionComplete(conversionId, startTime, 'success', parsed.primaryContract, parsed.explanation).catch(() => {});
 
     sendEvent('done', parsed);
       endResponse();
@@ -1499,12 +1481,8 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     if (conversionId) {
-      logError('unknown_error', errorMessage, conversionId).catch(err =>
-        console.error('[Logging] Failed to log error:', err)
-      );
-      logConversionComplete(conversionId, startTime, 'error').catch(err =>
-        console.error('[Logging] Failed to log conversion completion:', err)
-      );
+      logError('unknown_error', errorMessage, conversionId).catch(() => {});
+      logConversionComplete(conversionId, startTime, 'error').catch(() => {});
     }
 
     // Only send error to client if they don't already have working contracts
@@ -1514,8 +1492,6 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         message: 'Internal server error',
         details: errorMessage
       });
-    } else {
-      console.log(`[Conversion] Suppressing error event - ${sentContracts.size} contracts already sent to client`);
     }
       endResponse();
   } finally {
