@@ -652,6 +652,13 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
+  // Detect client disconnect (e.g., user clicked "Start Over")
+  let clientDisconnected = false;
+  req.on('close', () => {
+    console.log('[Conversion] Client disconnected - aborting processing');
+    clientDisconnected = true;
+  });
+
   // Helper to send SSE events
   const sendEvent = (event: string, data: any) => {
     res.write(`event: ${event}\n`);
@@ -684,6 +691,12 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     let semanticSpecJSON: string;
 
     try {
+      // Check if client disconnected before expensive Phase 1 API call
+      if (clientDisconnected) {
+        console.log('[Conversion] Aborting Phase 1 - client disconnected');
+        return;
+      }
+
       semanticSpec = await executeSemanticAnalysis(conversionId, contract);
       semanticSpecJSON = JSON.stringify(semanticSpec, null, 2);
       sendEvent('phase1_complete', { message: 'Semantic analysis complete' });
@@ -1013,6 +1026,11 @@ Use your best judgment. Include deployment order and parameter sources for multi
     let totalExpectedContracts = 0; // Total number of contracts expected
 
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
+      // Check if client disconnected
+      if (clientDisconnected) {
+        console.log('[Conversion] Aborting retry loop - client disconnected');
+        return;
+      }
 
       const messageContent = attemptNumber === 1
         ? `SEMANTIC SPECIFICATION (what the contract must do):
@@ -1028,6 +1046,12 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
 
       const apiCallStartTime = Date.now();
       const apiCallId = await logApiCallStart(conversionId, attemptNumber, ANTHROPIC_CONFIG.phase2.model, ANTHROPIC_CONFIG.phase2.maxTokens, messageContent);
+
+      // Check if client disconnected before expensive Phase 2 API call
+      if (clientDisconnected) {
+        console.log('[Conversion] Aborting Phase 2 - client disconnected');
+        return;
+      }
 
       // Select schema based on attempt number and contract mode
       let selectedSchema;

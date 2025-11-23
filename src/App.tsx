@@ -301,6 +301,7 @@ export default function App() {
   const [allComplete, setAllComplete] = createSignal(false);
   const [contractAttempts, setContractAttempts] = createSignal<Map<string, number>>(new Map());
   const [isMultiContract, setIsMultiContract] = createSignal(false);
+  const [currentAbortController, setCurrentAbortController] = createSignal<AbortController | null>(null);
 
   // Sorted contracts: primary first, then helper, then state
   const sortedContracts = createMemo(() => {
@@ -392,6 +393,12 @@ export default function App() {
     setAllComplete(false);
     setContractAttempts(new Map());
     setIsMultiContract(false);
+    // Abort any ongoing SSE connection
+    const controller = currentAbortController();
+    if (controller) {
+      controller.abort();
+      setCurrentAbortController(null);
+    }
   };
 
   // Syntax highlighting for incremental contracts
@@ -502,6 +509,11 @@ export default function App() {
     }
 
     console.log(`[Jump] Contract length: ${contract.length} characters`);
+
+    // Create AbortController to allow cancellation
+    const abortController = new AbortController();
+    setCurrentAbortController(abortController);
+
     setLoading(true);
     setError('');
     setResult(null);
@@ -517,7 +529,8 @@ export default function App() {
       const response = await fetch(API_STREAM_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contract })
+        body: JSON.stringify({ contract }),
+        signal: abortController.signal
       });
 
       if (!response.ok || !response.body) {
@@ -573,6 +586,12 @@ export default function App() {
             const eventType = currentEventType || 'unknown';  // Use saved event type
 
             console.log(`[Jump] SSE event: ${eventType}`, data);
+
+            // Ignore stale events if user clicked "Start Over"
+            if (!loading()) {
+              console.log('[Jump] Ignoring stale event - user clicked Start Over');
+              continue;
+            }
 
             switch (eventType) {
               case 'phase1_start':
@@ -671,6 +690,12 @@ export default function App() {
         }
       }
     } catch (err) {
+      // Handle abort separately - not an error, user clicked "Start Over"
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('[Jump] Conversion aborted by user (Start Over clicked)');
+        return;
+      }
+
       console.error('[Jump] Conversion error:', err);
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(`Conversion failed: ${errorMessage}`);
