@@ -722,7 +722,7 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     }
 
     try {
-      endResponse();
+      res.end();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('[SSE] Failed to end response:', errorMsg);
