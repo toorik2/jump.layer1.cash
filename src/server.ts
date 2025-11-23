@@ -1492,6 +1492,10 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         message: 'Internal server error',
         details: errorMessage
       });
+    } else {
+      // Contracts were sent - send 'done' event so client knows we're finished
+      // Client already has contracts from contract_ready events, just needs completion signal
+      sendEvent('done', { partialSuccess: true });
     }
       endResponse();
   } finally {
