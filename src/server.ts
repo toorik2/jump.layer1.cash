@@ -729,6 +729,10 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     }
   };
 
+  // Track which contracts have been successfully sent to client
+  // Declared here so catch block can check if user already has working contracts
+  let sentContracts = new Set<string>();
+
   try {
     console.log('[Conversion] Received streaming conversion request');
     const { contract } = req.body;
@@ -1113,7 +1117,7 @@ Use your best judgment. Include deployment order and parameter sources for multi
     let savedDeploymentGuide: any = null; // Track deployment guide from first attempt
     let originalContractOrder: string[] = []; // Track original order from attempt 1
     let contractAttempts: Map<string, number> = new Map(); // Track per-contract attempt numbers
-    let sentContracts: Set<string> = new Set(); // Track which contracts have been sent via contract_ready
+    // sentContracts now declared at function scope (line 734) to be accessible in catch block
     let totalExpectedContracts = 0; // Total number of contracts expected
 
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
@@ -1503,10 +1507,16 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       );
     }
 
-    sendEvent('error', {
-      message: 'Internal server error',
-      details: errorMessage
-    });
+    // Only send error to client if they don't already have working contracts
+    // If contracts were successfully sent, retry failures are just background noise
+    if (sentContracts.size === 0) {
+      sendEvent('error', {
+        message: 'Internal server error',
+        details: errorMessage
+      });
+    } else {
+      console.log(`[Conversion] Suppressing error event - ${sentContracts.size} contracts already sent to client`);
+    }
       endResponse();
   } finally {
     activeConversions--;
