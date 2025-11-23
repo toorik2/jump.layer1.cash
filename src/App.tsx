@@ -1038,22 +1038,32 @@ export default function App() {
                       })()
                     ) : (
                       // Show single contract content
-                      <div class="code-container">
-                        <div class="code-block" innerHTML={highlightedHTML()} />
-                        <button
-                          class={`code-copy-btn ${copyStatus() === 'copied' ? 'copied' : copyStatus() === 'error' ? 'error' : ''}`}
-                          onClick={() => {
-                            const code = hasIncrementalData && validatedContracts()[0]
-                              ? validatedContracts()[0].code
-                              : (r as SingleContractResult)?.primaryContract;
-                            if (code) copyToClipboard(code);
-                          }}
-                          disabled={copyStatus() === 'copied'}
-                          title={copyStatus() === 'copied' ? 'Copied!' : 'Copy to clipboard'}
-                        >
-                          {copyStatus() === 'copied' ? <Check size={20} /> : copyStatus() === 'error' ? <X size={20} /> : <Copy size={20} />}
-                        </button>
-                      </div>
+                      (() => {
+                        // Use incremental data if available (contract_ready flow), otherwise legacy result()
+                        const html = hasIncrementalData && validatedContracts()[0]
+                          ? contractHighlightedHTML()[validatedContracts()[0].id]
+                          : highlightedHTML();
+
+                        const code = hasIncrementalData && validatedContracts()[0]
+                          ? validatedContracts()[0].code
+                          : (r as SingleContractResult)?.primaryContract;
+
+                        return (
+                          <div class="code-container">
+                            <div class="code-block" innerHTML={html} />
+                            <button
+                              class={`code-copy-btn ${copyStatus() === 'copied' ? 'copied' : copyStatus() === 'error' ? 'error' : ''}`}
+                              onClick={() => {
+                                if (code) copyToClipboard(code);
+                              }}
+                              disabled={copyStatus() === 'copied'}
+                              title={copyStatus() === 'copied' ? 'Copied!' : 'Copy to clipboard'}
+                            >
+                              {copyStatus() === 'copied' ? <Check size={20} /> : copyStatus() === 'error' ? <X size={20} /> : <Copy size={20} />}
+                            </button>
+                          </div>
+                        );
+                      })()
                     )}
                   </div>
 
