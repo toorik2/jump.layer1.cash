@@ -894,12 +894,12 @@ export default function App() {
               const isMulti = hasIncrementalData ? isMultiContract() : (r && isMultiContractResult(r));
               const contractsToDisplay = hasIncrementalData ? allContracts() : (isMulti && r ? sortedContracts() : []);
               const totalTabs = isMulti ? contractsToDisplay.length + 1 : 2; // +1 for "Original" tab
-              // Fix: Use >= instead of === to handle incremental contract loading
-              // When contracts arrive during retries, contractsToDisplay.length grows,
-              // but activeContractTab stays the same, causing wrong tab to display
+              // Fix: Use >= for both multi and single to handle Original button setting tab to 9999
+              // Multi: tab >= contractsToDisplay.length means Original
+              // Single: tab >= 1 means Original (tab 0 is the contract, tab 1+ is Original)
               const isOriginalTab = isMulti
                 ? activeContractTab() >= contractsToDisplay.length
-                : activeContractTab() === 1;
+                : activeContractTab() >= 1;
 
               return (
                 <>
@@ -932,13 +932,22 @@ export default function App() {
                       </For>
                     ) : (
                       // Single contract tab
-                      <button
-                        class={`contract-tab ${activeContractTab() === 0 ? 'active' : ''}`}
-                        onClick={() => setActiveContractTab(0)}
-                      >
-                        <span class="tab-name">CashScript</span>
-                        <span class="tab-status valid">✓</span>
-                      </button>
+                      (() => {
+                        // Get actual contract name from incremental data or use generic name
+                        const contractName = hasIncrementalData && validatedContracts()[0]
+                          ? validatedContracts()[0].name
+                          : 'CashScript';
+
+                        return (
+                          <button
+                            class={`contract-tab ${activeContractTab() === 0 ? 'active' : ''}`}
+                            onClick={() => setActiveContractTab(0)}
+                          >
+                            <span class="tab-name">{contractName}</span>
+                            <span class="tab-status valid">✓</span>
+                          </button>
+                        );
+                      })()
                     )}
 
                     {/* Original and Start over buttons on the right */}
