@@ -784,7 +784,7 @@ export default function App() {
                   <div class="loading-spinner"></div>
                   <span>Converting to CashScript...</span>
                 </div>
-                <p class="loading-estimate">Up to 5 minutes for multi-contract systems</p>
+                <p class="loading-estimate">~4 minutes for multi-contract systems</p>
 
                 <details class="loading-details">
                   <summary>What's happening behind the scenes?</summary>
