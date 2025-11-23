@@ -114,7 +114,7 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 | `constant` keyword | Constructor params | Immutable per UTXO instance |
 | `immutable` keyword | Constructor params | Same as constant - set at deployment |
 | `assert(condition)` | `require(condition);` | Only require() exists |
-| `revert("msg")` | `require(false);` | No explicit revert keyword |
+| `revert("msg")` | N/A | No explicit revert - use conditional require() instead. **NEVER use `require(false)` - it creates dead code** |
 | `tx.origin` | N/A | No transaction originator concept |
 | `storage` location | N/A | Stack-based execution, no storage |
 | `memory` location | N/A | Ephemeral stack, no memory allocation |

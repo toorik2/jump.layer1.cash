@@ -347,7 +347,7 @@ const outputSchema = {
         properties: {
           primaryContract: {
             type: "string",
-            description: "Complete CashScript contract code with pragma, documentation, and all functions"
+            description: "Complete production-ready CashScript contract code with pragma and all IMPLEMENTABLE functions (Solidity view/pure functions must be deleted entirely - do not create placeholders)"
           }
         },
         required: ["primaryContract"],
@@ -735,10 +735,13 @@ ${knowledgeBase}
 CRITICAL RULES:
 1. Always use "pragma cashscript ^0.13.0;" at the top of every CashScript contract.
 
-1a. NEVER create placeholder/stub/dummy contracts. EVERY contract MUST be production-ready.
-   - ❌ FORBIDDEN: function placeholder() { require(false); }
+1a. NEVER create placeholder/stub/dummy contracts or functions. EVERY contract and function MUST be production-ready.
+   - ❌ ABSOLUTELY FORBIDDEN: require(false) in ANY context whatsoever
+   - ❌ ABSOLUTELY FORBIDDEN: Functions that exist only for documentation purposes
+   - ❌ ABSOLUTELY FORBIDDEN: Comments like "Never actually called on-chain" or "documentation-only" or "Prevent execution"
    - ❌ FORBIDDEN: Empty contracts that just hold NFTs without real logic
    - If you cannot implement a contract's full logic, DO NOT create it as a placeholder
+   - If a Solidity function has no CashScript equivalent, DELETE it entirely - do NOT create a placeholder version
    - This is PRODUCTION CODE - users will deploy and use these contracts with real BCH
 
 2. EVERY function parameter you declare MUST be used in the function body.
@@ -751,11 +754,14 @@ CRITICAL RULES:
    - Solidity state variables that can be updated → CashScript MUST use covenant patterns
    - "Update" means: spend old UTXO, enforce output creates new UTXO with new constructor params
    - Use tx.outputs constraints to enforce recreation (see STATE VARIABLES section in reference)
-   - COMPLETELY OMIT "read" functions - they are IMPOSSIBLE in UTXO model
-     * Solidity view/pure functions → DELETE entirely from CashScript
-     * DO NOT create placeholder/stub functions (violates Rule 1a)
-     * Examples to DELETE: getBalance(), viewData(), currentState()
-     * Reading is done off-chain by inspecting constructor parameters
+   - Solidity view/pure functions MUST BE COMPLETELY DELETED - do NOT convert them to CashScript
+     * ❌ WRONG: Creating a function with require(false) to "document" the view function
+     * ❌ WRONG: Creating a viewHelper() or queryProposal() function with comments saying "documentation-only"
+     * ❌ WRONG: Creating ANY placeholder/stub version of a view function
+     * ✅ CORRECT: Complete deletion - the function simply doesn't exist in the CashScript output
+     * Examples to DELETE ENTIRELY: getBalance(), viewData(), currentState(), viewHelper(), queryProposal(), queryData()
+     * Reading is done off-chain by inspecting constructor parameters - NO on-chain function needed
+     * UTXO model makes read functions IMPOSSIBLE - deletion is the ONLY correct conversion
 
 4. For DATA STORAGE, use NFT commitments, NOT OP_RETURN.
    - OP_RETURN is provably unspendable (funds burned) - use ONLY for event logging
@@ -898,6 +904,27 @@ CRITICAL RULES:
     if (amount <= maxValue) { }                   // ✅ Valid for value comparisons
 
     The >= restriction ONLY applies to tx.time and this.age comparisons.
+
+22. ANTI-PATTERNS - NEVER DO THESE:
+    These patterns will cause immediate compilation failure or broken contracts:
+
+    ❌ FORBIDDEN: function viewHelper() { require(false); }
+       Reason: Placeholder function with require(false) - violates Rule 1a
+
+    ❌ FORBIDDEN: function queryData() { require(false); }
+       Reason: Documentation-only function - violates Rule 1a
+
+    ❌ FORBIDDEN: function queryProposal() { /* Never actually called on-chain */ require(false); }
+       Reason: Comment suggesting dead code + require(false) - violates Rule 1a
+
+    ❌ FORBIDDEN: // Prevent execution - documentation-only
+       Reason: Any comment suggesting placeholder or non-production code
+
+    ✅ CORRECT: If a Solidity function cannot be converted to CashScript, DELETE it entirely
+    ✅ CORRECT: Only create functions that perform actual on-chain validation logic
+    ✅ CORRECT: Every function must have real business logic that validates transaction constraints
+
+    Remember: This is production code that users will deploy with real BCH. No placeholders, ever.
 
 DOCUMENTATION SCALING - MATCH OUTPUT VERBOSITY TO INPUT COMPLEXITY:
 - Simple contracts (constants, basic getters, trivial logic) → Minimal code only

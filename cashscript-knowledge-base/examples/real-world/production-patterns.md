@@ -1,5 +1,9 @@
 # Real-World CashScript Production Patterns
 
+**⚠️ IMPORTANT**: All helper functions in these examples (like `calculateOutput()`, `getCurrentPrice()`, `getProposalDeadline()`) are **LEGITIMATE INTERNAL HELPER FUNCTIONS** that are called by other functions within the same contract. They are NOT placeholders, stubs, or documentation-only functions. Every function shown here is production code that executes on-chain as part of the contract's validation logic.
+
+**DO NOT create functions that exist only for documentation purposes.** If a Solidity function cannot be implemented in CashScript (like view/pure functions), DELETE it entirely from the conversion. Never use `require(false)` or create placeholder functions.
+
 ## Overview
 
 This document showcases production-ready CashScript patterns used in real Bitcoin Cash applications. These examples demonstrate best practices, security considerations, and practical implementations.
