@@ -13,14 +13,9 @@ import {
   logConversionComplete,
   logApiCallStart,
   logApiCallComplete,
-  logAlternatives,
-  logConsiderations,
-  logValidationResult,
-  logRetryAttempt,
-  logError,
 } from './services/logging.js';
 import type { SemanticSpecification } from './types/semantic-spec.js';
-import { ANTHROPIC_CONFIG, SERVER_CONFIG, calculateCost } from './config.js';
+import { ANTHROPIC_CONFIG, SERVER_CONFIG } from './config.js';
 
 const app = express();
 app.use(express.json({ limit: '50kb' })); // Explicit size limit for abuse protection
@@ -31,10 +26,6 @@ app.use(express.static('dist'));
 const anthropic = new Anthropic({
   apiKey: ANTHROPIC_CONFIG.apiKey
 });
-
-// Preamble message for initial conversion attempts
-// Explicitly connects the system prompt (rules, knowledge base) to the user's Solidity code
-const CONVERSION_PREAMBLE = "Based on the CashScript language reference and conversion rules provided above, convert the following Solidity smart contract to CashScript:";
 
 let knowledgeBase = '';
 
@@ -143,13 +134,6 @@ interface DeploymentGuide {
 interface MultiContractResponse {
   contracts: ContractInfo[];
   deploymentGuide: DeploymentGuide;
-}
-
-interface SingleContractResponse {
-  primaryContract: string;
-  validated?: boolean;
-  bytecodeSize?: number;
-  artifact?: any;
 }
 
 function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
@@ -592,7 +576,7 @@ async function executeSemanticAnalysis(
     model: ANTHROPIC_CONFIG.phase1.model,
     max_tokens: ANTHROPIC_CONFIG.phase1.maxTokens,
     system: SEMANTIC_ANALYSIS_PROMPT,
-    betas: ANTHROPIC_CONFIG.betas,
+    betas: [...ANTHROPIC_CONFIG.betas],
     output_format: semanticSpecSchema,
     messages: [{
       role: 'user',
@@ -694,35 +678,21 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     clientDisconnected = true;
   });
 
-  // Helper to send SSE events (safe - checks if stream is writable)
+  // Helper to send SSE events - throws on error (fail loud)
   const sendEvent = (event: string, data: any) => {
-    // Check if response stream is still writable
     if (!res.writable) {
-      return;
+      throw new Error('AbortError: Client disconnected');
     }
-
-    try {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
-    } catch (error) {
-      // Stream closed mid-write - log but don't crash
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error(`[SSE] Failed to send event '${event}':`, errorMsg);
-    }
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  // Helper to safely end the response stream
+  // Helper to end response stream - throws on error (fail loud)
   const endResponse = () => {
     if (!res.writable) {
-      return;
+      throw new Error('AbortError: Client disconnected');
     }
-
-    try {
-      res.end();
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[SSE] Failed to end response:', errorMsg);
-    }
+    res.end();
   };
 
   // Track which contracts have been successfully sent to client
@@ -742,7 +712,7 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     const metadata = req.metadata!;
 
     // Log conversion start
-    conversionId = await logConversionStart(metadata, contract);
+    conversionId = logConversionStart(metadata, contract);
 
     // ========================================
     // PHASE 1: SEMANTIC ANALYSIS
@@ -755,7 +725,7 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     try {
       // Check if client disconnected before expensive Phase 1 API call
       if (clientDisconnected) {
-        return;
+        throw new Error('AbortError: Client disconnected');
       }
 
       semanticSpec = await executeSemanticAnalysis(conversionId, contract);
@@ -1116,7 +1086,7 @@ Use your best judgment. Include deployment order and parameter sources for multi
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
       // Check if client disconnected
       if (clientDisconnected) {
-        return;
+        throw new Error('AbortError: Client disconnected');
       }
 
       const messageContent = attemptNumber === 1
@@ -1132,11 +1102,11 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         : retryMessage;
 
       const apiCallStartTime = Date.now();
-      const apiCallId = await logApiCallStart(conversionId, attemptNumber, ANTHROPIC_CONFIG.phase2.model, ANTHROPIC_CONFIG.phase2.maxTokens, messageContent);
+      const apiCallId = logApiCallStart(conversionId, attemptNumber, messageContent);
 
       // Check if client disconnected before expensive Phase 2 API call
       if (clientDisconnected) {
-        return;
+        throw new Error('AbortError: Client disconnected');
       }
 
       // Select schema based on attempt number and contract mode
@@ -1159,7 +1129,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
             cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl }
           }
         ],
-        betas: ANTHROPIC_CONFIG.betas,
+        betas: [...ANTHROPIC_CONFIG.betas],
         output_format: selectedSchema,
         messages: [
           {
@@ -1181,7 +1151,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           message: 'Response truncated - contract too complex',
           details: parseError instanceof Error ? parseError.message : String(parseError)
         });
-      endResponse();
+        endResponse();
         return;
       }
 
@@ -1261,20 +1231,13 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           contract_count: parsed.contracts.length
         });
 
-        // CRITICAL FIX: Save valid contracts BEFORE validation to prevent corruption
-        // If validation mutates contract objects, we need a clean copy saved first
-        if (attemptNumber > 1) {
-          // On retry attempts, preserve currently valid contracts before re-validation
-          const currentlyValid = parsed.contracts.filter(c => c.validated);
-        }
-
         // Pass sentContracts to skip re-validation of already-sent contracts
         const multiValidation = validateMultiContractResponse(parsed, sentContracts);
         validationPassed = multiValidation.allValid;
         validationError = multiValidation.firstError;
 
         // Build contract status list for display during retries
-        const contractStatus = parsed.contracts.map(c => ({
+        const contractStatus = parsed.contracts.map((c: ContractInfo) => ({
           name: c.name,
           validated: c.validated || false,
           attempt: contractAttempts.get(c.name) || attemptNumber // Include per-contract attempt number
@@ -1355,10 +1318,10 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       // Save valid contracts after validation for use in retries
       if (isMultiContract && !validationPassed) {
         // Save valid contracts to avoid regenerating them in retries
-        savedValidContracts = parsed.contracts.filter(c => c.validated);
+        savedValidContracts = parsed.contracts.filter((c: ContractInfo) => c.validated);
       }
 
-      // Log API call
+      // Log API call - let errors propagate (fail loud)
       logApiCallComplete(
         apiCallId,
         apiCallStartTime,
@@ -1372,7 +1335,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           cache_write_tokens: usage.cache_creation_input_tokens || 0
         },
         isMultiContract ? 'multi' : 'single'
-      ).catch(() => {});
+      );
 
       if (validationPassed) {
         // Store contracts in database
@@ -1436,12 +1399,12 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       // Build retry message for next attempt with MINIMAL CHANGE instructions
       // Include current contract code so AI can make targeted fixes instead of rewriting from scratch
       if (isMultiContract) {
-        const failedContracts = parsed.contracts.filter(c => !c.validated);
-        const failedContractNames = failedContracts.map(c => c.name).join(', ');
+        const failedContracts = parsed.contracts.filter((c: ContractInfo) => !c.validated);
+        const failedContractNames = failedContracts.map((c: ContractInfo) => c.name).join(', ');
 
         retryMessage = `Fix ONLY the specific compilation errors in the following ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}:\n\n`;
 
-        failedContracts.forEach(c => {
+        failedContracts.forEach((c: ContractInfo) => {
           retryMessage += `CONTRACT: ${c.name}\n`;
           retryMessage += `CURRENT CODE:\n${c.code}\n\n`;
           retryMessage += `COMPILATION ERROR:\n${c.validationError}\n\n`;
@@ -1469,8 +1432,8 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
       }
     }
 
-    // Send final result
-    logConversionComplete(conversionId, startTime, 'success', parsed.primaryContract, parsed.explanation).catch(() => {});
+    // Send final result - let errors propagate (fail loud)
+    logConversionComplete(conversionId, startTime, 'success');
 
     sendEvent('done', parsed);
       endResponse();
@@ -1481,8 +1444,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     if (conversionId) {
-      logError('unknown_error', errorMessage, conversionId).catch(() => {});
-      logConversionComplete(conversionId, startTime, 'error').catch(() => {});
+      logConversionComplete(conversionId, startTime, 'error');
     }
 
     // Only send error to client if they don't already have working contracts

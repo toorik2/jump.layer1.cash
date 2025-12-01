@@ -1,5 +1,15 @@
 # jump.layer1.cash - EVM to CashScript Converter
 
+## Prime Directives (ALWAYS APPLY)
+
+1. **No placeholders.** Write real, production-ready code only.
+2. **Single path.** One solution, no alternate approaches in the same code.
+3. **Fail loud.** No fallbacks. Errors must be visible and immediate.
+4. **Simplify ruthlessly.** Cut everything that isn't essential.
+5. **No code is the best code.** Delete before adding. Question every line.
+
+---
+
 ## Project Overview
 Web application that converts EVM smart contracts to CashScript.
 

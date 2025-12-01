@@ -9,25 +9,19 @@ const DB_PATH = join(DB_DIR, 'conversions.db');
 let db: Database.Database;
 
 export function initializeDatabase(): Database.Database {
-  // Ensure data directory exists
   if (!existsSync(DB_DIR)) {
     mkdirSync(DB_DIR, { recursive: true });
   }
 
   db = new Database(DB_PATH);
-
-  // Enable WAL mode for better concurrent access
   db.pragma('journal_mode = WAL');
-
   createTables();
-
   console.log(`[Database] Initialized at ${DB_PATH}`);
-
   return db;
 }
 
 function createTables() {
-  // 1. CONVERSIONS - Root conversion session
+  // CONVERSIONS - Root conversion session
   db.exec(`
     CREATE TABLE IF NOT EXISTS conversions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,7 +39,7 @@ function createTables() {
     )
   `);
 
-  // 2. API_ATTEMPTS - Each of 1-10 retry attempts
+  // API_ATTEMPTS - Each retry attempt
   db.exec(`
     CREATE TABLE IF NOT EXISTS api_attempts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +61,7 @@ function createTables() {
     )
   `);
 
-  // 3. CONTRACTS - Individual CashScript contracts produced
+  // CONTRACTS - Individual CashScript contracts produced
   db.exec(`
     CREATE TABLE IF NOT EXISTS contracts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,74 +81,7 @@ function createTables() {
     )
   `);
 
-  // 4. CONTRACT_DEPENDENCIES - Multi-contract relationship graph
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS contract_dependencies (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      contract_id INTEGER NOT NULL,
-      depends_on_contract_id INTEGER NOT NULL,
-      dependency_type TEXT CHECK(dependency_type IN ('parameter', 'call', 'state', 'deployment')),
-      description TEXT,
-      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
-      FOREIGN KEY (depends_on_contract_id) REFERENCES contracts(id) ON DELETE CASCADE,
-      UNIQUE(contract_id, depends_on_contract_id, dependency_type)
-    )
-  `);
-
-  // 5. VALIDATIONS - Compilation results per contract per attempt
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS validations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      conversion_id INTEGER NOT NULL,
-      attempt_number INTEGER NOT NULL,
-      contract_id INTEGER,
-      validated_at TEXT NOT NULL,
-      is_valid INTEGER NOT NULL DEFAULT 0,
-      error_message TEXT,
-      error_category TEXT CHECK(error_category IN (
-        'unused_variable', 'type_error', 'syntax_error',
-        'logic_error', 'compilation_error', 'unknown'
-      )),
-      compiler_output TEXT,
-      FOREIGN KEY (conversion_id) REFERENCES conversions(id) ON DELETE CASCADE,
-      FOREIGN KEY (contract_id) REFERENCES contracts(id) ON DELETE CASCADE
-    )
-  `);
-
-  // 6. RETRY_PROGRESSION - Track how errors evolve across attempts
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS retry_progression (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      conversion_id INTEGER NOT NULL,
-      attempt_number INTEGER NOT NULL,
-      contracts_attempted INTEGER NOT NULL DEFAULT 0,
-      contracts_failed INTEGER NOT NULL DEFAULT 0,
-      primary_error_category TEXT,
-      error_resolved INTEGER NOT NULL DEFAULT 0,
-      resolution_method TEXT,
-      notes TEXT,
-      FOREIGN KEY (conversion_id) REFERENCES conversions(id) ON DELETE CASCADE,
-      UNIQUE(conversion_id, attempt_number)
-    )
-  `);
-
-  // 7. ERROR_PATTERNS - Aggregated error tracking for analytics
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS error_patterns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      error_category TEXT NOT NULL,
-      error_signature TEXT NOT NULL,
-      occurrence_count INTEGER NOT NULL DEFAULT 1,
-      retry_fix_count INTEGER NOT NULL DEFAULT 0,
-      retry_fix_rate REAL,
-      sample_error_message TEXT NOT NULL,
-      first_seen TEXT NOT NULL,
-      last_seen TEXT NOT NULL,
-      UNIQUE(error_category, error_signature)
-    )
-  `);
-
-  // 8. SEMANTIC_ANALYSES - Phase 1 semantic extraction results
+  // SEMANTIC_ANALYSES - Phase 1 semantic extraction results
   db.exec(`
     CREATE TABLE IF NOT EXISTS semantic_analyses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,32 +96,17 @@ function createTables() {
     )
   `);
 
-  // Create indexes for performance
+  // Indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversions_session ON conversions(session_id);
     CREATE INDEX IF NOT EXISTS idx_conversions_created ON conversions(created_at);
     CREATE INDEX IF NOT EXISTS idx_conversions_status ON conversions(final_status);
     CREATE INDEX IF NOT EXISTS idx_conversions_hash ON conversions(solidity_hash);
-
     CREATE INDEX IF NOT EXISTS idx_attempts_conversion ON api_attempts(conversion_id);
     CREATE INDEX IF NOT EXISTS idx_attempts_number ON api_attempts(attempt_number);
-
     CREATE INDEX IF NOT EXISTS idx_contracts_conversion ON contracts(conversion_id);
     CREATE INDEX IF NOT EXISTS idx_contracts_uuid ON contracts(contract_uuid);
     CREATE INDEX IF NOT EXISTS idx_contracts_role ON contracts(role);
-
-    CREATE INDEX IF NOT EXISTS idx_dependencies_contract ON contract_dependencies(contract_id);
-    CREATE INDEX IF NOT EXISTS idx_dependencies_depends ON contract_dependencies(depends_on_contract_id);
-
-    CREATE INDEX IF NOT EXISTS idx_validations_conversion ON validations(conversion_id);
-    CREATE INDEX IF NOT EXISTS idx_validations_contract ON validations(contract_id);
-    CREATE INDEX IF NOT EXISTS idx_validations_category ON validations(error_category);
-
-    CREATE INDEX IF NOT EXISTS idx_progression_conversion ON retry_progression(conversion_id);
-
-    CREATE INDEX IF NOT EXISTS idx_patterns_category ON error_patterns(error_category);
-    CREATE INDEX IF NOT EXISTS idx_patterns_signature ON error_patterns(error_signature);
-
     CREATE INDEX IF NOT EXISTS idx_semantic_conversion ON semantic_analyses(conversion_id);
   `);
 }
@@ -402,7 +314,7 @@ export function updateApiAttempt(id: number, updates: Partial<ApiAttemptRecord>)
 // CONTRACTS TABLE
 // ============================================================================
 
-export interface ContractRecord {
+interface ContractRecord {
   id?: number;
   conversion_id: number;
   contract_uuid: string;
@@ -444,234 +356,11 @@ export function insertContract(record: Omit<ContractRecord, 'id'>): number {
   return result.lastInsertRowid as number;
 }
 
-export function updateContract(id: number, updates: Partial<ContractRecord>): void {
-  const fields: string[] = [];
-  const values: any[] = [];
-
-  if (updates.bytecode_size !== undefined) {
-    fields.push('bytecode_size = ?');
-    values.push(updates.bytecode_size);
-  }
-  if (updates.is_validated !== undefined) {
-    fields.push('is_validated = ?');
-    values.push(updates.is_validated ? 1 : 0);
-  }
-
-  if (fields.length === 0) return;
-
-  values.push(id);
-  const stmt = db.prepare(`UPDATE contracts SET ${fields.join(', ')} WHERE id = ?`);
-  stmt.run(...values);
-}
-
-// ============================================================================
-// CONTRACT_DEPENDENCIES TABLE
-// ============================================================================
-
-export interface ContractDependencyRecord {
-  id?: number;
-  contract_id: number;
-  depends_on_contract_id: number;
-  dependency_type: 'parameter' | 'call' | 'state' | 'deployment';
-  description?: string;
-}
-
-export function insertContractDependency(record: Omit<ContractDependencyRecord, 'id'>): number {
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO contract_dependencies (
-      contract_id, depends_on_contract_id, dependency_type, description
-    ) VALUES (?, ?, ?, ?)
-  `);
-
-  const result = stmt.run(
-    record.contract_id,
-    record.depends_on_contract_id,
-    record.dependency_type,
-    record.description || null
-  );
-
-  return result.lastInsertRowid as number;
-}
-
-// ============================================================================
-// VALIDATIONS TABLE
-// ============================================================================
-
-export interface ValidationRecord {
-  id?: number;
-  conversion_id: number;
-  attempt_number: number;
-  contract_id?: number;
-  validated_at: string;
-  is_valid: boolean;
-  error_message?: string;
-  error_category?: 'unused_variable' | 'type_error' | 'syntax_error' | 'logic_error' | 'compilation_error' | 'unknown';
-  compiler_output?: string;
-}
-
-export function insertValidation(record: Omit<ValidationRecord, 'id'>): number {
-  const stmt = db.prepare(`
-    INSERT INTO validations (
-      conversion_id, attempt_number, contract_id, validated_at, is_valid,
-      error_message, error_category, compiler_output
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const result = stmt.run(
-    record.conversion_id,
-    record.attempt_number,
-    record.contract_id || null,
-    record.validated_at,
-    record.is_valid ? 1 : 0,
-    record.error_message || null,
-    record.error_category || null,
-    record.compiler_output || null
-  );
-
-  return result.lastInsertRowid as number;
-}
-
-// ============================================================================
-// RETRY_PROGRESSION TABLE
-// ============================================================================
-
-export interface RetryProgressionRecord {
-  id?: number;
-  conversion_id: number;
-  attempt_number: number;
-  contracts_attempted: number;
-  contracts_failed: number;
-  primary_error_category?: string;
-  error_resolved: boolean;
-  resolution_method?: string;
-  notes?: string;
-}
-
-export function insertRetryProgression(record: Omit<RetryProgressionRecord, 'id'>): number {
-  const stmt = db.prepare(`
-    INSERT OR REPLACE INTO retry_progression (
-      conversion_id, attempt_number, contracts_attempted, contracts_failed,
-      primary_error_category, error_resolved, resolution_method, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-
-  const result = stmt.run(
-    record.conversion_id,
-    record.attempt_number,
-    record.contracts_attempted,
-    record.contracts_failed,
-    record.primary_error_category || null,
-    record.error_resolved ? 1 : 0,
-    record.resolution_method || null,
-    record.notes || null
-  );
-
-  return result.lastInsertRowid as number;
-}
-
-// ============================================================================
-// ERROR_PATTERNS TABLE
-// ============================================================================
-
-export interface ErrorPatternRecord {
-  id?: number;
-  error_category: string;
-  error_signature: string;
-  occurrence_count: number;
-  retry_fix_count: number;
-  retry_fix_rate?: number;
-  sample_error_message: string;
-  first_seen: string;
-  last_seen: string;
-}
-
-export function recordErrorPattern(
-  category: string,
-  signature: string,
-  errorMessage: string,
-  wasFixedByRetry: boolean = false
-): void {
-  const now = new Date().toISOString();
-
-  const stmt = db.prepare(`
-    INSERT INTO error_patterns (
-      error_category, error_signature, occurrence_count, retry_fix_count,
-      sample_error_message, first_seen, last_seen
-    ) VALUES (?, ?, 1, ?, ?, ?, ?)
-    ON CONFLICT(error_category, error_signature) DO UPDATE SET
-      occurrence_count = occurrence_count + 1,
-      retry_fix_count = retry_fix_count + ?,
-      retry_fix_rate = CAST(retry_fix_count AS REAL) / occurrence_count,
-      last_seen = ?
-  `);
-
-  const fixCount = wasFixedByRetry ? 1 : 0;
-  stmt.run(category, signature, fixCount, errorMessage, now, now, fixCount, now);
-}
-
-// ============================================================================
-// ANALYTICS QUERIES
-// ============================================================================
-
-export function getConversionSuccessRate(): number {
-  const stmt = db.prepare(`
-    SELECT
-      CAST(SUM(CASE WHEN final_status = 'success' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as success_rate
-    FROM conversions
-    WHERE final_status IS NOT NULL
-  `);
-
-  const result = stmt.get() as { success_rate: number } | undefined;
-  return result?.success_rate || 0;
-}
-
-export function getRetryEffectiveness(): any {
-  const stmt = db.prepare(`
-    SELECT
-      attempt_number,
-      COUNT(*) as total_attempts,
-      SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful_attempts,
-      CAST(SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as success_rate
-    FROM api_attempts
-    GROUP BY attempt_number
-    ORDER BY attempt_number
-  `);
-
-  return stmt.all();
-}
-
-export function getErrorPatternStats(): any {
-  const stmt = db.prepare(`
-    SELECT
-      error_category,
-      COUNT(*) as pattern_count,
-      SUM(occurrence_count) as total_occurrences,
-      AVG(retry_fix_rate) as avg_fix_rate
-    FROM error_patterns
-    GROUP BY error_category
-    ORDER BY total_occurrences DESC
-  `);
-
-  return stmt.all();
-}
-
-export function getCacheSavingsTotal(): number {
-  const stmt = db.prepare(`
-    SELECT
-      SUM(cache_read_tokens * 0.30 / 1000000 * 0.9) as total_savings
-    FROM api_attempts
-    WHERE cache_read_tokens > 0
-  `);
-
-  const result = stmt.get() as { total_savings: number } | undefined;
-  return result?.total_savings || 0;
-}
-
 // ============================================================================
 // SEMANTIC_ANALYSES TABLE
 // ============================================================================
 
-export interface SemanticAnalysisRecord {
+interface SemanticAnalysisRecord {
   id?: number;
   conversion_id: number;
   analysis_json: string;
@@ -703,24 +392,9 @@ export function insertSemanticAnalysis(record: Omit<SemanticAnalysisRecord, 'id'
   return result.lastInsertRowid as number;
 }
 
-export function getSemanticAnalysis(conversionId: number): SemanticAnalysisRecord | undefined {
-  const stmt = db.prepare(`
-    SELECT * FROM semantic_analyses
-    WHERE conversion_id = ?
-    ORDER BY created_at DESC
-    LIMIT 1
-  `);
-
-  return stmt.get(conversionId) as SemanticAnalysisRecord | undefined;
-}
-
 // ============================================================================
 // DATABASE MANAGEMENT
 // ============================================================================
-
-export function getDatabase(): Database.Database {
-  return db;
-}
 
 export function closeDatabase(): void {
   if (db) {

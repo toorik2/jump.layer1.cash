@@ -27,27 +27,12 @@ export const ANTHROPIC_CONFIG = {
 
   // Prompt Caching
   cache: {
-    ttl: process.env.CACHE_TTL || '1h',
+    ttl: '1h' as const,
     type: 'ephemeral' as const,
   },
 
   // Beta Features
-  betas: ['structured-outputs-2025-11-13'] as const,
-} as const;
-
-// ============================================================================
-// PRICING CONFIGURATION (for cost tracking)
-// Claude Sonnet 4.5 pricing as of Jan 2025
-// ============================================================================
-
-export const PRICING = {
-  // Base rates per million tokens
-  inputTokensPerMTok: parseFloat(process.env.INPUT_COST_PER_MTOK || '3.0'),
-  outputTokensPerMTok: parseFloat(process.env.OUTPUT_COST_PER_MTOK || '15.0'),
-
-  // Cache multipliers
-  cacheWriteMultiplier: parseFloat(process.env.CACHE_WRITE_MULTIPLIER || '2.0'), // 2x = $6/MTok
-  cacheReadMultiplier: parseFloat(process.env.CACHE_READ_MULTIPLIER || '0.1'), // 0.1x = $0.30/MTok
+  betas: ['structured-outputs-2025-11-13'],
 } as const;
 
 // ============================================================================
@@ -100,42 +85,3 @@ function validateConfig() {
 
 // Validate on module load
 validateConfig();
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Calculate cost for an API call
- */
-export function calculateCost(usage: {
-  input_tokens: number;
-  output_tokens: number;
-  cache_creation_input_tokens?: number;
-  cache_read_input_tokens?: number;
-}): { inputCost: number; outputCost: number; totalCost: number } {
-  const inputCost = (
-    usage.input_tokens * PRICING.inputTokensPerMTok +
-    (usage.cache_creation_input_tokens || 0) * PRICING.inputTokensPerMTok * PRICING.cacheWriteMultiplier +
-    (usage.cache_read_input_tokens || 0) * PRICING.inputTokensPerMTok * PRICING.cacheReadMultiplier
-  ) / 1000000;
-
-  const outputCost = (usage.output_tokens * PRICING.outputTokensPerMTok) / 1000000;
-
-  return {
-    inputCost,
-    outputCost,
-    totalCost: inputCost + outputCost,
-  };
-}
-
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export default {
-  anthropic: ANTHROPIC_CONFIG,
-  pricing: PRICING,
-  server: SERVER_CONFIG,
-  calculateCost,
-} as const;

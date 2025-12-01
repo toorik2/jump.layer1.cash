@@ -285,7 +285,6 @@ export default function App() {
   const [activeContractTab, setActiveContractTab] = createSignal(0);
   const [currentPhase, setCurrentPhase] = createSignal(1);
   const [retryCount, setRetryCount] = createSignal(0);
-  const [maxRetries, setMaxRetries] = createSignal(10);
   const [validationDetails, setValidationDetails] = createSignal<{
     isMultiContract: boolean;
     validCount?: number;
@@ -298,7 +297,6 @@ export default function App() {
   const [pendingContracts, setPendingContracts] = createSignal<string[]>([]);
   const [deploymentGuide, setDeploymentGuide] = createSignal<any>(null);
   const [totalExpected, setTotalExpected] = createSignal(0);
-  const [allComplete, setAllComplete] = createSignal(false);
   const [contractAttempts, setContractAttempts] = createSignal<Map<string, number>>(new Map());
   const [isMultiContract, setIsMultiContract] = createSignal(false);
   const [currentAbortController, setCurrentAbortController] = createSignal<AbortController | null>(null);
@@ -390,14 +388,12 @@ export default function App() {
     setContractCopyStatus({});
     setCurrentPhase(1);
     setRetryCount(0);
-    setMaxRetries(10);
     setValidationDetails(null);
     // Clear incremental state
     setValidatedContracts([]);
     setPendingContracts([]);
     setDeploymentGuide(null);
     setTotalExpected(0);
-    setAllComplete(false);
     setContractAttempts(new Map());
     setIsMultiContract(false);
     // Abort any ongoing SSE connection
@@ -676,7 +672,6 @@ export default function App() {
                 setCurrentPhase(3);
                 // Update retry tracking for Phase 3 validation display
                 setRetryCount(data.attempt - 1);
-                setMaxRetries(data.maxAttempts);
                 // Store validation details for display
                 setValidationDetails({
                   isMultiContract: data.isMultiContract || false,
@@ -729,7 +724,6 @@ export default function App() {
 
               case 'done':
                 setResult(data);
-                setAllComplete(true);
                 setLoading(false);
                 break;
 
@@ -883,7 +877,6 @@ export default function App() {
               const r = result();
               const isMulti = hasIncrementalData ? isMultiContract() : (r && isMultiContractResult(r));
               const contractsToDisplay = hasIncrementalData ? allContracts() : (isMulti && r ? sortedContracts() : []);
-              const totalTabs = isMulti ? contractsToDisplay.length + 1 : 2; // +1 for "Original" tab
               // Fix: Use >= for both multi and single to handle Original button setting tab to 9999
               // Multi: tab >= contractsToDisplay.length means Original
               // Single: tab >= 1 means Original (tab 0 is the contract, tab 1+ is Original)
