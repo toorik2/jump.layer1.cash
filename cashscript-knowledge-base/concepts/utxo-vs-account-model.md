@@ -325,3 +325,165 @@ NOT:
 - ~~State transitions in-place~~
 - ~~Function calls between contracts~~
 - ~~Persistent memory~~
+
+## Solidity Multi-Contract Pattern Mappings
+
+When converting multi-contract Solidity systems, use these CashScript equivalents:
+
+### Contract Interaction Patterns
+
+| Solidity Pattern | CashScript Equivalent |
+|-----------------|----------------------|
+| `contractA.call(contractB)` | Multi-input transaction with both contracts |
+| Shared state between contracts | Shared token category or NFT commitment |
+| Factory pattern | Main+Sidecar with function contracts |
+| Library pattern | N/A - inline everything directly |
+| Proxy/upgradeable pattern | Conditionally-replicating covenant |
+| Interface/abstract contract | Contract constructor parameters |
+
+### Storage Pattern Mappings
+
+| Solidity Storage | CashScript Equivalent |
+|-----------------|----------------------|
+| `mapping(address => uint)` | NFT commitment with pubkeyhash + value |
+| `array[]` | Multiple UTXOs or serialized bytes |
+| `struct` | Structured NFT commitment bytes |
+| Global state variable | NFT commitment field |
+| Immutable variable | Contract constructor parameter |
+
+### Function Call Mappings
+
+| Solidity | CashScript |
+|----------|------------|
+| `external function()` | Separate contract in transaction |
+| `internal function()` | Inline code (no functions) |
+| `view function()` | Read from NFT commitment |
+| `payable function()` | Accept BCH in transaction |
+| Modifier | `require()` statements at function start |
+
+### Multi-Contract Architecture Translation
+
+**Solidity: Contract calls contract**
+```solidity
+contract A {
+    B otherContract;
+    function callB() {
+        otherContract.doSomething();
+    }
+}
+```
+
+**CashScript: Multi-input transaction**
+```cashscript
+// Contract A and B must BOTH be inputs in same transaction
+contract A(bytes32 contractBCategory) {
+    function interact() {
+        // Validate B is in transaction at known position
+        require(tx.inputs[1].tokenCategory == contractBCategory);
+
+        // B's contract will also validate its constraints
+        // Both must pass for transaction to succeed
+    }
+}
+```
+
+### Key Translation Rules
+
+1. **Every cross-contract call becomes a transaction structure**
+   - Caller and callee are both inputs
+   - Each validates its own constraints
+   - Transaction succeeds only if ALL pass
+
+2. **Every storage mapping becomes commitment bytes**
+   - Key = identifier byte(s)
+   - Value = serialized in commitment
+   - Lookups = byte.split() operations
+
+3. **Every modifier becomes require() guards**
+   - No separation between modifier and function
+   - All checks inline at function start
+
+4. **Every event becomes implicit**
+   - Transaction structure IS the event
+   - Input/output changes are observable
+   - No need for explicit event emission
+
+### Complete Translation Example
+
+**Solidity: Token with allowance**
+```solidity
+contract Token {
+    mapping(address => uint256) balances;
+    mapping(address => mapping(address => uint256)) allowances;
+
+    function transfer(address to, uint256 amount) {
+        require(balances[msg.sender] >= amount);
+        balances[msg.sender] -= amount;
+        balances[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) {
+        allowances[msg.sender][spender] = amount;
+    }
+}
+```
+
+**CashScript: Token with allowance (conceptual)**
+```cashscript
+// NOT directly translatable - requires architectural redesign
+// Option 1: Each user has their own NFT with balance commitment
+// Option 2: Central contract tracks via fungible tokens
+// Option 3: Allowance is separate approval NFT
+
+contract UserBalance(bytes32 tokenCategory) {
+    // Balance stored in NFT commitment: bytes6 balance + bytes20 owner
+    function transfer(int amount, bytes20 recipientPkh) {
+        // Parse current balance from commitment
+        bytes commitment = tx.inputs[0].nftCommitment;
+        int balance = int(commitment.split(6)[0]);
+        bytes20 owner = bytes20(commitment.split(6)[1]);
+
+        // Validate sender owns this UTXO
+        require(tx.inputs[1].lockingBytecode ==
+                new LockingBytecodeP2PKH(owner));
+
+        // Validate amount
+        require(amount > 0);
+        require(amount <= balance);
+
+        // Create output with reduced balance (or burn if zero)
+        int newBalance = balance - amount;
+        if (newBalance > 0) {
+            bytes newCommitment = bytes6(newBalance) + owner;
+            require(tx.outputs[0].nftCommitment == newCommitment);
+        }
+
+        // Create recipient output
+        bytes recipientCommitment = bytes6(amount) + recipientPkh;
+        require(tx.outputs[1].nftCommitment == recipientCommitment);
+    }
+}
+```
+
+### What Cannot Be Directly Translated
+
+| Solidity Feature | Why Impossible | Alternative |
+|-----------------|----------------|-------------|
+| Dynamic arrays | No loops over arbitrary length | Fixed-size structures |
+| Unbounded mappings | No iteration | Split into multiple UTXOs |
+| Reentrancy guards | No reentrancy possible | Not needed (UTXO consumed) |
+| `msg.sender` as trust | No inherent sender identity | Signature verification |
+| Contract creation | Cannot spawn contracts | Pre-deploy all contracts |
+| `selfdestruct` | Contracts are UTXOs | Simply don't replicate |
+
+### Best Practice: Design First, Code Second
+
+When converting multi-contract Solidity:
+
+1. **Identify state** - What mappings/arrays exist?
+2. **Map to UTXOs** - Each "record" = one UTXO?
+3. **Identify interactions** - Which contracts call which?
+4. **Design transaction templates** - What inputs/outputs for each operation?
+5. **Then write CashScript** - Code the constraints
+
+Don't try to "port" Solidity line-by-line. Redesign for UTXO model first.

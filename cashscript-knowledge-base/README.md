@@ -6,12 +6,16 @@ A comprehensive reference for CashScript smart contracts on Bitcoin Cash, includ
 
 ```
 cashscript-knowledge-base/
+├── concepts/                 # Core UTXO concepts (NEW)
+│   ├── utxo-vs-account-model.md    # EVM to CashScript translation
+│   └── multi-contract-architecture.md  # Multi-contract patterns
 ├── language/                 # CashScript language fundamentals
 │   ├── syntax/              # Basic syntax and structure
 │   ├── types/               # Data types and type system
 │   ├── functions/           # Built-in functions
 │   ├── globals/             # Global variables and constants
-│   └── operators/           # Operators and expressions
+│   ├── operators/           # Operators and expressions
+│   └── language-reference.md  # Comprehensive reference + design principles
 ├── sdk/                     # JavaScript/TypeScript SDK
 │   ├── compilation/         # Contract compilation
 │   ├── contracts/           # Contract instantiation
@@ -23,6 +27,8 @@ cashscript-knowledge-base/
 │   ├── intermediate/        # Intermediate examples
 │   ├── advanced/            # Advanced examples
 │   └── real-world/          # Production use cases
+│       ├── production-patterns.md   # Battle-tested patterns
+│       └── parityusd-analysis.md    # ParityUSD 26-contract analysis (NEW)
 ├── cashtokens/              # CashTokens integration
 │   ├── nft/                 # Non-fungible tokens
 │   ├── ft/                  # Fungible tokens
@@ -31,7 +37,7 @@ cashscript-knowledge-base/
 ├── protocol/                # Bitcoin Cash protocol
 │   └── upgrades/            # Network upgrades and CHIPs
 ├── best-practices/          # Best practices and patterns
-│   ├── security/            # Security considerations
+│   ├── security/            # Security considerations (updated)
 │   ├── performance/         # Performance optimization
 │   └── patterns/            # Common patterns
 └── reference/               # Reference documentation
@@ -76,6 +82,14 @@ cashscript-knowledge-base/
 - **TypeScript**: Enhanced type safety
 - **Performance**: Optimized transaction building
 
+## 🆕 Recent Additions (Dec 2025)
+
+- **Multi-Contract Architecture Guide**: Production patterns from ParityUSD analysis
+- **ParityUSD Case Study**: Deep analysis of 26-contract stablecoin system
+- **Contract Design Principles**: "What does this contract validate?" philosophy
+- **Enhanced Security Docs**: Output count limiting, 5-point covenant validation
+- **Solidity Translation Guide**: Pattern mappings for EVM-to-CashScript conversion
+
 ---
 
-*Last updated: 2026-05-16*
+*Last updated: 2025-12-01*

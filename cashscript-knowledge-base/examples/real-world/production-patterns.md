@@ -974,3 +974,363 @@ describe('Production Contract Tests', () => {
 ```
 
 These real-world patterns demonstrate how CashScript can be used to build sophisticated applications on Bitcoin Cash, from DeFi protocols to NFT marketplaces and governance systems. Each pattern includes security considerations, error handling, and practical implementation details suitable for production use.
+
+## ParityUSD-Derived Production Patterns
+
+The following patterns are derived from analysis of ParityUSD, a production stablecoin system with 26 contracts. See `parityusd-analysis.md` for the full analysis.
+
+### 14. Sidecar Contract Template
+
+When a contract needs to hold multiple token categories, use a sidecar to hold additional tokens:
+
+```cashscript
+pragma cashscript ^0.11.0;
+
+/*  --- TokenSidecar Immutable NFT State ---
+    none (validates relationship only)
+*/
+
+contract TokenSidecar() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Attach to main contract. Validates same-transaction origin.
+    //
+    //inputs:
+    //  0   MainContract              [NFT]       (from Main contract)
+    //  1   TokenSidecar              [NFT]       (from Sidecar contract - this)
+    //outputs:
+    //  0   MainContract              [NFT]       (to Main contract)
+    //  1   TokenSidecar              [NFT+FT]    (to Sidecar contract)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function attach() {
+        // Sidecar must be immediately after main contract
+        int mainIdx = this.activeInputIndex - 1;
+
+        // CRITICAL: Prove same-transaction origin
+        require(tx.inputs[this.activeInputIndex].outpointTransactionHash ==
+                tx.inputs[mainIdx].outpointTransactionHash);
+
+        // CRITICAL: Prove sequential output indices (created together)
+        require(tx.inputs[this.activeInputIndex].outpointIndex ==
+                tx.inputs[mainIdx].outpointIndex + 1);
+
+        // Self-replicate at dust value
+        require(tx.outputs[this.activeInputIndex].lockingBytecode ==
+                tx.inputs[this.activeInputIndex].lockingBytecode);
+        require(tx.outputs[this.activeInputIndex].value == 1000);
+    }
+}
+```
+
+**Key Insight**: The `outpointTransactionHash` equality proves both UTXOs originated from the same transaction, creating an unbreakable bond.
+
+### 15. Function Router Contract Template
+
+When a contract has many operations, split into function contracts authenticated by NFT identifier bytes:
+
+```cashscript
+pragma cashscript ^0.11.0;
+
+/*  --- MainRouter Mutable NFT State ---
+    bytes1 identifier = 0xFF           // Router identifier
+    bytes8 counter = 0x0000000000000000
+*/
+
+contract MainRouter(bytes32 systemTokenId) {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Route to appropriate function based on function NFT identifier.
+    //
+    //inputs:
+    //  0   MainRouter                [NFT]       (from Router contract - this)
+    //  1   FunctionNFT               [NFT]       (from appropriate function contract)
+    //  2   userBCH                   [BCH]       (from user)
+    //outputs:
+    //  0   MainRouter                [NFT]       (to Router contract)
+    //  1   FunctionNFT               [NFT]       (to function contract)
+    //  2   result                    [varies]    (to user or destination)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function interact(int functionInputIndex) {
+        require(this.activeInputIndex == 0);
+
+        // CRITICAL: Limit outputs to prevent minting attacks
+        require(tx.outputs.length <= 7);
+
+        // Extract function identifier from NFT commitment first byte
+        bytes functionId = tx.inputs[functionInputIndex].nftCommitment.split(1)[0];
+
+        // Validate function NFT belongs to this system
+        require(tx.inputs[functionInputIndex].tokenCategory == systemTokenId + 0x01);
+
+        // Route to appropriate validation logic
+        if (functionId == 0x00) {
+            // Function A: specific validation
+            require(tx.outputs.length <= 4);
+            // ... function A constraints
+        } else if (functionId == 0x01) {
+            // Function B: specific validation
+            require(tx.outputs.length <= 5);
+            // ... function B constraints
+        } else if (functionId == 0x02) {
+            // Function C: specific validation
+            require(tx.outputs.length <= 6);
+            // ... function C constraints
+        }
+
+        // Self-replicate router
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+    }
+}
+```
+
+### 16. Function Contract Template
+
+Each function contract validates its authority and specific operation:
+
+```cashscript
+pragma cashscript ^0.11.0;
+
+/*  --- FunctionA Immutable NFT State ---
+    bytes1 identifier = 0x00           // Function A identifier
+*/
+
+contract FunctionA(bytes32 systemTokenId) {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Execute function A operation. Validates authority via NFT identifier.
+    //
+    //inputs:
+    //  0   MainRouter                [NFT]       (from Router contract)
+    //  1   FunctionA                 [NFT]       (from FunctionA contract - this)
+    //  2   userBCH                   [BCH]       (from user)
+    //outputs:
+    //  0   MainRouter                [NFT]       (to Router contract)
+    //  1   FunctionA                 [NFT]       (to FunctionA contract)
+    //  2   result                    [BCH]       (to user)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function execute() {
+        // Validate position
+        require(this.activeInputIndex == 1);
+
+        // CRITICAL: Limit outputs
+        require(tx.outputs.length <= 4);
+
+        // Validate router at position 0
+        require(tx.inputs[0].tokenCategory == systemTokenId + 0x01);
+        require(tx.inputs[0].nftCommitment.split(1)[0] == 0xFF); // Router identifier
+
+        // Function-specific business logic
+        // ...
+
+        // Self-replicate at dust value
+        require(tx.outputs[1].lockingBytecode == tx.inputs[1].lockingBytecode);
+        require(tx.outputs[1].tokenCategory == tx.inputs[1].tokenCategory);
+        require(tx.outputs[1].value == 1000);
+    }
+}
+```
+
+### 17. Self-Replicating Covenant with State
+
+Pattern for contracts that must persist with updated state:
+
+```cashscript
+pragma cashscript ^0.11.0;
+
+/*  --- StatefulCovenant Mutable NFT State ---
+    bytes4 counter = 0x00000000
+    bytes6 totalValue = 0x000000000000
+    bytes20 adminPkh = 0x0000000000000000000000000000000000000000
+*/
+
+contract StatefulCovenant(bytes32 covenantCategory) {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Update state while preserving covenant.
+    //
+    //inputs:
+    //  0   StatefulCovenant          [NFT]       (from Covenant contract - this)
+    //  1   userBCH                   [BCH]       (from user)
+    //outputs:
+    //  0   StatefulCovenant          [NFT]       (to Covenant contract)
+    //  1   change {optional}         [BCH]       (to user)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function updateState(int newValue) {
+        require(this.activeInputIndex == 0);
+        require(tx.outputs.length <= 3);
+
+        // Parse current state from commitment
+        bytes commitment = tx.inputs[0].nftCommitment;
+        bytes4 counter, bytes remaining = commitment.split(4);
+        bytes6 totalValue, bytes20 adminPkh = remaining.split(6);
+
+        // Update state
+        int newCounter = int(counter) + 1;
+        require(newCounter < 2147483647); // MSB safety
+
+        int newTotal = int(totalValue) + newValue;
+        require(newTotal >= 0);
+        require(newTotal < 140737488355327); // bytes6 max
+
+        // Reconstruct commitment with new state
+        bytes newCommitment = bytes4(newCounter) + bytes6(newTotal) + adminPkh;
+
+        // THE 5-POINT VALIDATION CHECKLIST
+        // 1. Same contract code
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        // 2. Same token category
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+        // 3. Expected value (preserve or update)
+        require(tx.outputs[0].value >= tx.inputs[0].value);
+        // 4. Token amount (if applicable)
+        require(tx.outputs[0].tokenAmount == tx.inputs[0].tokenAmount);
+        // 5. New state commitment
+        require(tx.outputs[0].nftCommitment == newCommitment);
+    }
+}
+```
+
+### 18. Cross-Contract Authentication Pattern
+
+Pattern for contracts that need to verify other contracts in the same transaction:
+
+```cashscript
+pragma cashscript ^0.11.0;
+
+contract CrossContractValidator(
+    bytes32 priceOracleCategory,
+    bytes32 mainContractCategory,
+    bytes32 sidecarCategory
+) {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Execute operation requiring multiple contract authentication.
+    //
+    //inputs:
+    //  0   PriceOracle               [NFT]       (from Oracle contract)
+    //  1   MainContract              [NFT]       (from Main contract)
+    //  2   Sidecar                   [NFT+FT]    (from Sidecar contract)
+    //  3   Validator                 [NFT]       (from Validator contract - this)
+    //  4   userBCH                   [BCH]       (from user)
+    //outputs:
+    //  0   PriceOracle               [NFT]       (to Oracle contract)
+    //  1   MainContract              [NFT]       (to Main contract)
+    //  2   Sidecar                   [NFT+FT]    (to Sidecar contract)
+    //  3   Validator                 [NFT]       (to Validator contract)
+    //  4   result                    [BCH]       (to user)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function executeWithAuth() {
+        require(this.activeInputIndex == 3);
+        require(tx.outputs.length <= 6);
+
+        // Authenticate price oracle at index 0
+        require(tx.inputs[0].tokenCategory == priceOracleCategory + 0x01);
+        require(tx.inputs[0].nftCommitment.split(1)[0] == 0x00); // Oracle identifier
+
+        // Authenticate main contract at index 1
+        require(tx.inputs[1].tokenCategory == mainContractCategory + 0x01);
+        require(tx.inputs[1].nftCommitment.split(1)[0] == 0x01); // Main identifier
+
+        // Authenticate sidecar at index 2 (same category, sequential origin)
+        require(tx.inputs[2].tokenCategory == sidecarCategory + 0x01);
+        require(tx.inputs[2].outpointTransactionHash ==
+                tx.inputs[1].outpointTransactionHash);
+
+        // Now safe to use data from authenticated contracts
+        bytes priceData = tx.inputs[0].nftCommitment.split(1)[1];
+        int price = int(priceData.split(8)[0]);
+
+        // Business logic using authenticated data
+        // ...
+    }
+}
+```
+
+### 19. Receipt/Proof NFT Pattern
+
+Pattern for creating immutable receipts that prove actions occurred:
+
+```cashscript
+pragma cashscript ^0.11.0;
+
+contract ReceiptIssuer(bytes32 systemCategory) {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Create immutable receipt NFT as proof of action.
+    //
+    //inputs:
+    //  0   Issuer                    [NFT]       (from Issuer contract - this, minting)
+    //  1   userBCH                   [BCH]       (from user)
+    //outputs:
+    //  0   Issuer                    [NFT]       (to Issuer contract)
+    //  1   Receipt                   [NFT]       (to user - immutable proof)
+    //  2   change {optional}         [BCH]       (to user)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function issueReceipt(bytes20 recipientPkh, int amount, int actionId) {
+        require(this.activeInputIndex == 0);
+        require(tx.outputs.length <= 3);
+
+        // Must be minting NFT to create receipts
+        bytes category, bytes capability = tx.inputs[0].tokenCategory.split(32);
+        require(capability == 0x02); // Minting capability
+
+        // Build receipt commitment
+        // Layout: recipientPkh(20) + amount(6) + actionId(4) + timestamp(4) = 34 bytes
+        bytes receiptCommitment = recipientPkh +
+                                  bytes6(amount) +
+                                  bytes4(actionId) +
+                                  bytes4(tx.locktime);
+
+        // Create IMMUTABLE receipt (no capability byte = immutable)
+        bytes recipientBytecode = new LockingBytecodeP2PKH(recipientPkh);
+        require(tx.outputs[1].lockingBytecode == recipientBytecode);
+        require(tx.outputs[1].tokenCategory == category); // No capability = immutable
+        require(tx.outputs[1].nftCommitment == receiptCommitment);
+        require(tx.outputs[1].value == 1000); // Dust
+
+        // Self-replicate issuer with minting capability
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+    }
+}
+```
+
+### 20. Origin Proof Pattern
+
+Pattern for proving an NFT was legitimately created by the system:
+
+```cashscript
+pragma cashscript ^0.11.0;
+
+/*  --- OriginEnforcer Immutable NFT State ---
+    bytes32 factoryTxHash
+*/
+
+contract OriginEnforcer(bytes32 factoryCategory) {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Verify this NFT was created by a legitimate factory.
+    //
+    //inputs:
+    //  0   Factory                   [NFT]       (from Factory contract)
+    //  1   OriginEnforcer            [NFT]       (from Enforcer contract - this)
+    //outputs:
+    //  0   Factory                   [NFT]       (to Factory contract)
+    //  1   OriginEnforcer            [NFT]       (to Enforcer contract)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function verify() {
+        require(this.activeInputIndex == 1);
+        require(tx.outputs.length <= 3);
+
+        // Get factory input index
+        int factoryIdx = this.activeInputIndex - 1;
+
+        // CRITICAL: Verify same-transaction origin with factory
+        require(tx.inputs[this.activeInputIndex].outpointTransactionHash ==
+                tx.inputs[factoryIdx].outpointTransactionHash);
+
+        // Verify factory has correct category
+        require(tx.inputs[factoryIdx].tokenCategory == factoryCategory + 0x02); // Minting
+
+        // Self-replicate
+        require(tx.outputs[1].lockingBytecode == tx.inputs[1].lockingBytecode);
+        require(tx.outputs[1].tokenCategory == tx.inputs[1].tokenCategory);
+    }
+}
+```
+
+These ParityUSD-derived patterns represent battle-tested approaches used in production DeFi systems. Each pattern emphasizes explicit validation, output limiting, and clear constraint specification.

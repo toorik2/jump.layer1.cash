@@ -799,4 +799,258 @@ async function emergencyPause(contract, adminKey) {
 9. **Keep contracts simple** - Complexity increases attack surface
 10. **Regular security audits** - External review of contract code
 
+## Output Count Security (CRITICAL)
+
+### The Minting Attack
+
+**Vulnerability**: Without output count limits, attackers can add unauthorized outputs to mint tokens.
+
+**Attack Vector**:
+1. Attacker creates a valid transaction that satisfies all contract constraints
+2. Attacker adds extra outputs minting new tokens or NFTs
+3. Contract validates expected outputs but ignores the extras
+4. Unauthorized tokens enter circulation
+
+### Mandatory Output Limiting
+
+**EVERY contract function MUST limit output count**:
+
+```cashscript
+contract SecureContract(bytes32 tokenCategory) {
+    function spend() {
+        // CRITICAL: ALWAYS include this as first validation
+        require(tx.outputs.length <= 4);
+
+        // ... rest of logic
+    }
+}
+```
+
+### Standard Output Limits
+
+| Operation Type | Recommended Limit | Reason |
+|---------------|-------------------|--------|
+| Simple transfer | 3-4 | Input + output + change |
+| Swap/exchange | 5-6 | Multiple participants |
+| Complex DeFi | 7-10 | Multiple contracts + change |
+| Batch operations | 15-20 | Multiple recipients |
+| Maximum | 50 | Transaction size limits |
+
+### Secure Pattern
+
+```cashscript
+contract OutputSecureContract() {
+    function processTransaction() {
+        // FIRST: Limit outputs
+        require(tx.outputs.length <= 5);
+
+        // THEN: Validate specific outputs
+        require(tx.outputs[0].lockingBytecode == expectedBytecode);
+        require(tx.outputs[0].value >= 1000);
+
+        // Even with validation, output limit prevents extra unauthorized outputs
+    }
+}
+```
+
+## Covenant Preservation Checklist
+
+### The 5-Point Validation
+
+For ANY self-replicating covenant, you MUST validate all five properties:
+
+```cashscript
+// THE 5-POINT COVENANT VALIDATION CHECKLIST
+// Missing ANY of these creates vulnerabilities
+
+// 1. Same contract code (prevents code injection)
+require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+
+// 2. Same token category (prevents category substitution)
+require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+
+// 3. Expected satoshi value (prevents value extraction)
+require(tx.outputs[0].value == expectedValue);
+
+// 4. Expected token amount (prevents token extraction)
+require(tx.outputs[0].tokenAmount == expectedTokenAmount);
+
+// 5. Expected/new state commitment (prevents state manipulation)
+require(tx.outputs[0].nftCommitment == newCommitment);
+```
+
+### Common Mistakes
+
+**Missing lockingBytecode check**:
+```cashscript
+// VULNERABLE - attacker can substitute contract
+function spend() {
+    require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+    require(tx.outputs[0].value == tx.inputs[0].value);
+    // Missing: lockingBytecode check!
+}
+```
+
+**Missing tokenCategory check**:
+```cashscript
+// VULNERABLE - attacker can substitute token
+function spend() {
+    require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+    require(tx.outputs[0].value == tx.inputs[0].value);
+    // Missing: tokenCategory check!
+}
+```
+
+### Covenant Type Security
+
+| Covenant Type | What MUST Be Validated |
+|--------------|------------------------|
+| Exactly self-replicating | All 5 properties unchanged |
+| State-mutating | 4 properties + valid new state |
+| Balance-mutating | 3 properties + valid new value + valid new state |
+| Conditionally-replicating | Full validation when replicating |
+
+## Minting Authority Control
+
+### The Minting NFT Problem
+
+Minting NFTs (capability `0x02`) can create unlimited tokens. If a minting NFT escapes to an untrusted address, the entire token system is compromised.
+
+### Secure Minting Patterns
+
+**1. Never release minting authority**:
+```cashscript
+contract MintingController(bytes32 category) {
+    function mint(int amount) {
+        // Verify this contract holds minting NFT
+        require(tx.inputs[0].tokenCategory == category + 0x02);
+
+        // CRITICAL: Keep minting NFT in contract
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+
+        // Never send minting NFT to user addresses
+    }
+}
+```
+
+**2. Downgrade minting to mutable when possible**:
+```cashscript
+// After initial setup, downgrade minting NFT
+require(tx.outputs[0].tokenCategory == category + 0x01); // Mutable only
+```
+
+**3. Burn minting authority when done**:
+```cashscript
+// Send minting NFT to OP_RETURN to destroy it
+require(tx.outputs[destroyIdx].lockingBytecode == 0x6a);
+require(tx.outputs[destroyIdx].tokenCategory == category + 0x02);
+```
+
+### Origin Proof for Legitimate Creation
+
+When minting new NFTs, prove they came from authorized source:
+
+```cashscript
+contract AuthorizedMinter(bytes32 factoryCategory) {
+    function mint() {
+        // Verify factory is present
+        require(tx.inputs[0].tokenCategory == factoryCategory + 0x02);
+
+        // New NFTs must be in same transaction as factory
+        // This proves legitimate origin
+    }
+}
+```
+
+## Multi-Contract Security
+
+### Input Position Attacks
+
+**Vulnerability**: Without position validation, attackers can reorder inputs.
+
+**Attack**:
+1. Contract expects input 0 = Oracle, input 1 = Main
+2. Attacker swaps positions: input 0 = Main, input 1 = Oracle
+3. Contract reads wrong data from wrong position
+
+**Defense**:
+```cashscript
+function operation() {
+    // ALWAYS validate your own position first
+    require(this.activeInputIndex == 2);
+
+    // ALWAYS validate other contracts at expected positions
+    require(tx.inputs[0].tokenCategory == oracleCategory);
+    require(tx.inputs[1].tokenCategory == mainCategory);
+}
+```
+
+### Cross-Contract Authentication
+
+**Rule**: Never trust a contract just because it's in the transaction.
+
+```cashscript
+// INSECURE - trusts any input at position 0
+function insecure() {
+    bytes data = tx.inputs[0].nftCommitment;
+    // ... uses data without verification
+}
+
+// SECURE - verifies contract identity before trusting
+function secure() {
+    // Verify category and identifier
+    require(tx.inputs[0].tokenCategory == trustedCategory + 0x01);
+    require(tx.inputs[0].nftCommitment.split(1)[0] == 0x00);
+
+    // NOW safe to use data
+    bytes data = tx.inputs[0].nftCommitment.split(1)[1];
+}
+```
+
+### Same-Origin Verification
+
+For sidecar/main pairs, verify same-transaction origin:
+
+```cashscript
+function verifySidecar() {
+    int mainIdx = this.activeInputIndex - 1;
+
+    // CRITICAL: Same transaction hash proves co-creation
+    require(tx.inputs[this.activeInputIndex].outpointTransactionHash ==
+            tx.inputs[mainIdx].outpointTransactionHash);
+
+    // CRITICAL: Sequential indices proves ordering
+    require(tx.inputs[this.activeInputIndex].outpointIndex ==
+            tx.inputs[mainIdx].outpointIndex + 1);
+}
+```
+
+## Security Checklist Update
+
+### Multi-Contract Security
+
+- [ ] Output count limited in every function
+- [ ] All 5 covenant properties validated
+- [ ] Input positions explicitly validated
+- [ ] Cross-contract authentication verified
+- [ ] Minting authority controlled and contained
+- [ ] Same-origin verification for paired contracts
+- [ ] Token category arithmetic correct
+
+### Pre-Deployment (Extended)
+
+- [ ] All inputs are validated
+- [ ] Bounds checking implemented
+- [ ] Overflow protection in place
+- [ ] Access control properly implemented
+- [ ] Time-based logic uses appropriate comparisons
+- [ ] Signature validation follows best practices
+- [ ] Token validation includes all necessary checks
+- [ ] Error cases are handled gracefully
+- [ ] **Output count limited in all functions**
+- [ ] **5-point covenant validation complete**
+- [ ] **Minting authority secured**
+- [ ] **Input positions validated**
+
 Following these security practices will help ensure your CashScript contracts are robust and secure when handling real value on the Bitcoin Cash network.

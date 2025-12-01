@@ -1794,3 +1794,114 @@ Before finalizing any contract, verify:
 - [ ] Consistent terminology across related contracts
 
 **MANDATORY FOR ALL CONTRACTS**: Every generated CashScript contract must meet ALL these documentation standards before being returned to the user.
+
+## CONTRACT DESIGN PRINCIPLES
+
+### The Validation Rule
+
+**Before creating ANY contract, answer: "What does this contract validate?"**
+
+Every CashScript contract exists to add CONSTRAINTS to a transaction. If a contract adds no constraints, it should not exist.
+
+**Questions to ask:**
+1. What would go wrong if this contract didn't exist?
+2. What relationship does this contract prove?
+3. What attack does this contract's validation prevent?
+
+If you cannot answer these questions, the contract should be deleted or merged into another.
+
+### The Minimum Viable Contract
+
+The smallest legitimate contract is NOT empty. Even a "sidecar" contract has real validation:
+
+```cashscript
+contract MinimumViableContract() {
+    function attach() {
+        int mainIdx = this.activeInputIndex - 1;
+
+        // VALIDATES: Same-transaction origin
+        require(tx.inputs[this.activeInputIndex].outpointTransactionHash ==
+                tx.inputs[mainIdx].outpointTransactionHash);
+
+        // VALIDATES: Sequential creation
+        require(tx.inputs[this.activeInputIndex].outpointIndex ==
+                tx.inputs[mainIdx].outpointIndex + 1);
+
+        // VALIDATES: Self-preservation
+        require(tx.outputs[this.activeInputIndex].lockingBytecode ==
+                tx.inputs[this.activeInputIndex].lockingBytecode);
+    }
+}
+```
+
+This is NOT a placeholder - it validates three critical relationships.
+
+### What Each Contract Type Validates
+
+| Contract Type | Core Validation Purpose |
+|--------------|------------------------|
+| **Main Contract** | State transitions, business logic |
+| **Sidecar Contract** | Same-origin bond with main |
+| **Function Contract** | Authority to execute specific operation |
+| **Router Contract** | Transaction structure matches operation |
+| **Oracle Contract** | External data authenticity |
+| **Receipt/Proof Contract** | Immutable record of completed action |
+
+### Anti-Placeholder Philosophy
+
+**OLD THINKING** (wrong): "I need to implement this Solidity function in CashScript"
+
+**NEW THINKING** (correct): "What constraint does this contract add to valid transactions?"
+
+The shift is from:
+- ~~Code structure~~ -> **Transaction structure**
+- ~~Function implementation~~ -> **Constraint specification**
+- ~~What code runs~~ -> **What must be true**
+
+### Empty Contracts = Code Smell
+
+If you find yourself writing:
+- A function with no `require()` statements
+- A contract that just "exists"
+- Logic that "will be implemented later"
+
+**STOP.** Ask: "What does this validate?" If nothing, delete it.
+
+### The Output Count Rule
+
+**CRITICAL**: Every contract MUST limit output count to prevent unauthorized minting.
+
+```cashscript
+function anyOperation() {
+    // ALWAYS include this
+    require(tx.outputs.length <= 7);  // Appropriate limit for operation
+
+    // ... rest of logic
+}
+```
+
+Without this, attackers can add arbitrary outputs minting unauthorized tokens.
+
+### Validation Checklist
+
+Before any contract is complete, verify it has:
+
+- [ ] At least one meaningful `require()` statement
+- [ ] Input position validation (`this.activeInputIndex == N`)
+- [ ] Output count limit (`tx.outputs.length <= N`)
+- [ ] Self-replication validation (if covenant)
+- [ ] Cross-contract authentication (if multi-contract)
+
+### The Contract Purpose Test
+
+For every contract, complete this sentence:
+
+**"This contract validates that _______________."**
+
+Examples:
+- "This contract validates that the sidecar was created in the same transaction as the main contract."
+- "This contract validates that only authorized function NFTs can trigger state changes."
+- "This contract validates that the price data was signed by the oracle."
+- "This contract validates that output count cannot exceed 5 to prevent minting attacks."
+
+If you cannot complete the sentence, the contract should not exist.

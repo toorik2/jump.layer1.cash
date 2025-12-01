@@ -755,14 +755,20 @@ ${knowledgeBase}
 CRITICAL RULES:
 1. Always use "pragma cashscript ^0.13.0;" at the top of every CashScript contract.
 
-1a. NEVER create placeholder/stub/dummy contracts or functions. EVERY contract and function MUST be production-ready.
-   - ❌ ABSOLUTELY FORBIDDEN: require(false) in ANY context whatsoever
-   - ❌ ABSOLUTELY FORBIDDEN: Functions that exist only for documentation purposes
-   - ❌ ABSOLUTELY FORBIDDEN: Comments like "Never actually called on-chain" or "documentation-only" or "Prevent execution"
-   - ❌ FORBIDDEN: Empty contracts that just hold NFTs without real logic
-   - If you cannot implement a contract's full logic, DO NOT create it as a placeholder
-   - If a Solidity function has no CashScript equivalent, DELETE it entirely - do NOT create a placeholder version
-   - This is PRODUCTION CODE - users will deploy and use these contracts with real BCH
+1a. CONTRACT PURPOSE RULE - Before creating ANY contract, answer: "What does this contract VALIDATE?"
+   - Every CashScript contract MUST add CONSTRAINTS to transactions
+   - If a contract validates nothing, it should NOT EXIST
+   - The minimum viable contract is a sidecar's attach() function with REAL validation:
+     * require(outpointTransactionHash equality) - validates same-origin
+     * require(outpointIndex sequential) - validates creation order
+     * require(lockingBytecode preservation) - validates self-replication
+   - For every contract you create, complete: "This contract validates that _______________."
+   - Examples of valid validation purposes:
+     * "validates the sidecar was created with the main contract"
+     * "validates only authorized function NFTs can trigger state changes"
+     * "validates output count prevents unauthorized minting"
+   - If you cannot complete the sentence, DELETE the contract
+   - This is PRODUCTION CODE with real BCH - every require() must have purpose
 
 2. EVERY function parameter you declare MUST be used in the function body.
    - CashScript compiler strictly enforces this requirement (similar to Rust)
@@ -925,26 +931,70 @@ CRITICAL RULES:
 
     The >= restriction ONLY applies to tx.time and this.age comparisons.
 
-22. ANTI-PATTERNS - NEVER DO THESE:
-    These patterns will cause immediate compilation failure or broken contracts:
+22. WHAT EVERY CONTRACT MUST HAVE:
+    Every contract function MUST include these validation elements:
 
-    ❌ FORBIDDEN: function viewHelper() { require(false); }
-       Reason: Placeholder function with require(false) - violates Rule 1a
+    ✅ REQUIRED: At least one meaningful require() statement
+    ✅ REQUIRED: Input position validation: require(this.activeInputIndex == N);
+    ✅ REQUIRED: Output count limit: require(tx.outputs.length <= N);
+    ✅ REQUIRED: If covenant, self-replication validation (5-point checklist)
 
-    ❌ FORBIDDEN: function queryData() { require(false); }
-       Reason: Documentation-only function - violates Rule 1a
+    Every function must answer: "What constraint does this add?"
+    - If answer is "none", DELETE the function
+    - If Solidity function cannot be converted, DELETE it entirely - do NOT create placeholder
 
-    ❌ FORBIDDEN: function queryProposal() { /* Never actually called on-chain */ require(false); }
-       Reason: Comment suggesting dead code + require(false) - violates Rule 1a
+23. MULTI-CONTRACT ARCHITECTURE:
+    When converting complex Solidity with multiple interacting contracts:
 
-    ❌ FORBIDDEN: // Prevent execution - documentation-only
-       Reason: Any comment suggesting placeholder or non-production code
+    a) Main+Sidecar Pattern - For contracts needing multiple token types:
+       - BCH allows only ONE token category per UTXO output
+       - Main contract holds NFT state, Sidecar holds fungible tokens
+       - Sidecar validates same-origin: require(outpointTransactionHash ==)
 
-    ✅ CORRECT: If a Solidity function cannot be converted to CashScript, DELETE it entirely
-    ✅ CORRECT: Only create functions that perform actual on-chain validation logic
-    ✅ CORRECT: Every function must have real business logic that validates transaction constraints
+    b) Function Contract Pattern - For contracts with 3+ functions:
+       - Split each function into separate contract file
+       - Authenticate via NFT commitment first-byte identifier
+       - Main contract routes: if (functionId == 0x00) { } else if (0x01) { }
 
-    Remember: This is production code that users will deploy with real BCH. No placeholders, ever.
+    c) Strict Input Position Pattern:
+       - Every contract MUST know its exact input index
+       - Validate all other contracts at known positions
+       - No dynamic lookup - positions are explicit
+
+    d) Cross-Contract Authentication:
+       - Validate via token category arithmetic: systemTokenId + 0x01
+       - The 33rd byte encodes capability (0x01=mutable, 0x02=minting)
+       - Origin proof: outpointTransactionHash equality = same-transaction creation
+
+24. OUTPUT COUNT LIMITING (SECURITY-CRITICAL):
+    EVERY function MUST limit output count to prevent unauthorized token minting:
+
+    ✅ REQUIRED: require(tx.outputs.length <= 7);  // Adjust N per operation
+
+    Standard limits by operation type:
+    - Simple transfer: <= 4
+    - Swap/exchange: <= 6
+    - Complex DeFi: <= 10
+    - Maximum recommended: <= 50
+
+    WHY: Without this, attackers can add extra outputs minting unauthorized tokens.
+    The contract validates expected outputs but ignores extras - this prevents that.
+
+25. 5-POINT COVENANT VALIDATION CHECKLIST:
+    For ANY self-replicating covenant, validate ALL five properties:
+
+    // 1. Same contract code (prevents code injection)
+    require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+    // 2. Same token category (prevents category substitution)
+    require(tx.outputs[0].tokenCategory == tx.inputs[0].tokenCategory);
+    // 3. Expected satoshi value (prevents value extraction)
+    require(tx.outputs[0].value == expectedValue);
+    // 4. Expected token amount (prevents token extraction)
+    require(tx.outputs[0].tokenAmount == expectedTokenAmount);
+    // 5. Expected/new state commitment (prevents state manipulation)
+    require(tx.outputs[0].nftCommitment == newCommitment);
+
+    Missing ANY of these creates exploitable vulnerabilities.
 
 DOCUMENTATION SCALING - MATCH OUTPUT VERBOSITY TO INPUT COMPLEXITY:
 - Simple contracts (constants, basic getters, trivial logic) → Minimal code only
@@ -1287,6 +1337,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           parsed.validated = true;
           parsed.bytecodeSize = validation.bytecodeSize;
           parsed.artifact = validation.artifact;
+          updateConversion(conversionId, { contract_count: 1 });
 
           // Send contract_ready event for single contract
           if (!sentContracts.has('primary')) {
