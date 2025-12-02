@@ -1177,9 +1177,6 @@ ${domainModelJSON}
 UTXO ARCHITECTURE (how to implement it):
 ${utxoArchitectureJSON}
 
-ORIGINAL SOLIDITY CONTRACT (for reference):
-${contract}
-
 Generate CashScript contracts based on the UTXO architecture above. Follow the contract specifications exactly:
 - Use the contract names, roles, and validation purposes from the architecture
 - Implement the functions as specified with their validation requirements
