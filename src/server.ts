@@ -527,7 +527,6 @@ interface Phase2Result {
 
 async function executeArchitectureDesign(
   conversionId: number,
-  solidityContract: string,
   domainModel: DomainModel
 ): Promise<Phase2Result> {
   console.log('[Phase 2] Starting UTXO architecture design...');
@@ -537,9 +536,6 @@ async function executeArchitectureDesign(
 
 DOMAIN MODEL:
 ${JSON.stringify(domainModel, null, 2)}
-
-ORIGINAL SOLIDITY (for reference):
-${solidityContract}
 
 Design the UTXO architecture following the patterns and prime directives in the system prompt.`;
 
@@ -749,7 +745,7 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
         throw new Error('AbortError: Client disconnected');
       }
 
-      const phase2Result = await executeArchitectureDesign(conversionId, contract, domainModel);
+      const phase2Result = await executeArchitectureDesign(conversionId, domainModel);
       utxoArchitecture = phase2Result.architecture;
       phase2DurationMs = phase2Result.durationMs;
       utxoArchitectureJSON = JSON.stringify(utxoArchitecture, null, 2);
