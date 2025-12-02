@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { compileString } from 'cashc';
-import { initializeDatabase, closeDatabase, updateConversion, insertContract, generateHash, generateUUID, insertSemanticAnalysis } from './database.js';
+import { initializeDatabase, closeDatabase, updateConversion, insertContract, generateHash, generateUUID, insertSemanticAnalysis, insertUtxoArchitecture } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import {
@@ -518,11 +518,18 @@ async function executeDomainExtraction(
 // PHASE 2 EXECUTION: UTXO Architecture Design
 // ============================================================================
 
+interface Phase2Result {
+  architecture: UTXOArchitecture;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
 async function executeArchitectureDesign(
   conversionId: number,
   solidityContract: string,
   domainModel: DomainModel
-): Promise<UTXOArchitecture> {
+): Promise<Phase2Result> {
   console.log('[Phase 2] Starting UTXO architecture design...');
   const startTime = Date.now();
 
@@ -559,14 +566,38 @@ Design the UTXO architecture following the patterns and prime directives in the 
   architecture.warnings = architecture.warnings || [];
 
   const duration = Date.now() - startTime;
+
+  // Defensive logging - handle cases where model returns unexpected structure
+  const contractCount = Array.isArray(architecture.contracts) ? architecture.contracts.length : 0;
+  const txTemplateCount = Array.isArray(architecture.transactionTemplates) ? architecture.transactionTemplates.length : 0;
+  const patternNames = Array.isArray(architecture.patterns)
+    ? architecture.patterns.map(p => p?.name || 'unnamed').join(', ')
+    : '';
+
   console.log('[Phase 2] Architecture design complete:', {
     duration: `${(duration / 1000).toFixed(2)}s`,
-    contracts: architecture.contracts.length,
-    transactions: architecture.transactionTemplates.length,
-    patterns: architecture.patterns.map(p => p.name).join(', ')
+    contracts: contractCount,
+    transactions: txTemplateCount,
+    patterns: patternNames || '(none)'
   });
 
-  return architecture;
+  // Store Phase 2 architecture in database
+  insertUtxoArchitecture({
+    conversion_id: conversionId,
+    architecture_json: responseText,
+    created_at: new Date().toISOString(),
+    model_used: ANTHROPIC_CONFIG.phase1.model,
+    input_tokens: response.usage.input_tokens,
+    output_tokens: response.usage.output_tokens,
+    response_time_ms: duration
+  });
+
+  return {
+    architecture,
+    durationMs: duration,
+    inputTokens: response.usage.input_tokens,
+    outputTokens: response.usage.output_tokens
+  };
 }
 
 // ============================================================================
@@ -711,18 +742,29 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
 
     let utxoArchitecture: UTXOArchitecture;
     let utxoArchitectureJSON: string;
+    let phase2DurationMs: number;
 
     try {
       if (clientDisconnected) {
         throw new Error('AbortError: Client disconnected');
       }
 
-      utxoArchitecture = await executeArchitectureDesign(conversionId, contract, domainModel);
+      const phase2Result = await executeArchitectureDesign(conversionId, contract, domainModel);
+      utxoArchitecture = phase2Result.architecture;
+      phase2DurationMs = phase2Result.durationMs;
       utxoArchitectureJSON = JSON.stringify(utxoArchitecture, null, 2);
+
+      // Defensive access for SSE event
+      const contractCount = Array.isArray(utxoArchitecture.contracts) ? utxoArchitecture.contracts.length : 0;
+      const patternNames = Array.isArray(utxoArchitecture.patterns)
+        ? utxoArchitecture.patterns.map(p => p?.name || 'unnamed')
+        : [];
+
       sendEvent('phase2_complete', {
         message: 'Architecture design complete',
-        contracts: utxoArchitecture.contracts.length,
-        patterns: utxoArchitecture.patterns.map(p => p.name)
+        contracts: contractCount,
+        patterns: patternNames,
+        durationMs: phase2DurationMs
       });
     } catch (phase2Error) {
       console.error('[Phase 2] Architecture design failed:', phase2Error);

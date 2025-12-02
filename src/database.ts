@@ -96,6 +96,21 @@ function createTables() {
     )
   `);
 
+  // UTXO_ARCHITECTURES - Phase 2 architecture design results
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS utxo_architectures (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversion_id INTEGER NOT NULL,
+      architecture_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      model_used TEXT NOT NULL,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      response_time_ms INTEGER,
+      FOREIGN KEY (conversion_id) REFERENCES conversions(id) ON DELETE CASCADE
+    )
+  `);
+
   // Indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversions_session ON conversions(session_id);
@@ -108,6 +123,7 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_contracts_uuid ON contracts(contract_uuid);
     CREATE INDEX IF NOT EXISTS idx_contracts_role ON contracts(role);
     CREATE INDEX IF NOT EXISTS idx_semantic_conversion ON semantic_analyses(conversion_id);
+    CREATE INDEX IF NOT EXISTS idx_architecture_conversion ON utxo_architectures(conversion_id);
   `);
 }
 
@@ -382,6 +398,42 @@ export function insertSemanticAnalysis(record: Omit<SemanticAnalysisRecord, 'id'
   const result = stmt.run(
     record.conversion_id,
     record.analysis_json,
+    record.created_at,
+    record.model_used,
+    record.input_tokens || null,
+    record.output_tokens || null,
+    record.response_time_ms || null
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+// ============================================================================
+// UTXO_ARCHITECTURES TABLE (Phase 2)
+// ============================================================================
+
+interface UtxoArchitectureRecord {
+  id?: number;
+  conversion_id: number;
+  architecture_json: string;
+  created_at: string;
+  model_used: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  response_time_ms?: number;
+}
+
+export function insertUtxoArchitecture(record: Omit<UtxoArchitectureRecord, 'id'>): number {
+  const stmt = db.prepare(`
+    INSERT INTO utxo_architectures (
+      conversion_id, architecture_json, created_at, model_used,
+      input_tokens, output_tokens, response_time_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    record.conversion_id,
+    record.architecture_json,
     record.created_at,
     record.model_used,
     record.input_tokens || null,

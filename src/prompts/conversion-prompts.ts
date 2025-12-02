@@ -104,7 +104,22 @@ Special actors in the system. Ask:
    - "role" = must hold a special capability
    - "none" = anyone can do it (permissionless)
 
-Output a complete DomainModel as JSON.`;
+## 6. DOMAIN CLASSIFICATION
+Classify the contract into one of these domains based on its PRIMARY purpose:
+
+- **voting**: Ballot systems, proposals, delegation, vote casting, tallying
+- **token**: ERC20/ERC721-like tokens, minting, burning, transfers, balances
+- **crowdfunding**: Campaigns, pledges, funding goals, refunds, deadlines
+- **marketplace**: Listings, purchases, escrow, auctions, bidding
+- **game**: Game state, moves, turns, winners, scores
+- **defi**: Swaps, liquidity, staking, yields, collateral
+- **governance**: DAOs, proposals with execution, timelock, admin roles
+- **other**: Only if none of the above fit
+
+IMPORTANT: Choose the MOST SPECIFIC domain that applies.
+For example, a contract with "vote", "delegate", "ballot", "proposal" → domain: "voting"
+
+Output a complete DomainModel as JSON. Include a "domain" field at the top level.`;
 
 // ============================================================================
 // PHASE 2: UTXO ARCHITECTURE DESIGN
