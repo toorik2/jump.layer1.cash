@@ -856,7 +856,7 @@ export default function App() {
                     </li>
                     <li class={currentPhase() === 4 ? 'active-phase' : ''}>
                       <Show when={retryCount() === 0 && (!validationDetails() || validationDetails()?.failedCount === 0)}>
-                        Phase 4: Validating {totalExpected() > 0 ? `${totalExpected()} ${totalExpected() === 1 ? 'contract' : 'contracts'}` : 'contracts'} with the CashScript compiler. Moving to the results page as soon as there is a validated contract.
+                        Phase 4: Validating {totalExpected() > 0 ? `${totalExpected()} ${totalExpected() === 1 ? 'contract' : 'contracts'}` : 'contracts'} with the CashScript compiler
                       </Show>
                       <Show when={retryCount() > 0 || (validationDetails() && validationDetails()?.failedCount! > 0)}>
                         Phase 4: Refining code based on compiler feedback
