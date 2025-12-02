@@ -657,19 +657,35 @@ export default function App() {
                 break;
 
               case 'phase1_complete':
-                setCurrentPhase(2);
+                // Stay at phase 1 until phase 2 starts
                 break;
 
               case 'phase2_start':
                 setCurrentPhase(2);
                 break;
 
+              case 'phase2_complete':
+                // Stay at phase 2 until phase 3 starts
+                break;
+
               case 'phase3_start':
                 setCurrentPhase(3);
                 break;
 
+              case 'phase3_complete':
+                // Stay at phase 3 until phase 4 starts
+                break;
+
+              case 'phase4_start':
+                setCurrentPhase(4);
+                break;
+
+              case 'phase4_complete':
+                // Validation complete
+                break;
+
               case 'validation':
-                setCurrentPhase(3);
+                setCurrentPhase(4);
                 // Update retry tracking for Phase 3 validation display
                 setRetryCount(data.attempt - 1);
                 // Store validation details for display
@@ -714,12 +730,6 @@ export default function App() {
                 if (validatedContracts().length === 0) {
                   setLoading(false);
                 }
-                break;
-
-              case 'phase2_complete':
-                break;
-
-              case 'phase3_complete':
                 break;
 
               case 'done':
@@ -836,17 +846,20 @@ export default function App() {
                   <summary>What's happening behind the scenes?</summary>
                   <ul>
                     <li class={currentPhase() === 1 ? 'active-phase' : currentPhase() > 1 ? 'completed-phase' : ''}>
-                      Phase 1: Extracting semantic intent and business logic (~1 min for complex contracts)
+                      Phase 1: Extracting domain model (platform-agnostic business logic)
                     </li>
                     <li class={currentPhase() === 2 ? 'active-phase' : currentPhase() > 2 ? 'completed-phase' : ''}>
-                      Phase 2: Generating CashScript contracts (~2 min)
+                      Phase 2: Designing UTXO architecture
                     </li>
-                    <li class={currentPhase() === 3 ? 'active-phase' : ''}>
+                    <li class={currentPhase() === 3 ? 'active-phase' : currentPhase() > 3 ? 'completed-phase' : ''}>
+                      Phase 3: Generating CashScript contracts
+                    </li>
+                    <li class={currentPhase() === 4 ? 'active-phase' : ''}>
                       <Show when={retryCount() === 0 && (!validationDetails() || validationDetails()?.failedCount === 0)}>
-                        Phase 3: Validating {totalExpected() > 0 ? `${totalExpected()} ${totalExpected() === 1 ? 'contract' : 'contracts'}` : 'contracts'} with the CashScript compiler. Moving to the results page as soon as there is a validated contract.
+                        Phase 4: Validating {totalExpected() > 0 ? `${totalExpected()} ${totalExpected() === 1 ? 'contract' : 'contracts'}` : 'contracts'} with the CashScript compiler. Moving to the results page as soon as there is a validated contract.
                       </Show>
                       <Show when={retryCount() > 0 || (validationDetails() && validationDetails()?.failedCount! > 0)}>
-                        Phase 3: Refining code based on compiler feedback
+                        Phase 4: Refining code based on compiler feedback
                       </Show>
                       <Show when={validationDetails()?.isMultiContract && validationDetails()?.contracts && validationDetails()?.failedCount! > 0}>
                         <div class="validation-status">

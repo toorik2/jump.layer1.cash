@@ -509,3 +509,103 @@ When deploying a multi-contract system:
 ### Critical Note
 
 Contracts are **immutable after deployment**. All inter-contract addresses must be correct at compile time. Plan carefully.
+
+---
+
+## MANDATORY CONTRACT VALIDATION CHECKLIST
+
+**CRITICAL: Before finalizing ANY contract, verify ALL items below.**
+
+### For EVERY Contract (Primary, Helper, or State)
+
+| # | Requirement | Example |
+|---|-------------|---------|
+| 1 | **Output count is LIMITED** | `require(tx.outputs.length <= 5);` |
+| 2 | **Function name describes purpose** | `validateUpdate()`, `attachToMain()` |
+| 3 | **Input/output positions documented** | See Position Documentation Pattern |
+
+### For Self-Replicating Contracts (5-Point Covenant)
+
+| # | Validation | Code |
+|---|------------|------|
+| 1 | Same contract code | `require(tx.outputs[idx].lockingBytecode == tx.inputs[idx].lockingBytecode);` |
+| 2 | Same token category | `require(tx.outputs[idx].tokenCategory == tx.inputs[idx].tokenCategory);` |
+| 3 | Expected satoshi value | `require(tx.outputs[idx].value == 1000);` |
+| 4 | Expected token amount | `require(tx.outputs[idx].tokenAmount == expectedAmount);` |
+| 5 | Expected/validated commitment | `require(tx.outputs[idx].nftCommitment == expectedCommitment);` |
+
+### BANNED Patterns
+
+```cashscript
+// WRONG - Never use these:
+function placeholder() { ... }     // Vague, suggests stub
+function update() { ... }          // Too generic
+function handle() { ... }          // Meaningless
+
+// RIGHT - Descriptive names:
+function validateVoteUpdate() { ... }
+function attachToVotingBooth() { ... }
+function processRedemption() { ... }
+```
+
+### State Contract Minimum Requirements
+
+State contracts that participate in transactions with other contracts MUST:
+
+1. **Validate their position**: `require(this.activeInputIndex == expectedIndex);`
+2. **Authenticate the primary contract**: Verify token category of the coordinating contract
+3. **Limit outputs**: `require(tx.outputs.length <= N);`
+4. **Complete 5-point self-replication**: All 5 covenant validations
+5. **Document the transaction structure**: Input/output position comments
+
+### Example: Correct State Contract
+
+```cashscript
+contract ProposalCounter() {
+    //////////////////////////////////////////////////////////////////////////////////////////
+    //  Validate proposal vote count updates during VotingBooth.vote() transactions.
+    //
+    //inputs:
+    //  0   VotingBooth               [NFT]       (from VotingBooth contract)
+    //  1   VoterKey                  [NFT]       (from voter)
+    //  2   ProposalCounter           [NFT]       (this contract)
+    //  3   voterBCH                  [BCH]       (from voter)
+    //outputs:
+    //  0   VotingBooth               [NFT]       (to VotingBooth contract)
+    //  1   VoterKey                  [NFT]       (to voter)
+    //  2   ProposalCounter           [NFT]       (to ProposalCounter contract)
+    //  3   change {optional}         [BCH]       (to voter)
+    //////////////////////////////////////////////////////////////////////////////////////////
+    function validateVoteUpdate() {
+        // 1. Validate position
+        require(this.activeInputIndex == 2);
+
+        // 2. CRITICAL: Limit outputs
+        require(tx.outputs.length <= 4);
+
+        // 3. Authenticate VotingBooth at position 0
+        bytes masterCategory = tx.inputs[this.activeInputIndex].tokenCategory.split(32)[0];
+        require(tx.inputs[0].tokenCategory == masterCategory + 0x01);
+
+        // 4. Complete 5-point self-replication
+        require(tx.outputs[2].lockingBytecode == tx.inputs[2].lockingBytecode);
+        require(tx.outputs[2].tokenCategory == tx.inputs[2].tokenCategory);
+        require(tx.outputs[2].value == 1000);
+        require(tx.outputs[2].tokenAmount == tx.inputs[2].tokenAmount);
+        // Commitment validated by VotingBooth (vote count increment)
+        // But we still verify structure is preserved
+        bytes4 proposalIdx = bytes4(tx.inputs[2].nftCommitment.split(4)[0]);
+        bytes32 proposalName = bytes32(tx.inputs[2].nftCommitment.split(12)[1]);
+        bytes8 newVoteCount = bytes8(tx.outputs[2].nftCommitment.split(4)[1].split(8)[0]);
+        require(tx.outputs[2].nftCommitment.split(4)[0] == proposalIdx);
+        require(tx.outputs[2].nftCommitment.split(12)[1] == proposalName);
+    }
+}
+```
+
+This contract validates:
+- Its position in the transaction
+- Output count security limit
+- Primary contract authentication
+- All 5 covenant points
+- State transition integrity (proposal index and name preserved)

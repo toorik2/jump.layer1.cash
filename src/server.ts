@@ -14,7 +14,12 @@ import {
   logApiCallStart,
   logApiCallComplete,
 } from './services/logging.js';
-import type { SemanticSpecification } from './types/semantic-spec.js';
+import type { DomainModel } from './types/domain-model.js';
+import type { UTXOArchitecture } from './types/utxo-architecture.js';
+import {
+  DOMAIN_EXTRACTION_PROMPT,
+  UTXO_ARCHITECTURE_PROMPT,
+} from './prompts/conversion-prompts.js';
 import { ANTHROPIC_CONFIG, SERVER_CONFIG } from './config.js';
 
 const app = express();
@@ -33,8 +38,26 @@ async function init() {
   console.log('[Server] Initializing database...');
   initializeDatabase();
 
-  console.log('[Server] Loading CashScript language reference...');
-  knowledgeBase = await readFile('./cashscript-knowledge-base/language/language-reference.md', 'utf-8');
+  console.log('[Server] Loading CashScript knowledge base...');
+
+  // Load core language reference
+  const languageRef = await readFile('./cashscript-knowledge-base/language/language-reference.md', 'utf-8');
+
+  // Load multi-contract architecture patterns (critical for complex conversions)
+  const multiContractPatterns = await readFile('./cashscript-knowledge-base/concepts/multi-contract-architecture.md', 'utf-8');
+
+  // Combine knowledge base sections
+  knowledgeBase = `${languageRef}
+
+---
+
+# MULTI-CONTRACT ARCHITECTURE PATTERNS
+
+The following patterns are CRITICAL for any conversion involving multiple contracts.
+When multiple contracts participate in the SAME transaction, EACH contract's script runs and MUST validate.
+
+${multiContractPatterns}`;
+
   console.log(`[Server] Knowledge base loaded: ${knowledgeBase.length} characters`);
 }
 
@@ -93,6 +116,54 @@ function enhanceErrorMessage(error: string, code: string): string {
   return `${error}\n${context}`;
 }
 
+/**
+ * Extract contract name from CashScript code
+ * AI sometimes outputs names with tokenization artifacts (spaces in camelCase)
+ * This extracts the actual name from the code to avoid display issues
+ */
+function extractContractNameFromCode(code: string): string | null {
+  const match = code.match(/contract\s+(\w+)/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Normalize contract names by extracting from actual code
+ * Fixes AI tokenization artifacts like "Ball ot Initial izer" -> "BallotInitializer"
+ */
+function normalizeContractNames(contracts: ContractInfo[]): void {
+  for (const contract of contracts) {
+    const extractedName = extractContractNameFromCode(contract.code);
+    if (extractedName && extractedName !== contract.name) {
+      console.log(`[Normalize] Fixing contract name: "${contract.name}" -> "${extractedName}"`);
+      contract.name = extractedName;
+    }
+  }
+}
+
+/**
+ * Extract JSON from a response that may contain markdown code blocks or other text
+ */
+function extractJSON<T>(text: string): T {
+  // Try direct parse first
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Try to find JSON in markdown code blocks
+    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[1].trim());
+    }
+
+    // Try to find raw JSON object/array
+    const objectMatch = text.match(/\{[\s\S]*\}/);
+    if (objectMatch) {
+      return JSON.parse(objectMatch[0]);
+    }
+
+    throw new Error('Could not extract JSON from response');
+  }
+}
+
 // Type definitions for multi-contract responses
 interface ContractParam {
   name: string;
@@ -141,183 +212,7 @@ function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
 }
 
 // ============================================================================
-// PHASE 1: SEMANTIC ANALYSIS
-// ============================================================================
-
-// JSON Schema for Phase 1: Semantic Specification
-const semanticSpecSchema = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      contractPurpose: {
-        type: "string",
-        description: "High-level description of what the contract does"
-      },
-      businessLogic: {
-        type: "array",
-        items: { type: "string" },
-        description: "Critical business rules that must be enforced"
-      },
-      stateVariables: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            type: { type: "string" },
-            mutability: { type: "string", enum: ["constant", "mutable"] },
-            visibility: { type: "string", enum: ["public", "private", "internal"] },
-            usage: { type: "string" },
-            initialValue: { type: "string" }
-          },
-          required: ["name", "type", "mutability", "visibility", "usage"],
-          additionalProperties: false
-        }
-      },
-      functions: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            purpose: { type: "string" },
-            parameters: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  type: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["name", "type", "description"],
-                additionalProperties: false
-              }
-            },
-            accessControl: {
-              type: "string",
-              enum: ["anyone", "owner", "role-based", "conditional"]
-            },
-            accessControlDetails: { type: "string" },
-            stateChanges: {
-              type: "array",
-              items: { type: "string" }
-            },
-            requires: {
-              type: "array",
-              items: { type: "string" }
-            },
-            ensures: {
-              type: "array",
-              items: { type: "string" }
-            },
-            emits: {
-              type: "array",
-              items: { type: "string" }
-            }
-          },
-          required: ["name", "purpose", "parameters", "accessControl", "stateChanges", "requires", "ensures", "emits"],
-          additionalProperties: false
-        }
-      },
-      accessControlSummary: {
-        type: "object",
-        properties: {
-          roles: {
-            type: "array",
-            items: { type: "string" }
-          },
-          patterns: {
-            type: "array",
-            items: { type: "string" }
-          }
-        },
-        required: ["roles", "patterns"],
-        additionalProperties: false
-      },
-      dataRelationships: {
-        type: "array",
-        items: { type: "string" }
-      },
-      criticalInvariants: {
-        type: "array",
-        items: { type: "string" }
-      }
-    },
-    required: [
-      "contractPurpose",
-      "businessLogic",
-      "stateVariables",
-      "functions",
-      "accessControlSummary",
-      "dataRelationships",
-      "criticalInvariants"
-    ],
-    additionalProperties: false
-  }
-} as const;
-
-// Phase 1 System Prompt: Pure semantic extraction (NO UTXO/CashScript thinking)
-const SEMANTIC_ANALYSIS_PROMPT = `You are an expert Solidity contract analyzer. Your task is to extract the complete semantic understanding of a Solidity smart contract.
-
-CRITICAL CONTEXT: This analysis will be used to generate a fully functional, production-ready smart contract. Your semantic specification MUST capture ALL business logic, state transitions, and validation rules so that the resulting contract is complete and deployable. Do NOT omit any logic or create simplified/placeholder descriptions - every detail matters for production use.
-
-DO NOT think about implementation in other languages. Focus ONLY on understanding what this contract does.
-
-Extract the following information:
-
-1. CONTRACT PURPOSE
-   - What problem does this contract solve?
-   - What is the high-level business domain? (token, crowdfunding, voting, etc.)
-   - What are the main use cases?
-
-2. STATE VARIABLES ANALYSIS
-   For EACH state variable:
-   - Name and Solidity type (exact syntax)
-   - Is it constant or mutable?
-   - Visibility (public/private/internal)
-   - How is it used? (read-only, written by single function, etc.)
-   - Initial value (if any)
-
-3. FUNCTION SEMANTICS
-   For EACH function:
-   - Name and purpose (in business terms, not code)
-   - Parameters and their meaning
-   - Access control: who can call this? (anyone/owner/specific role/conditional)
-   - Access control details (e.g., "requires msg.sender == owner")
-   - Which state variables does it read?
-   - Which state variables does it modify?
-   - What are the preconditions (requires)? Express as business rules
-   - What are the postconditions (ensures)? Express as business rules
-   - What events does it emit?
-
-4. ACCESS CONTROL SUMMARY
-   - What roles exist? (owner, admin, user, etc.)
-   - What access control patterns are used? (owner-only, role-based, etc.)
-
-5. DATA RELATIONSHIPS
-   - How do state variables relate to each other?
-   - Are there invariants like "sum of parts = whole"?
-   - Dependencies between variables?
-
-6. CRITICAL INVARIANTS
-   - What MUST ALWAYS be true?
-   - Business rules that cannot be violated
-   - Examples: "total supply = sum of balances", "can only vote once"
-
-IMPORTANT RULES:
-- Extract semantic meaning, not syntax
-- Use business terminology, not code terminology
-- Be comprehensive - missing logic is the #1 problem we're solving
-- Don't make assumptions - if something is unclear, note it in the description
-- Don't suggest implementations - just understand what IS
-- CRITICAL: Your specification will produce production code with real value - capture EVERY detail, validation, and invariant
-
-Output a complete semantic specification as JSON.`;
-
-// ============================================================================
-// PHASE 2: CODE GENERATION
+// PHASE 3: CODE GENERATION (JSON schemas for structured outputs)
 // ============================================================================
 
 // JSON Schema for structured outputs
@@ -562,25 +457,23 @@ function validateMultiContractResponse(
 }
 
 // ============================================================================
-// PHASE 1 EXECUTION: Semantic Analysis
+// PHASE 1 EXECUTION: Domain Extraction (Platform-Agnostic)
 // ============================================================================
 
-async function executeSemanticAnalysis(
+async function executeDomainExtraction(
   conversionId: number,
   solidityContract: string
-): Promise<SemanticSpecification> {
-  console.log('[Phase 1] Starting semantic analysis...');
+): Promise<DomainModel> {
+  console.log('[Phase 1] Starting domain extraction (platform-agnostic)...');
   const startTime = Date.now();
 
-  const response = await anthropic.beta.messages.create({
+  const response = await anthropic.messages.create({
     model: ANTHROPIC_CONFIG.phase1.model,
     max_tokens: ANTHROPIC_CONFIG.phase1.maxTokens,
-    system: SEMANTIC_ANALYSIS_PROMPT,
-    betas: [...ANTHROPIC_CONFIG.betas],
-    output_format: semanticSpecSchema,
+    system: DOMAIN_EXTRACTION_PROMPT,
     messages: [{
       role: 'user',
-      content: solidityContract
+      content: `Extract the domain model from this smart contract:\n\n${solidityContract}\n\nRespond with valid JSON only.`
     }]
   });
 
@@ -588,9 +481,17 @@ async function executeSemanticAnalysis(
     ? response.content[0].text
     : '';
 
-  const semanticSpec: SemanticSpecification = JSON.parse(responseText);
+  const domainModel = extractJSON<DomainModel>(responseText);
 
-  // Log to database
+  // Ensure required arrays exist (model might not return all fields without structured output)
+  domainModel.entities = domainModel.entities || [];
+  domainModel.transitions = domainModel.transitions || [];
+  domainModel.invariants = domainModel.invariants || [];
+  domainModel.relationships = domainModel.relationships || [];
+  domainModel.roles = domainModel.roles || [];
+  domainModel.domain = domainModel.domain || 'other';
+
+  // Log to database (reusing semantic_analysis table for now)
   const duration = Date.now() - startTime;
   insertSemanticAnalysis({
     conversion_id: conversionId,
@@ -602,14 +503,70 @@ async function executeSemanticAnalysis(
     response_time_ms: duration
   });
 
-  console.log('[Phase 1] Semantic analysis complete:', {
+  console.log('[Phase 1] Domain extraction complete:', {
     duration: `${(duration / 1000).toFixed(2)}s`,
-    functions: semanticSpec.functions.length,
-    stateVars: semanticSpec.stateVariables.length,
-    invariants: semanticSpec.criticalInvariants.length
+    domain: domainModel.domain,
+    entities: domainModel.entities.length,
+    transitions: domainModel.transitions.length,
+    invariants: domainModel.invariants.length
   });
 
-  return semanticSpec;
+  return domainModel;
+}
+
+// ============================================================================
+// PHASE 2 EXECUTION: UTXO Architecture Design
+// ============================================================================
+
+async function executeArchitectureDesign(
+  conversionId: number,
+  solidityContract: string,
+  domainModel: DomainModel
+): Promise<UTXOArchitecture> {
+  console.log('[Phase 2] Starting UTXO architecture design...');
+  const startTime = Date.now();
+
+  const userMessage = `Design a UTXO architecture for this domain model.
+
+DOMAIN MODEL:
+${JSON.stringify(domainModel, null, 2)}
+
+ORIGINAL SOLIDITY (for reference):
+${solidityContract}
+
+Design the UTXO architecture following the patterns and prime directives in the system prompt.`;
+
+  const response = await anthropic.messages.create({
+    model: ANTHROPIC_CONFIG.phase1.model, // Use same model as phase 1
+    max_tokens: 16384, // Architecture design needs more tokens
+    system: UTXO_ARCHITECTURE_PROMPT,
+    messages: [{
+      role: 'user',
+      content: userMessage + '\n\nRespond with valid JSON only.'
+    }]
+  });
+
+  const responseText = response.content[0].type === 'text'
+    ? response.content[0].text
+    : '';
+
+  const architecture = extractJSON<UTXOArchitecture>(responseText);
+
+  // Ensure required arrays exist (model might not return all fields without structured output)
+  architecture.contracts = architecture.contracts || [];
+  architecture.transactionTemplates = architecture.transactionTemplates || [];
+  architecture.patterns = architecture.patterns || [];
+  architecture.warnings = architecture.warnings || [];
+
+  const duration = Date.now() - startTime;
+  console.log('[Phase 2] Architecture design complete:', {
+    duration: `${(duration / 1000).toFixed(2)}s`,
+    contracts: architecture.contracts.length,
+    transactions: architecture.transactionTemplates.length,
+    patterns: architecture.patterns.map(p => p.name).join(', ')
+  });
+
+  return architecture;
 }
 
 // ============================================================================
@@ -715,12 +672,12 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     conversionId = logConversionStart(metadata, contract);
 
     // ========================================
-    // PHASE 1: SEMANTIC ANALYSIS
+    // PHASE 1: DOMAIN EXTRACTION (Platform-Agnostic)
     // ========================================
-    sendEvent('phase1_start', { message: 'Extracting semantic intent...' });
+    sendEvent('phase1_start', { message: 'Extracting domain model...' });
 
-    let semanticSpec: SemanticSpecification;
-    let semanticSpecJSON: string;
+    let domainModel: DomainModel;
+    let domainModelJSON: string;
 
     try {
       // Check if client disconnected before expensive Phase 1 API call
@@ -728,14 +685,19 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
         throw new Error('AbortError: Client disconnected');
       }
 
-      semanticSpec = await executeSemanticAnalysis(conversionId, contract);
-      semanticSpecJSON = JSON.stringify(semanticSpec, null, 2);
-      sendEvent('phase1_complete', { message: 'Semantic analysis complete' });
+      domainModel = await executeDomainExtraction(conversionId, contract);
+      domainModelJSON = JSON.stringify(domainModel, null, 2);
+      sendEvent('phase1_complete', {
+        message: 'Domain extraction complete',
+        domain: domainModel.domain,
+        entities: domainModel.entities.length,
+        transitions: domainModel.transitions.length
+      });
     } catch (phase1Error) {
-      console.error('[Phase 1] Semantic analysis failed:', phase1Error);
+      console.error('[Phase 1] Domain extraction failed:', phase1Error);
       sendEvent('error', {
         phase: 1,
-        message: 'Semantic analysis failed',
+        message: 'Domain extraction failed',
         details: phase1Error instanceof Error ? phase1Error.message : String(phase1Error)
       });
       endResponse();
@@ -743,9 +705,40 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
     }
 
     // ========================================
-    // PHASE 2: CODE GENERATION
+    // PHASE 2: UTXO ARCHITECTURE DESIGN
     // ========================================
-    sendEvent('phase2_start', { message: 'Generating CashScript...' });
+    sendEvent('phase2_start', { message: 'Designing UTXO architecture...' });
+
+    let utxoArchitecture: UTXOArchitecture;
+    let utxoArchitectureJSON: string;
+
+    try {
+      if (clientDisconnected) {
+        throw new Error('AbortError: Client disconnected');
+      }
+
+      utxoArchitecture = await executeArchitectureDesign(conversionId, contract, domainModel);
+      utxoArchitectureJSON = JSON.stringify(utxoArchitecture, null, 2);
+      sendEvent('phase2_complete', {
+        message: 'Architecture design complete',
+        contracts: utxoArchitecture.contracts.length,
+        patterns: utxoArchitecture.patterns.map(p => p.name)
+      });
+    } catch (phase2Error) {
+      console.error('[Phase 2] Architecture design failed:', phase2Error);
+      sendEvent('error', {
+        phase: 2,
+        message: 'Architecture design failed',
+        details: phase2Error instanceof Error ? phase2Error.message : String(phase2Error)
+      });
+      endResponse();
+      return;
+    }
+
+    // ========================================
+    // PHASE 3: CODE GENERATION
+    // ========================================
+    sendEvent('phase3_start', { message: 'Generating CashScript...' });
 
     const systemPrompt = `You are a CashScript expert. Convert EVM (Solidity) smart contracts to CashScript.
 
@@ -1140,15 +1133,22 @@ Use your best judgment. Include deployment order and parameter sources for multi
       }
 
       const messageContent = attemptNumber === 1
-        ? `SEMANTIC SPECIFICATION (what the contract must do):
-${semanticSpecJSON}
+        ? `DOMAIN MODEL (what the system does - platform-agnostic):
+${domainModelJSON}
 
-ORIGINAL SOLIDITY CONTRACT:
+UTXO ARCHITECTURE (how to implement it):
+${utxoArchitectureJSON}
+
+ORIGINAL SOLIDITY CONTRACT (for reference):
 ${contract}
 
-Based on the semantic specification and CashScript language reference provided in the system prompt, generate CashScript that implements the contract above.
+Generate CashScript contracts based on the UTXO architecture above. Follow the contract specifications exactly:
+- Use the contract names, roles, and validation purposes from the architecture
+- Implement the functions as specified with their validation requirements
+- Follow the transaction templates for input/output positions
+- Apply the mandatory checklist from the system prompt
 
-Ensure semantic fidelity: Your CashScript must honor all business logic, invariants, and guarantees described in the specification. Structure may differ to fit the UTXO model, but all original contract intentions must be preserved.`
+Every contract must validate something. Every function must add constraints. No placeholders.`
         : retryMessage;
 
       const apiCallStartTime = Date.now();
@@ -1197,7 +1197,7 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         parsed = JSON.parse(response);
       } catch (parseError) {
         sendEvent('error', {
-          phase: 2,
+          phase: 3,
           message: 'Response truncated - contract too complex',
           details: parseError instanceof Error ? parseError.message : String(parseError)
         });
@@ -1205,10 +1205,16 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
         return;
       }
 
-      // After first attempt, mark Phase 2 complete and start Phase 3
+      // Normalize contract names by extracting from actual code
+      // Fixes AI tokenization artifacts like "Ball ot Initial izer" -> "BallotInitializer"
+      if (parsed.contracts && Array.isArray(parsed.contracts)) {
+        normalizeContractNames(parsed.contracts);
+      }
+
+      // After first attempt, mark Phase 3 complete and start Phase 4 (validation)
       if (attemptNumber === 1) {
-        sendEvent('phase2_complete', { message: 'Code generation complete' });
-        sendEvent('phase3_start', { message: 'Validating contracts... You\'ll be redirected to results as soon as we have something to show. We\'ll keep working on the rest in the background.' });
+        sendEvent('phase3_complete', { message: 'Code generation complete' });
+        sendEvent('phase4_start', { message: 'Validating contracts... You\'ll be redirected to results as soon as we have something to show. We\'ll keep working on the rest in the background.' });
 
         // Detect and save contract mode from first attempt
         isMultiContractMode = isMultiContractResponse(parsed);
@@ -1432,14 +1438,14 @@ Ensure semantic fidelity: Your CashScript must honor all business logic, invaria
           });
         }
 
-        sendEvent('phase3_complete', { message: 'Validation complete' });
+        sendEvent('phase4_complete', { message: 'Validation complete' });
         break;
       }
 
       // Build retry message if validation failed
       if (attemptNumber === ANTHROPIC_CONFIG.phase2.maxRetries) {
         sendEvent('error', {
-          phase: 2,
+          phase: 4,
           message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts. This is not a deterministic system, so just try again - it's likely to work!`,
           details: validationError
         });
