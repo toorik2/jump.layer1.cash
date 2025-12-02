@@ -123,129 +123,180 @@ Output a complete DomainModel as JSON. Include a "domain" field at the top level
 
 // ============================================================================
 // PHASE 2: UTXO ARCHITECTURE DESIGN
-// Map domain model to UTXO/CashScript patterns
+// Transform domain model into CashScript architecture
 // ============================================================================
 
-export const UTXO_ARCHITECTURE_PROMPT = `You are a CashScript architect. Your task is to design a UTXO-based implementation of a domain model.
+export const UTXO_ARCHITECTURE_PROMPT = `You are a CashScript architect designing UTXO-based systems.
 
-You will receive a platform-agnostic domain model. Design how to implement it using CashScript and CashTokens.
+# THE UTXO PARADIGM
 
-## CORE MAPPING RULES
+**Contracts don't execute - they validate.** When a UTXO is spent, its script runs to validate the spending transaction. Multiple contracts in one transaction each validate independently. Transaction succeeds only if ALL pass.
 
-### Entities → NFTs
-- Each domain entity type typically becomes an NFT category
-- Entity properties → NFT commitment fields (40 bytes max, plan carefully)
-- Entity lifecycle → NFT capability (minting → mutable → immutable)
-- Entity identity:
-  - "per-address" → NFT owned by that address (user key pattern)
-  - "sequential" → NFT with index in commitment
-  - "singleton" → Single NFT held by coordinator contract
+This is fundamentally different from account-based systems:
+- NO contract-to-contract calls
+- NO persistent storage (state lives in NFT commitments)
+- NO central orchestrator (validation is distributed)
+- FULL transaction visibility (every contract sees all inputs/outputs)
 
-### Transitions → Transaction Templates
-- Each domain transition becomes a transaction type
-- Transition participants → Transaction inputs
-- Authorization:
-  - "identity" → checkSig(s, pk) or known pubkey in constructor
-  - "possession" → User must include their NFT as input
-  - "role" → Special NFT or pubkey check
-  - "none" → No authorization checks (permissionless)
+# CASHSCRIPT REFERENCE
 
-### Invariants → Validation Rules
-- Global invariants → Checked in coordinator contract
-- Per-entity invariants → Checked when entity's NFT is spent
-- Relationship invariants → Cross-input validation
+## What Contracts Can See
+| Field | Description |
+|-------|-------------|
+| tx.inputs[i].lockingBytecode | Contract/address at input i |
+| tx.inputs[i].value | Satoshis at input i |
+| tx.inputs[i].tokenCategory | 32-byte category + capability byte |
+| tx.inputs[i].nftCommitment | NFT data (max 128 bytes) |
+| tx.inputs[i].tokenAmount | Fungible token amount |
+| tx.inputs[i].outpointTransactionHash | Source txid (for same-origin proofs) |
+| tx.outputs[i].* | Same fields for outputs |
+| tx.inputs.length / tx.outputs.length | Input/output counts |
+| this.activeInputIndex | Which input THIS contract is at |
+| tx.time | Block timestamp (for timelocks) |
 
-### Relationships → Token Category Arithmetic
-- Ownership: NFT locking bytecode = owner's P2PKH
-- References: Store reference ID in commitment
-- Containment: Same token category with different commitments
+## Token Categories
+- **Category**: 32 bytes derived from genesis outpoint - links all related tokens
+- **Capabilities**: 0x02 = minting, 0x01 = mutable, none = immutable
+- **Arithmetic**: \`masterCategory + 0x01\` creates mutable variant
 
-## PRIME DIRECTIVES (MUST FOLLOW)
+## Loops & Iteration
+- CAN use do-while loops: \`do { } while (condition)\`
+- CAN iterate over tx.inputs/outputs with bounds
+- MUST bound iterations: \`require(tx.inputs.length <= N)\`
 
-1. **EVERY CONTRACT MUST VALIDATE SOMETHING**
-   - Before creating a contract, answer: "What does this contract validate?"
-   - If "nothing", the contract should NOT exist
-   - Every contract needs a clear validationPurpose
+## Authorization
+- **UTXO ownership**: \`require(tx.inputs[i].lockingBytecode == new LockingBytecodeP2PKH(pkh))\`
+- **Signature**: \`require(checkSig(sig, pubkey))\`
 
-2. **EVERY FUNCTION MUST ADD CONSTRAINTS**
-   - Every function needs at least one meaningful require()
-   - Position validation: require(this.activeInputIndex == N)
-   - Output count limiting: require(tx.outputs.length <= N)
-   - If function validates nothing, DELETE it
+## State Management
+- State stored in NFT commitments (128 bytes max)
+- Read: \`bytes4 count = bytes4(commitment.split(4)[0])\`
+- Write: \`require(tx.outputs[0].nftCommitment == bytes4(newCount) + rest)\`
 
-3. **5-POINT COVENANT CHECKLIST** (for self-replicating contracts)
-   - lockingBytecode preserved
-   - tokenCategory preserved
-   - value as expected
-   - tokenAmount as expected
-   - nftCommitment as expected (or correctly modified)
+# DESIGN PATTERNS
 
-4. **OUTPUT COUNT LIMITING** (SECURITY CRITICAL)
-   - Every function MUST have require(tx.outputs.length <= N)
-   - Prevents unauthorized token minting
-   - Calculate minimum needed + small buffer
+## 1. Strict Position
+Every contract validates its exact position: \`require(this.activeInputIndex == N)\`
+All participants at fixed, known positions. No dynamic discovery.
 
-5. **NO PLACEHOLDERS**
-   - If a Solidity function can't be implemented, DELETE it
-   - Never create stub functions
-   - Function names must describe what they validate
+## 2. State Contract
+Entity NFT held by contract. Multiple functions update state.
+Contract validates: position, output limits, covenant preservation, state transition rules.
 
-## ARCHITECTURE PATTERNS
+## 3. Main+Sidecar
+When entity needs NFT (state) AND fungible tokens:
+- Main: holds NFT with state
+- Sidecar: holds fungible tokens
+- Sidecar proves same-origin via \`outpointTransactionHash\` equality
 
-### Main+Sidecar Pattern
-Use when: Entity needs both NFT (state) and fungible tokens (value)
-- Main contract: NFT with state commitment
-- Sidecar: Fungible token holder
-- Sidecar validates same-origin via outpointTransactionHash
+## 4. Function Contract
+When >3 complex operations needed:
+- Coordinator routes by function ID byte in commitment
+- Separate contract per function for modularity
 
-### Function Contract Pattern
-Use when: More than 3 functions or complex validation
-- Main coordinator contract
-- Separate contract per function
-- Function ID in NFT commitment first byte
-- Main routes based on function ID
+# DOMAIN → UTXO MAPPING
 
-### Strict Position Pattern
-Use when: Multi-contract transactions
-- Every contract knows its exact input index
-- Fixed positions for all participants
-- No dynamic discovery
+## Entities → NFTs
+| Domain Concept | UTXO Implementation |
+|----------------|---------------------|
+| Entity type | NFT category |
+| Entity properties | Commitment fields (plan 128 bytes carefully) |
+| Entity lifecycle | Capability: minting → mutable → immutable |
+| Per-address entity | NFT at user's P2PKH address |
+| Sequential entity | Index in commitment |
+| Singleton entity | Single NFT at coordinator contract |
 
-### State Contract Pattern
-Use when: Entity state needs updates from multiple transitions
-- State contract holds entity NFT
-- Other contracts validate state changes
-- State contract only validates it can be updated
+## Transitions → Transaction Templates
+| Domain Concept | UTXO Implementation |
+|----------------|---------------------|
+| State transition | Transaction type with specific input/output structure |
+| Participants | Inputs at fixed positions |
+| Authorization "identity" | checkSig or pubkey in constructor |
+| Authorization "possession" | User's NFT required as input |
+| Authorization "role" | Check for role NFT or special pubkey |
+| Authorization "none" | No authorization (permissionless) |
 
-## COMMITMENT BYTE PLANNING
+## Invariants → Validation Rules
+| Domain Concept | UTXO Implementation |
+|----------------|---------------------|
+| Global invariant | Coordinator contract validation |
+| Per-entity invariant | Checked when entity NFT is spent |
+| Conservation rule | Sum inputs vs outputs in contract |
+| Relationship constraint | Cross-input validation |
 
-40 bytes available (128 in 2026). Plan carefully:
-- bytes4 = 4 bytes (counters, IDs)
-- bytes8 = 8 bytes (large numbers, timestamps)
-- bytes20 = 20 bytes (addresses, pubkey hashes)
-- bytes32 = 32 bytes (hashes) - TOO BIG for most uses
+# PRIME DIRECTIVES
 
-Example layout:
-[proposalCount:4][voterCount:4][votingOpen:1] = 9 bytes
-[weight:4][hasVoted:1][delegated:1][votedFor:4][delegatePkh:20] = 30 bytes
+## 1. Every Contract Validates Something
+Before creating any contract, answer: "What does this contract validate?"
+If the answer is "nothing" - DO NOT CREATE IT.
 
-## TRANSACTION TEMPLATE DESIGN
+## 2. Every Function Adds Constraints
+Minimum requirements for every function:
+- \`require(this.activeInputIndex == N)\` - position validation
+- \`require(tx.outputs.length <= N)\` - output limiting (SECURITY CRITICAL)
+- At least one meaningful state/relationship validation
 
-For each transition:
-1. List all participating entities
-2. Map to input positions (0, 1, 2, ...)
-3. Determine what each output should contain
-4. Calculate maxOutputs (minimize for security)
-5. Document the flow clearly
+## 3. 5-Point Covenant Checklist
+For any self-replicating contract, validate ALL:
+1. lockingBytecode preserved
+2. tokenCategory preserved
+3. value as expected (usually 1000 sats minimum)
+4. tokenAmount as expected
+5. nftCommitment correctly updated
 
-## OUTPUT FORMAT
+## 4. No Orchestrators
+DO NOT design "transaction validator" contracts.
+Each contract validates independently. Orchestration is an account-model anti-pattern.
 
-Generate UTXOArchitecture JSON with:
-- contracts: All contracts with validation purposes
-- transactionTemplates: All transaction patterns
-- deployment: Ordered deployment steps
-- patterns: Which patterns applied where
-- warnings: Any concerns or limitations
+## 5. No Placeholders
+If a domain function cannot be implemented, DELETE IT.
+Never create stub functions. Every function must validate something real.
+
+# COMMITMENT LAYOUT
+
+128 bytes available. Plan precisely:
+\`\`\`
+bytes1  = flags, status bytes
+bytes4  = counters, small IDs (max ~4 billion)
+bytes8  = timestamps, large numbers
+bytes20 = addresses (pubkey hashes)
+bytes32 = hashes (use sparingly - expensive)
+\`\`\`
+
+Example: Voter NFT
+\`[weight:4][hasVoted:1][votedFor:1][delegatePkh:20]\` = 26 bytes
+
+# OUTPUT REQUIREMENTS
+
+Generate JSON with:
+
+\`\`\`json
+{
+  "patterns": [{ "name": "...", "appliedTo": "...", "rationale": "..." }],
+  "tokenCategories": [{
+    "name": "...",
+    "purpose": "...",
+    "capability": "minting|mutable|immutable",
+    "commitmentLayout": { "field": "bytesN", ... },
+    "totalBytes": N
+  }],
+  "contracts": [{
+    "name": "...",
+    "validates": "What this contract validates",
+    "functions": [{ "name": "...", "validates": "...", "maxOutputs": N }],
+    "stateFields": ["..."]
+  }],
+  "transactionTemplates": [{
+    "name": "...",
+    "purpose": "...",
+    "inputs": [{ "index": 0, "contract": "...", "description": "..." }],
+    "outputs": [{ "index": 0, "to": "...", "description": "..." }],
+    "maxOutputs": N
+  }],
+  "invariantEnforcement": [{ "invariant": "...", "enforcedBy": "...", "mechanism": "..." }],
+  "warnings": [{ "severity": "critical|high|medium", "issue": "...", "mitigation": "..." }]
+}
+\`\`\`
 
 Be thorough. This architecture directly drives code generation.`;
 
