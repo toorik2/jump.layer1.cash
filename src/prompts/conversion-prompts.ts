@@ -138,6 +138,46 @@ This is fundamentally different from account-based systems:
 - NO central orchestrator (validation is distributed)
 - FULL transaction visibility (every contract sees all inputs/outputs)
 
+# THE CUSTODY QUESTION (CRITICAL - ANSWER FIRST)
+
+**For EACH entity NFT, you MUST decide: "Where is this NFT locked?"**
+
+| NFT Location | What Code Runs | Rules Enforced | User Control |
+|--------------|----------------|----------------|--------------|
+| User's P2PKH | NONE | NONE | Full (user signs with key) |
+| Contract P2SH32 | Contract code | YES | Via commitment (owner PKH stored) |
+
+**CRITICAL UNDERSTANDING**:
+- Contract code ONLY executes when UTXOs are at THAT CONTRACT'S address
+- If you send NFT to user's P2PKH, your contract code NEVER RUNS
+- To ENFORCE rules (voting limits, transfer restrictions), NFT MUST be at contract address
+
+**The Authorization Pattern** (for contract-custodied NFTs):
+\`\`\`
+NFT locked at → VoterContract address
+Owner stored in → NFT commitment (bytes20 ownerPkh)
+User authorizes by → Spending BCH from their P2PKH as another input
+Contract validates → tx.inputs[userIdx].lockingBytecode == new LockingBytecodeP2PKH(ownerPkh)
+\`\`\`
+
+**WRONG Design** (contract code never runs):
+\`\`\`
+Ballot.grantVotingRights → sends Voter NFT to user's P2PKH
+Voter.vote → UNREACHABLE! NFT is not at Voter contract address!
+\`\`\`
+
+**CORRECT Design** (contract enforces rules):
+\`\`\`
+Ballot.grantVotingRights → sends Voter NFT to Voter contract address (owner PKH in commitment)
+Voter.vote → Executes because NFT IS at Voter contract
+          → User provides BCH input from their P2PKH to authorize
+          → Contract checks stored ownerPkh matches BCH input source
+\`\`\`
+
+**Decision Guide**:
+- Need to ENFORCE rules (can't vote twice, must delegate properly)? → Contract custody
+- User has FULL control (simple ownership receipt)? → P2PKH custody (no contract needed!)
+
 # CASHSCRIPT REFERENCE
 
 ## What Contracts Can See
@@ -189,10 +229,11 @@ When entity needs NFT (state) AND fungible tokens:
 - Sidecar: holds fungible tokens
 - Sidecar proves same-origin via \`outpointTransactionHash\` equality
 
-## 4. Function Contract
-When >3 complex operations needed:
-- Coordinator routes by function ID byte in commitment
-- Separate contract per function for modularity
+## 4. One Entity, One Contract
+Each domain entity maps to exactly ONE contract:
+- Multiple operations? → Multiple functions in SAME contract
+- Complex routing? → Use function selector parameter
+- NEVER split entity across contracts by operation type
 
 # DOMAIN → UTXO MAPPING
 
@@ -244,27 +285,57 @@ For any self-replicating contract, validate ALL:
 4. tokenAmount as expected
 5. nftCommitment correctly updated
 
-## 4. No Orchestrators
+## 4. No Orchestrators, No Splitting
 DO NOT design "transaction validator" contracts.
-Each contract validates independently. Orchestration is an account-model anti-pattern.
+DO NOT split one entity into multiple contracts by operation (e.g., VoterGrant, VoterDelegate, VoterVote).
+One entity = one contract with multiple functions. Orchestration is an account-model anti-pattern.
 
 ## 5. No Placeholders
 If a domain function cannot be implemented, DELETE IT.
 Never create stub functions. Every function must validate something real.
 
-# COMMITMENT LAYOUT
+# COMMITMENT CONSTRAINTS (128 BYTES MAX)
 
-128 bytes available. Plan precisely:
+**Limit: 128 bytes**. Plan your layout before designing:
 \`\`\`
-bytes1  = flags, status bytes
-bytes4  = counters, small IDs (max ~4 billion)
-bytes8  = timestamps, large numbers
-bytes20 = addresses (pubkey hashes)
-bytes32 = hashes (use sparingly - expensive)
+bytes1  = flags, status        (1 byte)
+bytes4  = counters, small IDs  (4 bytes, max ~4 billion)
+bytes8  = timestamps, amounts  (8 bytes)
+bytes20 = pubkey hashes        (20 bytes)
+bytes32 = full hashes          (32 bytes)
 \`\`\`
 
-Example: Voter NFT
-\`[weight:4][hasVoted:1][votedFor:1][delegatePkh:20]\` = 26 bytes
+**Example: Voter NFT**
+\`\`\`
+[ownerPkh:20][weight:4][hasVoted:1][votedFor:1][delegatePkh:20] = 46 bytes ✓
+\`\`\`
+
+**Best practices**:
+- Keep commitments compact for lower fees
+- Use flag bytes to pack multiple booleans
+- Use indexes/IDs instead of full hashes where possible
+
+# CROSS-CONTRACT IDENTIFICATION
+
+**Use token category**, not bytecode reconstruction:
+
+**WRONG** (fragile, error-prone):
+\`\`\`cashscript
+bytes ballotBytecode = tx.inputs[0].lockingBytecode.split(3)[0] + ...;  // DON'T DO THIS
+\`\`\`
+
+**CORRECT** (use category from constructor):
+\`\`\`cashscript
+contract Voter(bytes32 ballotCategory) {
+    function vote() {
+        // Identify Ballot by token category
+        require(tx.inputs[0].tokenCategory == ballotCategory + 0x01);  // mutable
+    }
+}
+\`\`\`
+
+**For same-system contracts**: All share same base category, differ by capability byte.
+**For cross-system trust**: Pass category as constructor param at deployment.
 
 # OUTPUT REQUIREMENTS
 
@@ -273,6 +344,13 @@ Generate JSON with:
 \`\`\`json
 {
   "patterns": [{ "name": "...", "appliedTo": "...", "rationale": "..." }],
+  "custodyDecisions": [{
+    "entity": "Voter",
+    "custody": "contract",
+    "contractName": "VoterContract",
+    "rationale": "Must enforce voting rules - can't vote twice, valid delegation",
+    "ownerFieldInCommitment": "ownerPkh (bytes20)"
+  }],
   "tokenCategories": [{
     "name": "...",
     "purpose": "...",
@@ -282,6 +360,7 @@ Generate JSON with:
   }],
   "contracts": [{
     "name": "...",
+    "custodies": "What NFTs are locked at this contract's address",
     "validates": "What this contract validates",
     "functions": [{ "name": "...", "validates": "...", "maxOutputs": N }],
     "stateFields": ["..."]
@@ -289,8 +368,8 @@ Generate JSON with:
   "transactionTemplates": [{
     "name": "...",
     "purpose": "...",
-    "inputs": [{ "index": 0, "contract": "...", "description": "..." }],
-    "outputs": [{ "index": 0, "to": "...", "description": "..." }],
+    "inputs": [{ "index": 0, "contract": "...", "from": "ContractName or P2PKH", "description": "..." }],
+    "outputs": [{ "index": 0, "to": "ContractName or P2PKH", "description": "..." }],
     "maxOutputs": N
   }],
   "invariantEnforcement": [{ "invariant": "...", "enforcedBy": "...", "mechanism": "..." }],

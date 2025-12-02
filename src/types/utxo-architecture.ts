@@ -78,7 +78,7 @@ export interface NFTConfig {
   capability: 'minting' | 'mutable' | 'immutable';
 
   /**
-   * Commitment structure (must fit in 40 bytes, 128 bytes in 2026)
+   * Commitment structure (max 128 bytes)
    */
   commitment: CommitmentField[];
 

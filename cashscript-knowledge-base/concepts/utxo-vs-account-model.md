@@ -7,7 +7,7 @@
 | **State** | No global state, independent atomic UTXOs | Global state tree, persistent storage |
 | **Execution** | Transaction-level validation, stateless scripts | Contract-level execution, stateful |
 | **Concurrency** | Parallel spending of different UTXOs | Sequential (nonce-based) |
-| **Persistence** | UTXO chains, NFT commitments (40 bytes, 128 planned 2026) | Storage slots, mappings, state variables |
+| **Persistence** | UTXO chains, NFT commitments (128 bytes) | Storage slots, mappings, state variables |
 | **Transaction** | Multiple inputs → Multiple outputs | Single sender → Single recipient |
 | **Gas Model** | Fee based on tx size (bytes) | Computational steps (opcode-based) |
 | **Introspection** | Full tx visibility (`tx.inputs[]`, `tx.outputs[]`) | Limited (`msg.sender`, `msg.value`) |
@@ -30,7 +30,7 @@ tx.inputs[i].value                 // int: BCH amount in satoshis
 tx.inputs[i].lockingBytecode       // bytes: Input script
 tx.inputs[i].tokenCategory         // bytes: 32-byte category + optional capability (0x01=mutable, 0x02=minting)
 tx.inputs[i].tokenAmount           // int: Fungible token amount
-tx.inputs[i].nftCommitment         // bytes: NFT data (40 bytes, 128 planned 2026)
+tx.inputs[i].nftCommitment         // bytes: NFT data (128 bytes)
 tx.inputs[i].sequenceNumber        // int: nSequence field value
 tx.inputs[i].unlockingBytecode     // bytes: scriptSig of input
 tx.inputs[i].outpointTransactionHash // bytes32: Previous transaction hash
@@ -41,7 +41,7 @@ tx.outputs[i].value                // int: BCH amount in satoshis
 tx.outputs[i].lockingBytecode      // bytes: Output script
 tx.outputs[i].tokenCategory        // bytes: 32-byte category + optional capability (0x01=mutable, 0x02=minting)
 tx.outputs[i].tokenAmount          // int: Fungible token amount
-tx.outputs[i].nftCommitment        // bytes: NFT data (40 bytes, 128 planned 2026)
+tx.outputs[i].nftCommitment        // bytes: NFT data (128 bytes)
 
 // Context
 this.activeInputIndex              // int: Current UTXO being spent
@@ -78,7 +78,7 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 | Solidity | CashScript | Notes |
 |----------|-----------|-------|
 | `constructor(address _owner)` | `contract MyContract(pubkey owner)` | Parameters are immutable, set at instantiation |
-| `uint256 balance;` | NFT commitment or UTXO chain | State stored in NFT commitments (40 bytes, 128 in 2026) |
+| `uint256 balance;` | NFT commitment or UTXO chain | State stored in NFT commitments (128 bytes) |
 | `mapping(address => uint)` | NFT commitment + loop validation | No native mappings, use arrays or commitment data |
 | `require(condition, "msg")` | `require(condition);` | No error messages, tx fails if false |
 | `msg.sender` | `checkSig(sig, pubkey)` | Explicit signature verification required |
@@ -133,7 +133,7 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 - ❌ No persistent storage slots or state variables
 - ❌ No memory allocation or deallocation
 - ✅ All operations on ephemeral stack
-- ✅ State lives in NFT commitments (40 bytes, 128 in 2026) or UTXO outputs
+- ✅ State lives in NFT commitments (128 bytes) or UTXO outputs
 - ✅ Transaction introspection provides input data
 
 ### No O(1) Lookups
@@ -156,7 +156,7 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 - ❌ No storage slot packing optimization
 - ✅ Fee = transaction size in bytes × sat/byte rate
 - ✅ Optimize by minimizing output count, using P2S over P2SH
-- ✅ NFT commitment size (40 bytes, 128 in 2026) affects fee, not "gas"
+- ✅ NFT commitment size (128 bytes) affects fee, not "gas"
 
 ### State Management
 - ❌ No persistent state variables
@@ -233,7 +233,7 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 
 ### Bytecode Limits
 - ✅ 10,000 bytes unlocking bytecode limit
-- ✅ NFT commitment: 40 bytes (128 bytes planned for 2026 upgrade)
+- ✅ NFT commitment: 128 bytes
 
 ## Type System Reference
 

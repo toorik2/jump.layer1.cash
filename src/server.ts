@@ -212,6 +212,286 @@ function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
 }
 
 // ============================================================================
+// ============================================================================
+// PHASE 1: DOMAIN EXTRACTION (JSON schema for structured outputs)
+// ============================================================================
+
+const phase1OutputSchema = {
+  type: "json_schema",
+  schema: {
+    type: "object",
+    properties: {
+      domain: {
+        type: "string",
+        enum: ["voting", "token", "crowdfunding", "marketplace", "game", "defi", "governance", "other"]
+      },
+      entities: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+            properties: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  type: { type: "string" },
+                  description: { type: "string" }
+                },
+                required: ["name", "type", "description"],
+                additionalProperties: false
+              }
+            },
+            lifecycle: { type: "array", items: { type: "string" } },
+            identity: { type: "string" },
+            mutable: { type: "boolean" }
+          },
+          required: ["name", "description", "properties", "lifecycle", "identity", "mutable"],
+          additionalProperties: false
+        }
+      },
+      transitions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+            participants: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  role: { type: "string" },
+                  description: { type: "string" }
+                },
+                required: ["role", "description"],
+                additionalProperties: false
+              }
+            },
+            effects: { type: "array", items: { type: "string" } },
+            authorization: { type: "string" },
+            preconditions: { type: "array", items: { type: "string" } },
+            postconditions: { type: "array", items: { type: "string" } },
+            timeConstraints: { type: "string" }
+          },
+          required: ["name", "description", "participants", "effects", "authorization", "preconditions", "postconditions", "timeConstraints"],
+          additionalProperties: false
+        }
+      },
+      invariants: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            scope: { type: "string" },
+            rule: { type: "string" },
+            severity: { type: "string" }
+          },
+          required: ["scope", "rule", "severity"],
+          additionalProperties: false
+        }
+      },
+      relationships: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            from: { type: "string" },
+            to: { type: "string" },
+            type: { type: "string" },
+            description: { type: "string" }
+          },
+          required: ["from", "to", "type", "description"],
+          additionalProperties: false
+        }
+      },
+      roles: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+            assignment: { type: "string" },
+            capabilities: { type: "array", items: { type: "string" } }
+          },
+          required: ["name", "description", "assignment", "capabilities"],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ["domain", "entities", "transitions", "invariants", "relationships", "roles"],
+    additionalProperties: false
+  }
+} as const;
+
+// ============================================================================
+// PHASE 2: UTXO ARCHITECTURE (JSON schema for structured outputs)
+// ============================================================================
+
+const phase2OutputSchema = {
+  type: "json_schema",
+  schema: {
+    type: "object",
+    properties: {
+      patterns: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            appliedTo: { type: "string" },
+            rationale: { type: "string" }
+          },
+          required: ["name", "appliedTo", "rationale"],
+          additionalProperties: false
+        }
+      },
+      custodyDecisions: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            entity: { type: "string" },
+            custody: { type: "string" },
+            contractName: { type: "string" },
+            rationale: { type: "string" },
+            ownerFieldInCommitment: { type: "string" }
+          },
+          required: ["entity", "custody", "contractName", "rationale", "ownerFieldInCommitment"],
+          additionalProperties: false
+        }
+      },
+      tokenCategories: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            purpose: { type: "string" },
+            capability: { type: "string" },
+            commitmentLayout: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  field: { type: "string" },
+                  bytes: { type: "integer" },
+                  description: { type: "string" }
+                },
+                required: ["field", "bytes", "description"],
+                additionalProperties: false
+              }
+            },
+            totalBytes: { type: "integer" }
+          },
+          required: ["name", "purpose", "capability", "commitmentLayout", "totalBytes"],
+          additionalProperties: false
+        }
+      },
+      contracts: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            custodies: { type: "string" },
+            validates: { type: "string" },
+            functions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  validates: { type: "string" },
+                  maxOutputs: { type: "integer" }
+                },
+                required: ["name", "validates", "maxOutputs"],
+                additionalProperties: false
+              }
+            },
+            stateFields: { type: "array", items: { type: "string" } }
+          },
+          required: ["name", "custodies", "validates", "functions", "stateFields"],
+          additionalProperties: false
+        }
+      },
+      transactionTemplates: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            purpose: { type: "string" },
+            inputs: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  index: { type: "integer" },
+                  type: { type: "string" },
+                  description: { type: "string" }
+                },
+                required: ["index", "type", "description"],
+                additionalProperties: false
+              }
+            },
+            outputs: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  index: { type: "integer" },
+                  type: { type: "string" },
+                  description: { type: "string" }
+                },
+                required: ["index", "type", "description"],
+                additionalProperties: false
+              }
+            },
+            maxOutputs: { type: "integer" }
+          },
+          required: ["name", "purpose", "inputs", "outputs", "maxOutputs"],
+          additionalProperties: false
+        }
+      },
+      invariantEnforcement: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            invariant: { type: "string" },
+            enforcedBy: { type: "string" },
+            mechanism: { type: "string" }
+          },
+          required: ["invariant", "enforcedBy", "mechanism"],
+          additionalProperties: false
+        }
+      },
+      warnings: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            severity: { type: "string" },
+            issue: { type: "string" },
+            mitigation: { type: "string" }
+          },
+          required: ["severity", "issue", "mitigation"],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ["patterns", "custodyDecisions", "tokenCategories", "contracts", "transactionTemplates", "invariantEnforcement", "warnings"],
+    additionalProperties: false
+  }
+} as const;
+
+// ============================================================================
 // PHASE 3: CODE GENERATION (JSON schemas for structured outputs)
 // ============================================================================
 
@@ -467,13 +747,15 @@ async function executeDomainExtraction(
   console.log('[Phase 1] Starting domain extraction (platform-agnostic)...');
   const startTime = Date.now();
 
-  const response = await anthropic.messages.create({
+  const response = await anthropic.beta.messages.create({
     model: ANTHROPIC_CONFIG.phase1.model,
     max_tokens: ANTHROPIC_CONFIG.phase1.maxTokens,
+    betas: [...ANTHROPIC_CONFIG.betas],
+    output_format: phase1OutputSchema,
     system: DOMAIN_EXTRACTION_PROMPT,
     messages: [{
       role: 'user',
-      content: `Extract the domain model from this smart contract:\n\n${solidityContract}\n\nRespond with valid JSON only.`
+      content: `Extract the domain model from this smart contract:\n\n${solidityContract}`
     }]
   });
 
@@ -481,9 +763,9 @@ async function executeDomainExtraction(
     ? response.content[0].text
     : '';
 
-  const domainModel = extractJSON<DomainModel>(responseText);
+  const domainModel = JSON.parse(responseText) as DomainModel;
 
-  // Ensure required arrays exist (model might not return all fields without structured output)
+  // Ensure required arrays exist (defensive)
   domainModel.entities = domainModel.entities || [];
   domainModel.transitions = domainModel.transitions || [];
   domainModel.invariants = domainModel.invariants || [];
@@ -539,13 +821,15 @@ ${JSON.stringify(domainModel, null, 2)}
 
 Design the UTXO architecture following the patterns and prime directives in the system prompt.`;
 
-  const response = await anthropic.messages.create({
+  const response = await anthropic.beta.messages.create({
     model: ANTHROPIC_CONFIG.phase1.model, // Use same model as phase 1
     max_tokens: 16384, // Architecture design needs more tokens
+    betas: [...ANTHROPIC_CONFIG.betas],
+    output_format: phase2OutputSchema,
     system: UTXO_ARCHITECTURE_PROMPT,
     messages: [{
       role: 'user',
-      content: userMessage + '\n\nRespond with valid JSON only.'
+      content: userMessage
     }]
   });
 
@@ -553,7 +837,7 @@ Design the UTXO architecture following the patterns and prime directives in the 
     ? response.content[0].text
     : '';
 
-  const architecture = extractJSON<UTXOArchitecture>(responseText);
+  const architecture = JSON.parse(responseText) as UTXOArchitecture;
 
   // Ensure required arrays exist (model might not return all fields without structured output)
   architecture.contracts = architecture.contracts || [];
@@ -822,7 +1106,7 @@ CRITICAL RULES:
 
 4. For DATA STORAGE, use NFT commitments, NOT OP_RETURN.
    - OP_RETURN is provably unspendable (funds burned) - use ONLY for event logging
-   - NFT commitments provide local transferrable state (40 bytes, 128 bytes planned 2026)
+   - NFT commitments provide local transferrable state (128 bytes max)
    - Pattern: tx.inputs[i].nftCommitment → tx.outputs[i].nftCommitment
    - Solidity state → Store in NFT commitment, validate/update via covenant
 
@@ -843,8 +1127,8 @@ CRITICAL RULES:
    - User proves ownership by spending their UTXO, no signature parameter needed
    - Only use checkSig for fixed admin/oracle keys
 
-8. Pack structured data into 40-byte NFT commitments.
-   - Plan byte layout: [pubkeyhash(20) + reserved(18) + blocks(2)] = 40 bytes
+8. Pack structured data into NFT commitments (128 bytes max).
+   - Plan byte layout: [pubkeyhash(20) + reserved(18) + blocks(2)] = 40 bytes example
    - Write: tx.outputs[0].nftCommitment == userPkh + bytes18(0) + bytes2(blocks)
    - Read: bytes20(tx.inputs[0].nftCommitment.split(20)[0]) for first 20 bytes
    - Use .split(N)[1] to skip N bytes and get remainder
@@ -1163,6 +1447,7 @@ Use your best judgment. Include deployment order and parameter sources for multi
     let contractAttempts: Map<string, number> = new Map(); // Track per-contract attempt numbers
     // sentContracts now declared at function scope (line 734) to be accessible in catch block
     let totalExpectedContracts = 0; // Total number of contracts expected
+    let expectedFailedNames: string[] = []; // Track names of failed contracts for retry matching
 
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
       // Check if client disconnected
@@ -1270,6 +1555,29 @@ Every contract must validate something. Every function must add constraints. No 
         // Retry attempt: merge saved valid contracts with newly fixed contracts
         const fixedContracts = parsed.contracts || [];
 
+        // Match fixed contracts to expected failed names if names changed during normalization
+        // This handles cases where AI renames the contract in the code during retry
+        if (fixedContracts.length > 0 && expectedFailedNames.length > 0) {
+          const validNames = new Set(savedValidContracts.map((c: any) => c.name));
+
+          for (const fixedContract of fixedContracts) {
+            // If this contract name isn't in savedValidContracts and isn't in expectedFailedNames,
+            // it was probably renamed during retry - find the matching expected name
+            if (!validNames.has(fixedContract.name) && !expectedFailedNames.includes(fixedContract.name)) {
+              // Find an expected failed name that hasn't been matched yet
+              const unmatchedExpected = expectedFailedNames.find(name =>
+                !fixedContracts.some(c => c.name === name)
+              );
+              if (unmatchedExpected) {
+                console.warn(`[Merge] Contract name changed during retry: "${fixedContract.name}" -> renaming to expected "${unmatchedExpected}"`);
+                fixedContract.name = unmatchedExpected;
+              } else {
+                console.error(`[Merge] ERROR: Fixed contract "${fixedContract.name}" doesn't match any expected failed name: [${expectedFailedNames.join(', ')}]`);
+              }
+            }
+          }
+        }
+
         // Update attempt numbers for fixed contracts
         for (const fixedContract of fixedContracts) {
           contractAttempts.set(fixedContract.name, attemptNumber);
@@ -1302,9 +1610,16 @@ Every contract must validate something. Every function must add constraints. No 
         }
 
         // Rebuild contracts array in ORIGINAL order
-        const mergedContracts = originalContractOrder
-          .map(name => contractMap.get(name))
-          .filter(c => c !== undefined); // Filter out any missing contracts
+        // Log if any contracts are missing
+        const mergedContracts: any[] = [];
+        for (const name of originalContractOrder) {
+          const contract = contractMap.get(name);
+          if (contract) {
+            mergedContracts.push(contract);
+          } else {
+            console.error(`[Merge] ERROR: Contract "${name}" missing from merge - not in savedValidContracts or fixedContracts`);
+          }
+        }
 
         // Reconstruct full multi-contract response
         parsed = {
@@ -1493,6 +1808,9 @@ Every contract must validate something. Every function must add constraints. No 
       if (isMultiContract) {
         const failedContracts = parsed.contracts.filter((c: ContractInfo) => !c.validated);
         const failedContractNames = failedContracts.map((c: ContractInfo) => c.name).join(', ');
+
+        // Save expected failed names for matching on retry (handles AI renaming contracts)
+        expectedFailedNames = failedContracts.map((c: ContractInfo) => c.name);
 
         retryMessage = `Fix ONLY the specific compilation errors in the following ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}:\n\n`;
 

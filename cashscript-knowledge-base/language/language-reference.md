@@ -80,12 +80,12 @@ require(tx.outputs[0].nftCommitment == bytes4(newID) + restOfCommitment);
 | `tx.inputs[i].outpointIndex` | `int` | UTXO source output index | - |
 | `tx.inputs[i].sequenceNumber` | `int` | nSequence value | Relative timelock in v2 tx only |
 | `tx.inputs[i].tokenCategory` | `bytes` | Input token category | 32-byte ID + optional capability (0x01=mutable, 0x02=minting) |
-| `tx.inputs[i].nftCommitment` | `bytes` | Input NFT commitment | CashTokens, max 40 bytes |
+| `tx.inputs[i].nftCommitment` | `bytes` | Input NFT commitment | CashTokens, max 128 bytes |
 | `tx.inputs[i].tokenAmount` | `int` | Input fungible tokens | CashTokens, max 64-bit |
 | `tx.outputs[i].value` | `int` | Output satoshi amount | Bounds: `i < tx.outputs.length` |
 | `tx.outputs[i].lockingBytecode` | `bytes` | Output script bytecode | - |
 | `tx.outputs[i].tokenCategory` | `bytes` | Output token category | 32-byte ID + optional capability (0x01=mutable, 0x02=minting) |
-| `tx.outputs[i].nftCommitment` | `bytes` | Output NFT commitment | CashTokens, max 40 bytes |
+| `tx.outputs[i].nftCommitment` | `bytes` | Output NFT commitment | CashTokens, max 128 bytes |
 | `tx.outputs[i].tokenAmount` | `int` | Output fungible tokens | CashTokens |
 | `this.activeInputIndex` | `int` | Current input being evaluated | - |
 | `this.activeBytecode` | `bytes` | Current input's locking bytecode | For covenants |
@@ -157,8 +157,7 @@ contract BallotInitializer(bytes20 chairpersonPkh) {
 **CRITICAL**: BCH has no global state. Store data in NFT commitments (local transferrable state).
 
 **Size limits**:
-- Current: 40 bytes
-- Future: 128 bytes (planned for 2026 upgrade, BLS12-381 compatible)
+- 128 bytes (since May 2025 upgrade)
 
 **Pattern**: Contract introspects input commitment, enforces output commitment with updated state.
 ```cashscript
@@ -235,10 +234,10 @@ contract Message(bytes message) {
 
 ## STRUCTURED COMMITMENT PACKING
 
-**40-byte NFT commitments require careful layout planning**. Production contracts pack multiple values with explicit byte positions:
+**128-byte NFT commitments require careful layout planning**. Production contracts pack multiple values with explicit byte positions:
 
 ```cashscript
-// PRODUCTION PATTERN: Pack multiple values into 40-byte commitment
+// PRODUCTION PATTERN: Pack multiple values into 128-byte commitment
 // Layout: userPkh(20) + reserved(18) + lockBlocks(2) = 40 bytes total
 bytes20 userPkh = 0xaabbccdd...;  // 20 bytes
 int lockBlocks = 1000;             // Will become 2 bytes
@@ -290,7 +289,7 @@ bytes existingTail = tx.inputs[0].nftCommitment.split(2)[1];  // Keep last 38 by
 require(tx.outputs[0].nftCommitment == bytes2(newFee) + existingTail);
 ```
 
-**Common layouts (40 bytes)**:
+**Common layouts (128 bytes)**:
 ```
 [pubkeyhash(20) + fee(2) + adminPkh(18)]                    // Admin contract
 [pubkeyhash(20) + reserved(18) + blocks(2)]                 // Time-locked
@@ -1068,7 +1067,7 @@ contract MasterReference() {
         // User proves ownership by spending their UTXO
         require(tx.inputs[1].lockingBytecode == new LockingBytecodeP2PKH(userPkh));
 
-        // PATTERN: Structured 40-byte commitment packing
+        // PATTERN: Structured 128-byte commitment packing
         // Layout: userPkh(20) + reserved(18) + lockBlocks(2) = 40 bytes
         bytes lockLength = bytes2(lockBlocks);
         require(tx.outputs[1].nftCommitment == userPkh + bytes18(0) + lockLength);
@@ -1171,7 +1170,7 @@ contract MasterReference() {
 1. **`this.activeInputIndex`** - Always validate which input is executing the contract
 2. **Exact counts** - Use `==` not `>=` for input/output validation
 3. **UTXO authorization** - Prove ownership by spending UTXOs, not signatures
-4. **Structured commitments** - Pack multiple values into 40-byte commitment with clear layout
+4. **Structured commitments** - Pack multiple values into 128-byte commitment with clear layout
 5. **Capability manipulation** - `.split(32)[0] + 0x01` to change NFT capabilities
 6. **Fee accounting** - Explicit dust (1000 sats) and fee subtraction
 7. **Optional outputs** - Use `if` blocks for variable output counts
@@ -1198,7 +1197,7 @@ contract MasterReference() {
 | `for/while` loops | `do {} while()` | Beta in v0.13.0, body executes first |
 
 **Key paradigm shifts:**
-- **No persistent state** - State lives in NFT commitments (40 bytes, 128 planned for 2026)
+- **No persistent state** - State lives in NFT commitments (128 bytes)
 - **No O(1) lookups** - Must loop over UTXOs, no hash tables
 - **No code reuse** - No import/library/inheritance mechanisms
 - **Fee = tx size** - Cost based on bytes, not opcodes (no "gas optimization")
@@ -1235,7 +1234,7 @@ contract MasterReference() {
 - Array access: ALWAYS validate `.length` before indexing
 - Integer arithmetic: no decimals, integer division only
 - `checkMultiSig`: NOT supported in TypeScript SDK (compile-time only)
-- NFT commitment: max 40 bytes (128 bytes planned for 2026 upgrade)
+- NFT commitment: max 128 bytes (since May 2025 upgrade)
 - String/bytes operations: `.split(index)` returns tuple, requires destructuring
 - Bitwise operators: Only `&`, `|`, `^` supported. NO shift (`<<`, `>>`) or invert (`~`)
 - Loops: `do {} while ()` syntax, beta in CashScript 0.13.0. Body executes at least once
