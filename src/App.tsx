@@ -691,13 +691,33 @@ export default function App() {
                   const enrichedTransactions = data.transactions.map((tx: any) => {
                     if (!tx.participatingContracts || tx.participatingContracts.length === 0) {
                       const contracts = new Set<string>();
+
+                      // Helper to extract contract name from type field like "BallotContract (minting NFT)"
+                      const extractContract = (typeStr: string) => {
+                        if (!typeStr) return null;
+                        // Skip P2PKH, BCH, OP_RETURN, User entries
+                        if (typeStr.includes('P2PKH') || typeStr.startsWith('BCH') ||
+                            typeStr.includes('OP_RETURN') || typeStr.includes('User') ||
+                            typeStr.includes('change')) return null;
+                        // Extract contract name before parenthesis or "at" keyword
+                        const atMatch = typeStr.match(/at\s+(\w+Contract)/);
+                        if (atMatch) return atMatch[1];
+                        const parenMatch = typeStr.match(/^(\w+Contract)/);
+                        if (parenMatch) return parenMatch[1];
+                        return null;
+                      };
+
                       (tx.inputs || []).forEach((i: any) => {
                         if (i.contract) contracts.add(i.contract);
                         if (i.from && !i.from.includes('P2PKH') && !i.from.includes('User')) contracts.add(i.from);
+                        const fromType = extractContract(i.type);
+                        if (fromType) contracts.add(fromType);
                       });
                       (tx.outputs || []).forEach((o: any) => {
                         if (o.contract) contracts.add(o.contract);
                         if (o.to && !o.to.includes('P2PKH') && !o.to.includes('User')) contracts.add(o.to);
+                        const toType = extractContract(o.type);
+                        if (toType) contracts.add(toType);
                       });
                       return { ...tx, participatingContracts: Array.from(contracts) };
                     }
