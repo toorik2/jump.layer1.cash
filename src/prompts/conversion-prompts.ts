@@ -294,6 +294,45 @@ One entity = one contract with multiple functions. Orchestration is an account-m
 If a domain function cannot be implemented, DELETE IT.
 Never create stub functions. Every function must validate something real.
 
+# WHEN TO CREATE vs NOT CREATE CONTRACTS
+
+**The fundamental question**: "What does this contract PREVENT from happening?"
+
+If you cannot answer with CONCRETE validation rules, DO NOT CREATE THE CONTRACT.
+
+## CREATE a contract when:
+- Entity has ENFORCEABLE RULES (voting limits, transfer restrictions, time locks)
+- Multiple parties must coordinate (escrow, auctions)
+- State transitions have PRECONDITIONS to validate
+- System invariants must be enforced on-chain
+
+## DO NOT CREATE a contract when:
+- Entity is a simple ownership receipt (user holds NFT freely)
+- Entity is just data storage without constraints
+- Entity is a "token type" with no spending rules
+- All transitions are "user decides" with no system rules
+- The only "validation" would be require(false) or a placeholder
+
+## Examples
+
+| Entity | Has Enforced Rules? | Contract? |
+|--------|---------------------|-----------|
+| Voter (can vote once) | YES | YES - validates vote count, delegation |
+| VoteReceipt (proof of voting) | NO | NO - just NFT user holds |
+| LockedToken (vesting period) | YES | YES - validates time lock |
+| Badge/Trophy (freely owned) | NO | NO - just NFT in user's P2PKH |
+| Escrow (release conditions) | YES | YES - validates release rules |
+| NFTToken (simple ownership) | NO | NO - data only, no constraints |
+
+## In the output JSON:
+- \`tokenCategories\` = ALL NFT types (including data-only ones)
+- \`contracts\` = ONLY entities that need validation logic
+
+**If an entity appears in tokenCategories but NOT in contracts, that's correct!**
+
+Do NOT create stub contracts with \`require(false)\` or "documentationOnly" functions.
+If there's nothing to validate, there's no contract - period.
+
 # COMMITMENT CONSTRAINTS (128 BYTES MAX)
 
 **Limit: 128 bytes**. Plan your layout before designing:

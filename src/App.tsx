@@ -862,18 +862,6 @@ export default function App() {
           </Show>
 
           <div class="output-section">
-            <span class="output-label">
-              CashScript Output
-              {result() && (() => {
-                const r = result()!;
-                const isMulti = isMultiContractResult(r);
-                if (isMulti) {
-                  const count = (r as MultiContractResult).contracts.length;
-                  return ` (${count} contract system)`;
-                }
-                return '';
-              })()}
-            </span>
             {error() && <div class="error">{error()}</div>}
 
             {(loading() || result() || validatedContracts().length > 0 || transactions().length > 0) && (() => {
@@ -888,11 +876,13 @@ export default function App() {
                 : hasPendingContracts
                   ? pendingContracts().map(c => ({ ...c, validated: false, code: '', isSkeleton: true }))
                   : (isMulti && r ? sortedContracts() : []);
+              // Determine if we're showing skeleton tabs (early loading, no contracts yet)
+              const hasSkeletonTabs = loading() && contractsToDisplay.length === 0;
               // Fix: Use >= for both multi and single to handle Original button setting tab to 9999
-              // Multi: tab >= contractsToDisplay.length means Original
+              // Multi or skeleton tabs: tab >= contractsToDisplay.length (or >= 3 for skeletons) means Original
               // Single: tab >= 1 means Original (tab 0 is the contract, tab 1+ is Original)
-              const isOriginalTab = isMulti
-                ? activeContractTab() >= contractsToDisplay.length
+              const isOriginalTab = isMulti || hasSkeletonTabs
+                ? activeContractTab() >= (hasSkeletonTabs ? 3 : contractsToDisplay.length)
                 : activeContractTab() >= 1;
 
               return (
@@ -1114,15 +1104,24 @@ export default function App() {
                       </Show>
                       {/* Skeleton tabs during early phases */}
                       <Show when={loading() && contractsToDisplay.length === 0}>
-                        <button class="contract-tab pending skeleton-tab">
+                        <button
+                          class={`contract-tab pending skeleton-tab ${activeContractTab() === 0 ? 'active' : ''}`}
+                          onClick={() => setActiveContractTab(0)}
+                        >
                           <span class="tab-name-skeleton"></span>
                           <span class="tab-status pending"><span class="tab-spinner"></span></span>
                         </button>
-                        <button class="contract-tab pending skeleton-tab">
+                        <button
+                          class={`contract-tab pending skeleton-tab ${activeContractTab() === 1 ? 'active' : ''}`}
+                          onClick={() => setActiveContractTab(1)}
+                        >
                           <span class="tab-name-skeleton"></span>
                           <span class="tab-status pending"><span class="tab-spinner"></span></span>
                         </button>
-                        <button class="contract-tab pending skeleton-tab">
+                        <button
+                          class={`contract-tab pending skeleton-tab ${activeContractTab() === 2 ? 'active' : ''}`}
+                          onClick={() => setActiveContractTab(2)}
+                        >
                           <span class="tab-name-skeleton"></span>
                           <span class="tab-status pending"><span class="tab-spinner"></span></span>
                         </button>

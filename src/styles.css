@@ -262,16 +262,6 @@ h1 {
   min-height: 300px;
 }
 
-.output-label {
-  display: block;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #9CA3AF;
-  margin-bottom: 1rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
 .code-container {
   position: relative;
 }
@@ -704,7 +694,7 @@ footer a:hover {
   background: #0D1117;
   border: 1px solid #30363D;
   border-radius: 6px;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
@@ -712,6 +702,7 @@ footer a:hover {
   gap: 0.5rem;
   color: #9CA3AF;
   font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .contract-tab:hover {
@@ -881,8 +872,7 @@ footer a:hover {
 
 /* Skeleton tabs for early phases */
 .contract-tab.skeleton-tab {
-  cursor: default;
-  pointer-events: none;
+  cursor: pointer;
 }
 
 .tab-name-skeleton {
@@ -1087,24 +1077,6 @@ footer a:hover {
 .original-btn.active {
   border-color: #39FF14;
   color: #39FF14;
-  background: rgba(57, 255, 20, 0.05);
-}
-
-.start-over-btn {
-  background: #161B22;
-  border: 1px solid #30363D;
-  border-radius: 6px;
-  padding: 0.75rem 1.5rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  color: #9CA3AF;
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.start-over-btn:hover {
-  border-color: #39FF14;
-  color: #F0F6FC;
   background: rgba(57, 255, 20, 0.05);
 }
 

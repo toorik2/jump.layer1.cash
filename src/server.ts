@@ -141,6 +141,28 @@ function normalizeContractNames(contracts: ContractInfo[]): void {
 }
 
 /**
+ * Detect if a contract is a placeholder/documentation-only stub
+ * These violate the rule: "If a contract validates nothing, it should NOT EXIST"
+ *
+ * Signs of a placeholder contract:
+ * - Contains require(false) as the only meaningful validation
+ * - Has "documentationOnly" or similar placeholder function names
+ */
+function isPlaceholderContract(code: string): boolean {
+  // Check for require(false) - the telltale sign of "nothing to validate"
+  const hasRequireFalse = /require\s*\(\s*false\s*\)/.test(code);
+  if (!hasRequireFalse) return false;
+
+  // Count all require statements
+  const allRequires = code.match(/require\s*\([^)]+\)/g) || [];
+  // Filter out require(false)
+  const nonFalseRequires = allRequires.filter(r => !/require\s*\(\s*false\s*\)/.test(r));
+
+  // If require(false) is the ONLY require statement, it's a placeholder
+  return nonFalseRequires.length === 0;
+}
+
+/**
  * Apply name mapping to transaction templates
  * Updates contract references in participatingContracts, inputs, and outputs
  */
@@ -1583,6 +1605,21 @@ Every contract must validate something. Every function must add constraints. No 
       // Fixes AI tokenization artifacts like "Ball ot Initial izer" -> "BallotInitializer"
       if (parsed.contracts && Array.isArray(parsed.contracts)) {
         normalizeContractNames(parsed.contracts);
+
+        // Filter out placeholder contracts (require(false) only)
+        // These violate the rule: "If a contract validates nothing, it should NOT EXIST"
+        const beforeFilter = parsed.contracts.length;
+        parsed.contracts = parsed.contracts.filter((c: ContractInfo) => {
+          if (isPlaceholderContract(c.code)) {
+            console.log(`[Filter] Removing placeholder contract: ${c.name}`);
+            return false;
+          }
+          return true;
+        });
+        const removed = beforeFilter - parsed.contracts.length;
+        if (removed > 0) {
+          console.log(`[Filter] Removed ${removed} placeholder contract(s)`);
+        }
       }
 
       // After first attempt, mark Phase 3 complete and start Phase 4 (validation)
