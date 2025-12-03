@@ -49,7 +49,7 @@ export interface MultiContractResponse {
 }
 
 export function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
-  return parsed.contracts && Array.isArray(parsed.contracts);
+  return parsed != null && Array.isArray(parsed.contracts);
 }
 
 // JSON Schema for structured outputs - supports both single and multi-contract

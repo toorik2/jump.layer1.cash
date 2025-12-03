@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 3002",
     "build": "vite build",
-    "server": "tsx src/server.ts"
+    "server": "tsx src/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.69.0",
@@ -28,6 +30,7 @@
     "@types/uuid": "^10.0.0",
     "tsx": "^4.7.1",
     "typescript": "^5.4.2",
-    "vite": "^5.1.6"
+    "vite": "^5.1.6",
+    "vitest": "^4.0.15"
   }
 }
