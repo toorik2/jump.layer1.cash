@@ -141,6 +141,34 @@ function normalizeContractNames(contracts: ContractInfo[]): void {
 }
 
 /**
+ * Apply name mapping to transaction templates
+ * Updates contract references in participatingContracts, inputs, and outputs
+ */
+function applyNameMappingToTemplates(
+  templates: any[],
+  nameMap: Map<string, string>
+): any[] {
+  if (nameMap.size === 0) return templates;
+
+  return templates.map(tx => ({
+    ...tx,
+    participatingContracts: tx.participatingContracts?.map((name: string) =>
+      nameMap.get(name) || name
+    ),
+    inputs: tx.inputs?.map((input: any) => ({
+      ...input,
+      contract: input.contract ? (nameMap.get(input.contract) || input.contract) : input.contract,
+      from: nameMap.get(input.from) || input.from
+    })),
+    outputs: tx.outputs?.map((output: any) => ({
+      ...output,
+      contract: output.contract ? (nameMap.get(output.contract) || output.contract) : output.contract,
+      to: nameMap.get(output.to) || output.to
+    }))
+  }));
+}
+
+/**
  * Extract JSON from a response that may contain markdown code blocks or other text
  */
 function extractJSON<T>(text: string): T {
@@ -1047,13 +1075,17 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
         durationMs: phase2DurationMs
       });
 
-      // Send transaction templates for Transactions tab
+      // Send transaction templates and contract specs for UI
       const transactionTemplates = Array.isArray(utxoArchitecture.transactionTemplates)
         ? utxoArchitecture.transactionTemplates
         : [];
-      if (transactionTemplates.length > 0) {
+      const contractSpecs = Array.isArray(utxoArchitecture.contracts)
+        ? utxoArchitecture.contracts.map(c => ({ name: c.name, custodies: c.custodies, validates: c.validates }))
+        : [];
+      if (transactionTemplates.length > 0 || contractSpecs.length > 0) {
         sendEvent('transactions_ready', {
-          transactions: transactionTemplates
+          transactions: transactionTemplates,
+          contractSpecs: contractSpecs
         });
       }
     } catch (phase2Error) {
@@ -1811,6 +1843,34 @@ Every contract must validate something. Every function must add constraints. No 
         }
 
         sendEvent('phase4_complete', { message: 'Validation complete' });
+
+        // Post-validation: Check if contract names drifted and update transaction templates
+        if (isMultiContract && utxoArchitecture.transactionTemplates?.length > 0) {
+          const nameMap = new Map<string, string>();
+          const archContracts = utxoArchitecture.contracts || [];
+          const validatedContracts = parsed.contracts || [];
+
+          // Match by index (order is preserved through retries via originalContractOrder)
+          for (let i = 0; i < archContracts.length; i++) {
+            const archName = archContracts[i]?.name;
+            const validatedName = validatedContracts[i]?.name;
+            if (archName && validatedName && archName !== validatedName) {
+              console.log(`[Transactions] Name drift detected: "${archName}" → "${validatedName}"`);
+              nameMap.set(archName, validatedName);
+            }
+          }
+
+          // If any names drifted, send updated transaction templates
+          if (nameMap.size > 0) {
+            const updatedTemplates = applyNameMappingToTemplates(
+              utxoArchitecture.transactionTemplates,
+              nameMap
+            );
+            sendEvent('transactions_ready', { transactions: updatedTemplates });
+            console.log(`[Transactions] Sent updated templates with ${nameMap.size} name corrections`);
+          }
+        }
+
         break;
       }
 

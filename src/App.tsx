@@ -294,7 +294,7 @@ export default function App() {
 
   // Incremental display state
   const [validatedContracts, setValidatedContracts] = createSignal<any[]>([]);
-  const [pendingContracts, setPendingContracts] = createSignal<string[]>([]);
+  const [pendingContracts, setPendingContracts] = createSignal<{ name: string; custodies?: string; validates?: string }[]>([]);
   const [deploymentGuide, setDeploymentGuide] = createSignal<any>(null);
   const [totalExpected, setTotalExpected] = createSignal(0);
   const [contractAttempts, setContractAttempts] = createSignal<Map<string, number>>(new Map());
@@ -339,14 +339,22 @@ export default function App() {
 
     if (validated.length === 0 && pending.length === 0) return [];
 
-    // Create pending contract stubs
-    const pendingStubs = pending.map(name => ({
-      name,
-      validated: false,
-      code: '',
-      role: 'unknown',
-      deploymentOrder: 999 // Will be updated when contract arrives
-    }));
+    // Get names of already validated contracts
+    const validatedNames = new Set(validated.map(c => c.name));
+
+    // Create pending contract stubs ONLY for contracts not yet validated
+    const pendingStubs = pending
+      .filter(spec => !validatedNames.has(spec.name))
+      .map(spec => ({
+        name: spec.name,
+        custodies: spec.custodies,
+        validates: spec.validates,
+        validated: false,
+        code: '',
+        role: 'unknown',
+        deploymentOrder: 999, // Will be updated when contract arrives
+        isSkeleton: true
+      }));
 
     // Combine and sort
     const combined = [...validated, ...pendingStubs];
@@ -402,6 +410,7 @@ export default function App() {
     setIsMultiContract(false);
     // Reset transactions tab state
     setTransactions([]);
+    setPendingContracts([]);
     setActiveMainTab('transactions');
     // Abort any ongoing SSE connection
     const controller = currentAbortController();
@@ -547,11 +556,11 @@ export default function App() {
     }
   });
 
-  // Highlight original Solidity contract when results are shown
+  // Highlight original Solidity contract when loading or results are shown
   createEffect(async () => {
     const contract = evmContract();
-    const hasResults = result() || validatedContracts().length > 0;
-    if (hasResults && contract) {
+    const shouldHighlight = loading() || result() || validatedContracts().length > 0 || transactions().length > 0;
+    if (shouldHighlight && contract) {
       try {
         const html = await codeToHtml(contract, {
           lang: 'solidity',
@@ -676,9 +685,30 @@ export default function App() {
                 break;
 
               case 'transactions_ready':
-                // Receive transaction templates from Phase 2
+                // Receive transaction templates and contract specs from Phase 2
                 if (data.transactions && Array.isArray(data.transactions)) {
-                  setTransactions(data.transactions);
+                  // Derive participatingContracts from inputs/outputs if not provided
+                  const enrichedTransactions = data.transactions.map((tx: any) => {
+                    if (!tx.participatingContracts || tx.participatingContracts.length === 0) {
+                      const contracts = new Set<string>();
+                      (tx.inputs || []).forEach((i: any) => {
+                        if (i.contract) contracts.add(i.contract);
+                        if (i.from && !i.from.includes('P2PKH') && !i.from.includes('User')) contracts.add(i.from);
+                      });
+                      (tx.outputs || []).forEach((o: any) => {
+                        if (o.contract) contracts.add(o.contract);
+                        if (o.to && !o.to.includes('P2PKH') && !o.to.includes('User')) contracts.add(o.to);
+                      });
+                      return { ...tx, participatingContracts: Array.from(contracts) };
+                    }
+                    return tx;
+                  });
+                  setTransactions(enrichedTransactions);
+                }
+                // Store contract specs for skeleton display
+                if (data.contractSpecs && Array.isArray(data.contractSpecs)) {
+                  setPendingContracts(data.contractSpecs);
+                  setIsMultiContract(data.contractSpecs.length > 1);
                 }
                 break;
 
@@ -709,20 +739,16 @@ export default function App() {
                   failedCount: data.failedCount,
                   contracts: data.contracts
                 });
-                // Update contract attempts and pending list
+                // Update contract attempts only - don't overwrite pendingContracts
+                // to preserve the rich object structure from Phase 2
                 if (data.contracts && Array.isArray(data.contracts)) {
                   const attempts = new Map(contractAttempts());
-                  const pending: string[] = [];
                   data.contracts.forEach((c: any) => {
                     if (c.attempt) {
                       attempts.set(c.name, c.attempt);
                     }
-                    if (!c.validated) {
-                      pending.push(c.name);
-                    }
                   });
                   setContractAttempts(attempts);
-                  setPendingContracts(pending);
                 }
                 break;
 
@@ -738,8 +764,8 @@ export default function App() {
                   setTotalExpected(data.totalExpected);
                   setIsMultiContract(data.totalExpected > 1);
                 }
-                // Remove from pending list
-                setPendingContracts(prev => prev.filter(name => name !== data.contract.name));
+                // Remove from pending list (compare by name property)
+                setPendingContracts(prev => prev.filter(c => c.name !== data.contract.name));
                 // Transition to results view if this is the first contract
                 if (validatedContracts().length === 0) {
                   setLoading(false);
@@ -848,62 +874,20 @@ export default function App() {
                 return '';
               })()}
             </span>
-            {loading() && validatedContracts().length === 0 && (
-              <div class="loading-state">
-                <div class="loading-header">
-                  <div class="loading-spinner"></div>
-                  <span>Converting to CashScript...</span>
-                </div>
-                <p class="loading-estimate">~4 minutes for multi-contract systems</p>
-
-                <details class="loading-details">
-                  <summary>What's happening behind the scenes?</summary>
-                  <ul>
-                    <li class={currentPhase() === 1 ? 'active-phase' : currentPhase() > 1 ? 'completed-phase' : ''}>
-                      Phase 1: Extracting domain model (platform-agnostic business logic)
-                    </li>
-                    <li class={currentPhase() === 2 ? 'active-phase' : currentPhase() > 2 ? 'completed-phase' : ''}>
-                      Phase 2: Designing UTXO architecture
-                    </li>
-                    <li class={currentPhase() === 3 ? 'active-phase' : currentPhase() > 3 ? 'completed-phase' : ''}>
-                      Phase 3: Generating CashScript contracts
-                    </li>
-                    <li class={currentPhase() === 4 ? 'active-phase' : ''}>
-                      <Show when={retryCount() === 0 && (!validationDetails() || validationDetails()?.failedCount === 0)}>
-                        Phase 4: Validating {totalExpected() > 0 ? `${totalExpected()} ${totalExpected() === 1 ? 'contract' : 'contracts'}` : 'contracts'} with the CashScript compiler
-                      </Show>
-                      <Show when={retryCount() > 0 || (validationDetails() && validationDetails()?.failedCount! > 0)}>
-                        Phase 4: Refining code based on compiler feedback
-                      </Show>
-                      <Show when={validationDetails()?.isMultiContract && validationDetails()?.contracts && validationDetails()?.failedCount! > 0}>
-                        <div class="validation-status">
-                          <ul class="contract-status-list">
-                            <For each={validationDetails()?.contracts}>
-                              {(contract) => (
-                                <li class={contract.validated ? 'contract-valid' : 'contract-failed'}>
-                                  {contract.validated ? '✓' : '✗'} {contract.name}
-                                  {!contract.validated && contract.attempt && (
-                                    <span class="contract-attempt"> (fixing - attempt {contract.attempt})</span>
-                                  )}
-                                </li>
-                              )}
-                            </For>
-                          </ul>
-                        </div>
-                      </Show>
-                    </li>
-                  </ul>
-                </details>
-              </div>
-            )}
             {error() && <div class="error">{error()}</div>}
 
-            {(result() || validatedContracts().length > 0) && (() => {
+            {(loading() || result() || validatedContracts().length > 0 || transactions().length > 0) && (() => {
               // Use incremental state if available, otherwise fall back to result()
               const hasIncrementalData = validatedContracts().length > 0;
+              const hasPendingContracts = pendingContracts().length > 0;
               const r = result();
-              const isMulti = hasIncrementalData ? isMultiContract() : (r && isMultiContractResult(r));
-              const contractsToDisplay = hasIncrementalData ? allContracts() : (isMulti && r ? sortedContracts() : []);
+              const isMulti = hasIncrementalData ? isMultiContract() : hasPendingContracts ? pendingContracts().length > 1 : (r && isMultiContractResult(r));
+              // Use pending contracts as skeletons if no validated contracts yet
+              const contractsToDisplay = hasIncrementalData
+                ? allContracts()
+                : hasPendingContracts
+                  ? pendingContracts().map(c => ({ ...c, validated: false, code: '', isSkeleton: true }))
+                  : (isMulti && r ? sortedContracts() : []);
               // Fix: Use >= for both multi and single to handle Original button setting tab to 9999
               // Multi: tab >= contractsToDisplay.length means Original
               // Single: tab >= 1 means Original (tab 0 is the contract, tab 1+ is Original)
@@ -931,18 +915,16 @@ export default function App() {
                     >
                       Contracts
                       <Show when={contractsToDisplay.length > 0}>
-                        <span class="tab-count">{contractsToDisplay.length}</span>
+                        {(() => {
+                          const allValidated = contractsToDisplay.every(c => c.validated);
+                          return (
+                            <span class={`tab-count ${!allValidated ? 'loading' : ''}`}>
+                              {allValidated ? contractsToDisplay.length : <span class="tab-spinner-inline"></span>}
+                              {!allValidated && ` ${contractsToDisplay.filter(c => c.validated).length}/${contractsToDisplay.length}`}
+                            </span>
+                          );
+                        })()}
                       </Show>
-                    </button>
-
-                    <button
-                      class={`main-tab original-btn ${isOriginalTab && activeMainTab() === 'contracts' ? 'active' : ''}`}
-                      onClick={() => {
-                        setActiveMainTab('contracts');
-                        setActiveContractTab(9999);
-                      }}
-                    >
-                      Original
                     </button>
 
                     <button class="main-tab start-over-btn" onClick={handleReset}>
@@ -953,10 +935,64 @@ export default function App() {
                   {/* Content based on active main tab */}
                   <Show when={activeMainTab() === 'transactions'}>
                     <div class="transactions-view">
-                      <Show when={transactions().length === 0}>
-                        <div class="transactions-loading">
-                          <div class="pending-spinner"></div>
-                          <p>Waiting for architecture design...</p>
+                      <Show when={transactions().length === 0 && loading()}>
+                        <div class="transactions-skeleton">
+                          {/* Phase progress indicator */}
+                          <div class="phase-progress">
+                            <div class={`phase-step ${currentPhase() >= 1 ? 'active' : ''} ${currentPhase() > 1 ? 'completed' : ''}`}>
+                              <div class="phase-indicator">
+                                {currentPhase() > 1 ? '✓' : currentPhase() === 1 ? <span class="phase-spinner"></span> : '1'}
+                              </div>
+                              <span>Domain Model</span>
+                            </div>
+                            <div class="phase-connector"></div>
+                            <div class={`phase-step ${currentPhase() >= 2 ? 'active' : ''} ${currentPhase() > 2 ? 'completed' : ''}`}>
+                              <div class="phase-indicator">
+                                {currentPhase() > 2 ? '✓' : currentPhase() === 2 ? <span class="phase-spinner"></span> : '2'}
+                              </div>
+                              <span>Architecture</span>
+                            </div>
+                            <div class="phase-connector"></div>
+                            <div class={`phase-step ${currentPhase() >= 3 ? 'active' : ''} ${currentPhase() > 3 ? 'completed' : ''}`}>
+                              <div class="phase-indicator">
+                                {currentPhase() > 3 ? '✓' : currentPhase() === 3 ? <span class="phase-spinner"></span> : '3'}
+                              </div>
+                              <span>Code Gen</span>
+                            </div>
+                            <div class="phase-connector"></div>
+                            <div class={`phase-step ${currentPhase() >= 4 ? 'active' : ''}`}>
+                              <div class="phase-indicator">
+                                {currentPhase() === 4 ? <span class="phase-spinner"></span> : '4'}
+                              </div>
+                              <span>Validation</span>
+                            </div>
+                          </div>
+
+                          {/* Skeleton transaction cards */}
+                          <div class="skeleton-transactions">
+                            <For each={[1, 2, 3]}>
+                              {() => (
+                                <div class="skeleton-tx-card">
+                                  <div class="skeleton-tx-header">
+                                    <div class="skeleton-line w-40"></div>
+                                    <div class="skeleton-line w-70"></div>
+                                  </div>
+                                  <div class="skeleton-tx-flow">
+                                    <div class="skeleton-tx-side">
+                                      <div class="skeleton-line w-20"></div>
+                                      <div class="skeleton-slot"></div>
+                                      <div class="skeleton-slot"></div>
+                                    </div>
+                                    <div class="skeleton-arrow"></div>
+                                    <div class="skeleton-tx-side">
+                                      <div class="skeleton-line w-20"></div>
+                                      <div class="skeleton-slot"></div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </div>
                         </div>
                       </Show>
                       <Show when={transactions().length > 0}>
@@ -1049,9 +1085,9 @@ export default function App() {
 
                   {/* Contracts view (existing) */}
                   <Show when={activeMainTab() === 'contracts'}>
-                    {/* Contract sub-tabs for multi-contract */}
-                    <Show when={isMulti}>
-                      <div class="contract-tabs">
+                    {/* Contract sub-tabs */}
+                    <div class="contract-tabs">
+                      <Show when={isMulti}>
                         <For each={contractsToDisplay}>
                           {(contract, idx) => {
                             const attemptNum = contractAttempts().get(contract.name);
@@ -1075,8 +1111,30 @@ export default function App() {
                             );
                           }}
                         </For>
-                      </div>
-                    </Show>
+                      </Show>
+                      {/* Skeleton tabs during early phases */}
+                      <Show when={loading() && contractsToDisplay.length === 0}>
+                        <button class="contract-tab pending skeleton-tab">
+                          <span class="tab-name-skeleton"></span>
+                          <span class="tab-status pending"><span class="tab-spinner"></span></span>
+                        </button>
+                        <button class="contract-tab pending skeleton-tab">
+                          <span class="tab-name-skeleton"></span>
+                          <span class="tab-status pending"><span class="tab-spinner"></span></span>
+                        </button>
+                        <button class="contract-tab pending skeleton-tab">
+                          <span class="tab-name-skeleton"></span>
+                          <span class="tab-status pending"><span class="tab-spinner"></span></span>
+                        </button>
+                      </Show>
+                      {/* Original button - always on right side */}
+                      <button
+                        class={`contract-tab original-tab ${isOriginalTab ? 'active' : ''}`}
+                        onClick={() => setActiveContractTab(9999)}
+                      >
+                        <span class="tab-name">Original</span>
+                      </button>
+                    </div>
 
                   {/* Contract card (active tab content) */}
                   <div class="contract-card">
@@ -1104,16 +1162,57 @@ export default function App() {
                         // Show loading state for pending contracts
                         if (!contract.validated) {
                           const attemptNum = contractAttempts().get(contract.name);
+                          const phase = currentPhase();
+                          const isSkeleton = (contract as any).isSkeleton;
+
+                          // Determine phase message
+                          let phaseMessage = 'Waiting...';
+                          if (phase === 3) {
+                            phaseMessage = 'Phase 3: Generating CashScript code...';
+                          } else if (phase === 4) {
+                            phaseMessage = attemptNum && attemptNum > 1
+                              ? `Phase 4: Fixing contract (attempt ${attemptNum})`
+                              : 'Phase 4: Validating with compiler...';
+                          }
+
                           return (
-                            <div class="pending-contract-state">
-                              <div class="pending-spinner"></div>
-                              <div class="pending-message">
-                                <strong>{contract.name}</strong>
-                                <p>
-                                  {attemptNum && attemptNum > 1
-                                    ? `Fixing contract - attempt ${attemptNum}`
-                                    : 'Fixing contract...'}
-                                </p>
+                            <div class="pending-contract-state skeleton">
+                              <div class="skeleton-header">
+                                <div class="pending-spinner"></div>
+                                <div class="pending-message">
+                                  <strong>{contract.name}</strong>
+                                  <p class="phase-info">{phaseMessage}</p>
+                                </div>
+                              </div>
+
+                              {/* Show contract spec info if available */}
+                              <Show when={isSkeleton && (contract.custodies || contract.validates)}>
+                                <div class="skeleton-specs">
+                                  <Show when={contract.custodies}>
+                                    <div class="spec-item">
+                                      <span class="spec-label">Custodies:</span>
+                                      <span class="spec-value">{contract.custodies}</span>
+                                    </div>
+                                  </Show>
+                                  <Show when={contract.validates}>
+                                    <div class="spec-item">
+                                      <span class="spec-label">Validates:</span>
+                                      <span class="spec-value">{contract.validates}</span>
+                                    </div>
+                                  </Show>
+                                </div>
+                              </Show>
+
+                              {/* Skeleton code block */}
+                              <div class="skeleton-code">
+                                <div class="skeleton-line w-40"></div>
+                                <div class="skeleton-line w-60"></div>
+                                <div class="skeleton-line w-80"></div>
+                                <div class="skeleton-line w-50"></div>
+                                <div class="skeleton-line w-70"></div>
+                                <div class="skeleton-line w-45"></div>
+                                <div class="skeleton-line w-90"></div>
+                                <div class="skeleton-line w-55"></div>
                               </div>
                             </div>
                           );
@@ -1152,6 +1251,31 @@ export default function App() {
                           </>
                         );
                       })()
+                    ) : loading() && !hasIncrementalData && !r ? (
+                      // Show skeleton during early loading phases (1-2)
+                      <div class="pending-contract-state skeleton">
+                        <div class="skeleton-header">
+                          <div class="pending-spinner"></div>
+                          <div class="pending-message">
+                            <strong>Analyzing contract...</strong>
+                            <p class="phase-info">
+                              {currentPhase() === 1 && 'Phase 1: Extracting domain model...'}
+                              {currentPhase() === 2 && 'Phase 2: Designing UTXO architecture...'}
+                              {currentPhase() >= 3 && 'Generating contracts...'}
+                            </p>
+                          </div>
+                        </div>
+                        <div class="skeleton-code">
+                          <div class="skeleton-line w-40"></div>
+                          <div class="skeleton-line w-60"></div>
+                          <div class="skeleton-line w-80"></div>
+                          <div class="skeleton-line w-50"></div>
+                          <div class="skeleton-line w-70"></div>
+                          <div class="skeleton-line w-45"></div>
+                          <div class="skeleton-line w-90"></div>
+                          <div class="skeleton-line w-55"></div>
+                        </div>
+                      </div>
                     ) : (
                       // Show single contract content
                       (() => {
