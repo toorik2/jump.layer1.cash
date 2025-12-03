@@ -4,8 +4,7 @@ import cookieParser from 'cookie-parser';
 import Anthropic from '@anthropic-ai/sdk';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { compileString } from 'cashc';
-import { initializeDatabase, closeDatabase, updateConversion, insertContract, generateHash, generateUUID, insertSemanticAnalysis, insertUtxoArchitecture } from './database.js';
+import { initializeDatabase, closeDatabase, updateConversion, insertContract, generateHash, generateUUID } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import {
@@ -16,14 +15,28 @@ import {
 } from './services/logging.js';
 import type { DomainModel } from './types/domain-model.js';
 import type { UTXOArchitecture } from './types/utxo-architecture.js';
-import {
-  DOMAIN_EXTRACTION_PROMPT,
-  UTXO_ARCHITECTURE_PROMPT,
-} from './prompts/conversion-prompts.js';
 import { ANTHROPIC_CONFIG, SERVER_CONFIG } from './config.js';
 
+// Import phase modules
+import {
+  executeDomainExtraction,
+  executeArchitectureDesign,
+  filterDocumentationOnlyContracts,
+  outputSchema,
+  retryOutputSchemaMulti,
+  retryOutputSchemaSingle,
+  validateContract,
+  enhanceErrorMessage,
+  normalizeContractNames,
+  isPlaceholderContract,
+  validateMultiContractResponse,
+  applyNameMappingToTemplates,
+  isMultiContractResponse,
+  type ContractInfo
+} from './phases/index.js';
+
 const app = express();
-app.use(express.json({ limit: '50kb' })); // Explicit size limit for abuse protection
+app.use(express.json({ limit: '50kb' }));
 app.use(cookieParser());
 app.use(loggerMiddleware);
 app.use(express.static('dist'));
@@ -40,13 +53,9 @@ async function init() {
 
   console.log('[Server] Loading CashScript knowledge base...');
 
-  // Load core language reference
   const languageRef = await readFile('./cashscript-knowledge-base/language/language-reference.md', 'utf-8');
-
-  // Load multi-contract architecture patterns (critical for complex conversions)
   const multiContractPatterns = await readFile('./cashscript-knowledge-base/concepts/multi-contract-architecture.md', 'utf-8');
 
-  // Combine knowledge base sections
   knowledgeBase = `${languageRef}
 
 ---
@@ -61,1128 +70,28 @@ ${multiContractPatterns}`;
   console.log(`[Server] Knowledge base loaded: ${knowledgeBase.length} characters`);
 }
 
-function validateContract(code: string): { valid: boolean; error?: string; bytecodeSize?: number; artifact?: any } {
-  try {
-    const artifact = compileString(code);
-    const bytecodeSize = artifact.bytecode.length / 2;
-    return { valid: true, bytecodeSize, artifact };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return { valid: false, error: errorMessage };
-  }
-}
-
-/**
- * Extract 3 lines of code context (before, error, after) with visual marker
- * Fails loudly if line number is invalid - no silent fallbacks
- */
-function getCodeContext(code: string, errorLine: number): string {
-  const lines = code.split('\n');
-
-  if (errorLine < 1 || errorLine > lines.length) {
-    console.error(`[ERROR] Line ${errorLine} out of bounds. Code has ${lines.length} lines`);
-    throw new Error(`Line number ${errorLine} is out of bounds (code has ${lines.length} lines)`);
-  }
-
-  const startLine = Math.max(1, errorLine - 1);
-  const endLine = Math.min(lines.length, errorLine + 1);
-
-  let context = '';
-  for (let i = startLine; i <= endLine; i++) {
-    const prefix = i === errorLine ? '> ' : '  ';
-    const lineContent = lines[i - 1].trim();
-    context += `${prefix}Line ${i}: ${lineContent}\n`;
-  }
-
-  return context.trim();
-}
-
-/**
- * Enhance compiler error message with code context
- * Returns original message if no line number is present (e.g., for warnings)
- */
-function enhanceErrorMessage(error: string, code: string): string {
-  const lineMatch = error.match(/at Line (\d+), Column (\d+)/);
-
-  if (!lineMatch) {
-    // Some compiler messages (like warnings) don't have line numbers - that's okay
-    console.log('[Compiler] Message without line number:', error);
-    return error;
-  }
-
-  const lineNum = parseInt(lineMatch[1], 10);
-  const context = getCodeContext(code, lineNum);
-
-  return `${error}\n${context}`;
-}
-
-/**
- * Extract contract name from CashScript code
- * AI sometimes outputs names with tokenization artifacts (spaces in camelCase)
- * This extracts the actual name from the code to avoid display issues
- */
-function extractContractNameFromCode(code: string): string | null {
-  const match = code.match(/contract\s+(\w+)/);
-  return match ? match[1] : null;
-}
-
-/**
- * Normalize contract names by extracting from actual code
- * Fixes AI tokenization artifacts like "Ball ot Initial izer" -> "BallotInitializer"
- */
-function normalizeContractNames(contracts: ContractInfo[]): void {
-  for (const contract of contracts) {
-    const extractedName = extractContractNameFromCode(contract.code);
-    if (extractedName && extractedName !== contract.name) {
-      console.log(`[Normalize] Fixing contract name: "${contract.name}" -> "${extractedName}"`);
-      contract.name = extractedName;
-    }
-  }
-}
-
-/**
- * Detect if a contract is a placeholder/documentation-only stub
- * These violate the rule: "If a contract validates nothing, it should NOT EXIST"
- *
- * Signs of a placeholder contract:
- * - Contains require(false) as the only meaningful validation
- * - Contains require(true) as the only "validation" (validates nothing!)
- * - Has "documentationOnly" or similar placeholder function names
- */
-function isPlaceholderContract(code: string): boolean {
-  // Check for placeholder require statements
-  const hasRequireFalse = /require\s*\(\s*false\s*\)/.test(code);
-  const hasRequireTrue = /require\s*\(\s*true\s*\)/.test(code);
-
-  // If neither placeholder pattern exists, it's not a placeholder
-  if (!hasRequireFalse && !hasRequireTrue) return false;
-
-  // Count all require statements
-  const allRequires = code.match(/require\s*\([^)]+\)/g) || [];
-
-  // Filter out placeholder requires (both false and true)
-  const meaningfulRequires = allRequires.filter(r =>
-    !/require\s*\(\s*false\s*\)/.test(r) && !/require\s*\(\s*true\s*\)/.test(r)
-  );
-
-  // If placeholder requires are the ONLY require statements, it's a placeholder contract
-  return meaningfulRequires.length === 0;
-}
-
-/**
- * Detect if a contract spec from Phase 2 indicates no real validation logic
- * These contracts should NOT be sent to Phase 3 for code generation
- */
-function isDocumentationOnlyContract(contract: { name: string; validates?: string; custodies?: string }): boolean {
-  const validates = (contract.validates || '').toLowerCase();
-
-  // Patterns that indicate no real validation logic
-  const docOnlyPatterns = [
-    'documentation only',
-    'no validation',
-    'freely transferable',
-    'no enforced rules',
-    'no constraints',
-    'no spending rules',
-    'p2pkh custody',
-    'user p2pkh',
-    'standard p2pkh',
-  ];
-
-  for (const pattern of docOnlyPatterns) {
-    if (validates.includes(pattern)) {
-      return true;
-    }
-  }
-
-  // Also check custodies - if "NONE" and no real validation, it's documentation-only
-  const custodies = (contract.custodies || '').toLowerCase();
-  if (custodies.includes('none') && (validates.includes('none') || validates === '')) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Apply name mapping to transaction templates
- * Updates contract references in participatingContracts, inputs, and outputs
- */
-function applyNameMappingToTemplates(
-  templates: any[],
-  nameMap: Map<string, string>
-): any[] {
-  if (nameMap.size === 0) return templates;
-
-  return templates.map(tx => ({
-    ...tx,
-    participatingContracts: tx.participatingContracts?.map((name: string) =>
-      nameMap.get(name) || name
-    ),
-    inputs: tx.inputs?.map((input: any) => ({
-      ...input,
-      contract: input.contract ? (nameMap.get(input.contract) || input.contract) : input.contract,
-      from: nameMap.get(input.from) || input.from
-    })),
-    outputs: tx.outputs?.map((output: any) => ({
-      ...output,
-      contract: output.contract ? (nameMap.get(output.contract) || output.contract) : output.contract,
-      to: nameMap.get(output.to) || output.to
-    }))
-  }));
-}
-
-/**
- * Extract JSON from a response that may contain markdown code blocks or other text
- */
-function extractJSON<T>(text: string): T {
-  // Try direct parse first
-  try {
-    return JSON.parse(text);
-  } catch (directError) {
-    console.error('[JSON] Direct parse failed:', directError instanceof Error ? directError.message : directError);
-
-    // Try to find JSON in markdown code blocks
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      try {
-        return JSON.parse(jsonMatch[1].trim());
-      } catch (blockError) {
-        console.error('[JSON] Markdown block parse failed:', blockError instanceof Error ? blockError.message : blockError);
-      }
-    }
-
-    // Try to find raw JSON object/array
-    const objectMatch = text.match(/\{[\s\S]*\}/);
-    if (objectMatch) {
-      try {
-        return JSON.parse(objectMatch[0]);
-      } catch (objectError) {
-        console.error('[JSON] Raw object parse failed:', objectError instanceof Error ? objectError.message : objectError);
-      }
-    }
-
-    throw new Error('Could not extract JSON from response');
-  }
-}
-
-// Type definitions for multi-contract responses
-interface ContractParam {
-  name: string;
-  type: string;
-  description: string;
-  source: string;
-  sourceContractId: string | null;
-}
-
-interface ContractInfo {
-  id: string;
-  name: string;
-  purpose: string;
-  code: string;
-  role: string;
-  deploymentOrder: number;
-  dependencies: string[];
-  constructorParams: ContractParam[];
-  validated?: boolean;
-  bytecodeSize?: number;
-  artifact?: any;
-  validationError?: string;
-}
-
-interface DeploymentStep {
-  order: number;
-  contractId: string;
-  description: string;
-  prerequisites: string[];
-  outputs: string[];
-}
-
-interface DeploymentGuide {
-  steps: DeploymentStep[];
-  warnings: string[];
-  testingNotes: string[];
-}
-
-interface MultiContractResponse {
-  contracts: ContractInfo[];
-  deploymentGuide: DeploymentGuide;
-}
-
-function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
-  return parsed.contracts && Array.isArray(parsed.contracts);
-}
-
-// ============================================================================
-// ============================================================================
-// PHASE 1: DOMAIN EXTRACTION (JSON schema for structured outputs)
-// ============================================================================
-
-const phase1OutputSchema = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      domain: {
-        type: "string",
-        enum: ["voting", "token", "crowdfunding", "marketplace", "game", "defi", "governance", "other"]
-      },
-      entities: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            description: { type: "string" },
-            properties: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  type: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["name", "type", "description"],
-                additionalProperties: false
-              }
-            },
-            lifecycle: { type: "array", items: { type: "string" } },
-            identity: { type: "string" },
-            mutable: { type: "boolean" }
-          },
-          required: ["name", "description", "properties", "lifecycle", "identity", "mutable"],
-          additionalProperties: false
-        }
-      },
-      transitions: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            description: { type: "string" },
-            participants: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  role: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["role", "description"],
-                additionalProperties: false
-              }
-            },
-            effects: { type: "array", items: { type: "string" } },
-            authorization: { type: "string" },
-            preconditions: { type: "array", items: { type: "string" } },
-            postconditions: { type: "array", items: { type: "string" } },
-            timeConstraints: { type: "string" }
-          },
-          required: ["name", "description", "participants", "effects", "authorization", "preconditions", "postconditions", "timeConstraints"],
-          additionalProperties: false
-        }
-      },
-      invariants: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            scope: { type: "string" },
-            rule: { type: "string" },
-            severity: { type: "string" }
-          },
-          required: ["scope", "rule", "severity"],
-          additionalProperties: false
-        }
-      },
-      relationships: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            from: { type: "string" },
-            to: { type: "string" },
-            type: { type: "string" },
-            description: { type: "string" }
-          },
-          required: ["from", "to", "type", "description"],
-          additionalProperties: false
-        }
-      },
-      roles: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            description: { type: "string" },
-            assignment: { type: "string" },
-            capabilities: { type: "array", items: { type: "string" } }
-          },
-          required: ["name", "description", "assignment", "capabilities"],
-          additionalProperties: false
-        }
-      }
-    },
-    required: ["domain", "entities", "transitions", "invariants", "relationships", "roles"],
-    additionalProperties: false
-  }
-} as const;
-
-// ============================================================================
-// PHASE 2: UTXO ARCHITECTURE (JSON schema for structured outputs)
-// ============================================================================
-
-const phase2OutputSchema = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      patterns: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            appliedTo: { type: "string" },
-            rationale: { type: "string" }
-          },
-          required: ["name", "appliedTo", "rationale"],
-          additionalProperties: false
-        }
-      },
-      custodyDecisions: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            entity: { type: "string" },
-            custody: { type: "string", description: "Either 'contract' or 'p2pkh'" },
-            contractName: { type: "string", description: "Only for custody='contract'. Omit or set to 'NONE' for P2PKH." },
-            rationale: { type: "string" },
-            ownerFieldInCommitment: { type: "string" }
-          },
-          required: ["entity", "custody", "rationale"],
-          additionalProperties: false
-        }
-      },
-      tokenCategories: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            purpose: { type: "string" },
-            capability: { type: "string" },
-            commitmentLayout: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  field: { type: "string" },
-                  bytes: { type: "integer" },
-                  description: { type: "string" }
-                },
-                required: ["field", "bytes", "description"],
-                additionalProperties: false
-              }
-            },
-            totalBytes: { type: "integer" }
-          },
-          required: ["name", "purpose", "capability", "commitmentLayout", "totalBytes"],
-          additionalProperties: false
-        }
-      },
-      contracts: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            custodies: { type: "string" },
-            validates: { type: "string" },
-            functions: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  validates: { type: "string" },
-                  maxOutputs: { type: "integer" }
-                },
-                required: ["name", "validates", "maxOutputs"],
-                additionalProperties: false
-              }
-            },
-            stateFields: { type: "array", items: { type: "string" } }
-          },
-          required: ["name", "custodies", "validates", "functions", "stateFields"],
-          additionalProperties: false
-        }
-      },
-      transactionTemplates: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            purpose: { type: "string" },
-            inputs: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  index: { type: "integer" },
-                  type: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["index", "type", "description"],
-                additionalProperties: false
-              }
-            },
-            outputs: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  index: { type: "integer" },
-                  type: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["index", "type", "description"],
-                additionalProperties: false
-              }
-            },
-            maxOutputs: { type: "integer" }
-          },
-          required: ["name", "purpose", "inputs", "outputs", "maxOutputs"],
-          additionalProperties: false
-        }
-      },
-      invariantEnforcement: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            invariant: { type: "string" },
-            enforcedBy: { type: "string" },
-            mechanism: { type: "string" }
-          },
-          required: ["invariant", "enforcedBy", "mechanism"],
-          additionalProperties: false
-        }
-      },
-      warnings: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            severity: { type: "string" },
-            issue: { type: "string" },
-            mitigation: { type: "string" }
-          },
-          required: ["severity", "issue", "mitigation"],
-          additionalProperties: false
-        }
-      }
-    },
-    required: ["patterns", "custodyDecisions", "tokenCategories", "contracts", "transactionTemplates", "invariantEnforcement", "warnings"],
-    additionalProperties: false
-  }
-} as const;
-
-// ============================================================================
-// PHASE 3: CODE GENERATION (JSON schemas for structured outputs)
-// ============================================================================
-
-// JSON Schema for structured outputs
-const outputSchema = {
-  type: "json_schema",
-  schema: {
-    anyOf: [
-      {
-        // Single contract response
-        type: "object",
-        properties: {
-          primaryContract: {
-            type: "string",
-            description: "Complete production-ready CashScript contract code with pragma and all IMPLEMENTABLE functions (Solidity view/pure functions must be deleted entirely - do not create placeholders)"
-          }
-        },
-        required: ["primaryContract"],
-        additionalProperties: false
-      },
-      {
-        // Multi-contract response
-        type: "object",
-        properties: {
-          contracts: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                id: { type: "string" },
-                name: { type: "string" },
-                purpose: { type: "string" },
-                code: { type: "string" },
-                role: {
-                  type: "string",
-                  enum: ["primary", "helper", "state"]
-                },
-                deploymentOrder: { type: "integer" },
-                dependencies: {
-                  type: "array",
-                  items: { type: "string" }
-                },
-                constructorParams: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      name: { type: "string" },
-                      type: { type: "string" },
-                      description: { type: "string" },
-                      source: { type: "string" },
-                      sourceContractId: {
-                        type: ["string", "null"]
-                      }
-                    },
-                    required: ["name", "type", "description", "source", "sourceContractId"],
-                    additionalProperties: false
-                  }
-                }
-              },
-              required: ["id", "name", "purpose", "code", "role", "deploymentOrder", "dependencies", "constructorParams"],
-              additionalProperties: false
-            }
-          },
-          deploymentGuide: {
-            type: "object",
-            properties: {
-              steps: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    order: { type: "integer" },
-                    contractId: { type: "string" },
-                    description: { type: "string" },
-                    prerequisites: {
-                      type: "array",
-                      items: { type: "string" }
-                    },
-                    outputs: {
-                      type: "array",
-                      items: { type: "string" }
-                    }
-                  },
-                  required: ["order", "contractId", "description", "prerequisites", "outputs"],
-                  additionalProperties: false
-                }
-              },
-              warnings: {
-                type: "array",
-                items: { type: "string" }
-              },
-              testingNotes: {
-                type: "array",
-                items: { type: "string" }
-              }
-            },
-            required: ["steps", "warnings", "testingNotes"],
-            additionalProperties: false
-          }
-        },
-        required: ["contracts", "deploymentGuide"],
-        additionalProperties: false
-      }
-    ]
-  }
-} as const;
-
-// Minimal schemas for retry attempts (only request fixed contracts back)
-const retryOutputSchemaMulti = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      contracts: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            id: { type: "string" },
-            name: { type: "string" },
-            purpose: { type: "string" },
-            code: { type: "string" },
-            role: {
-              type: "string",
-              enum: ["primary", "helper", "state"]
-            },
-            deploymentOrder: { type: "integer" },
-            dependencies: {
-              type: "array",
-              items: { type: "string" }
-            },
-            constructorParams: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  type: { type: "string" },
-                  description: { type: "string" },
-                  source: { type: "string" },
-                  sourceContractId: {
-                    type: ["string", "null"]
-                  }
-                },
-                required: ["name", "type", "description", "source", "sourceContractId"],
-                additionalProperties: false
-              }
-            }
-          },
-          required: ["id", "name", "purpose", "code", "role", "deploymentOrder", "dependencies", "constructorParams"],
-          additionalProperties: false
-        }
-      }
-    },
-    required: ["contracts"],
-    additionalProperties: false
-  }
-} as const;
-
-const retryOutputSchemaSingle = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      primaryContract: {
-        type: "string",
-        description: "Complete CashScript contract code with pragma, documentation, and all functions"
-      }
-    },
-    required: ["primaryContract"],
-    additionalProperties: false
-  }
-} as const;
-
-function validateMultiContractResponse(
-  parsed: MultiContractResponse,
-  alreadySentContracts?: Set<string>
-): {
-  allValid: boolean;
-  firstError?: string;
-  validCount: number;
-  failedCount: number;
-  failedContracts: string[];
-} {
-  // Empty contracts array is a failure, not success
-  if (!parsed.contracts || parsed.contracts.length === 0) {
-    return {
-      allValid: false,
-      firstError: 'AI returned empty contracts array - no contracts to validate',
-      validCount: 0,
-      failedCount: 0,
-      failedContracts: []
-    };
-  }
-
-  let allValid = true;
-  let firstError: string | undefined;
-  let validCount = 0;
-  let failedCount = 0;
-  const failedContracts: string[] = [];
-
-  for (const contract of parsed.contracts) {
-    // Skip already-sent contracts - they were validated before being sent
-    if (alreadySentContracts && alreadySentContracts.has(contract.name)) {
-      validCount++;
-      continue;
-    }
-
-    // Validate contracts that haven't been sent yet
-    const validation = validateContract(contract.code);
-    contract.validated = validation.valid;
-    if (validation.valid) {
-      contract.bytecodeSize = validation.bytecodeSize;
-      contract.artifact = validation.artifact;
-      validCount++;
-    } else {
-      contract.validationError = validation.error ? enhanceErrorMessage(validation.error, contract.code) : validation.error;
-      failedCount++;
-      failedContracts.push(contract.name);
-      if (allValid) {
-        allValid = false;
-        firstError = `${contract.name}: ${validation.error}`;
-      }
-    }
-  }
-
-  return { allValid, firstError, validCount, failedCount, failedContracts };
-}
-
-// ============================================================================
-// PHASE 1 EXECUTION: Domain Extraction (Platform-Agnostic)
-// ============================================================================
-
-async function executeDomainExtraction(
-  conversionId: number,
-  solidityContract: string
-): Promise<DomainModel> {
-  console.log('[Phase 1] Starting domain extraction (platform-agnostic)...');
-  const startTime = Date.now();
-
-  const response = await anthropic.beta.messages.create({
-    model: ANTHROPIC_CONFIG.phase1.model,
-    max_tokens: ANTHROPIC_CONFIG.phase1.maxTokens,
-    betas: [...ANTHROPIC_CONFIG.betas],
-    output_format: phase1OutputSchema,
-    system: DOMAIN_EXTRACTION_PROMPT,
-    messages: [{
-      role: 'user',
-      content: `Extract the domain model from this smart contract:\n\n${solidityContract}`
-    }]
-  });
-
-  const responseText = response.content[0].type === 'text'
-    ? response.content[0].text
-    : '';
-
-  const domainModel = JSON.parse(responseText) as DomainModel;
-
-  // Validate required fields - fail loud if structured output failed
-  if (!Array.isArray(domainModel.entities)) {
-    throw new Error('Phase 1 returned invalid domain model: entities missing');
-  }
-  if (!Array.isArray(domainModel.transitions)) {
-    throw new Error('Phase 1 returned invalid domain model: transitions missing');
-  }
-  if (!domainModel.domain) {
-    throw new Error('Phase 1 returned invalid domain model: domain missing');
-  }
-
-  // Log to database (reusing semantic_analysis table for now)
-  const duration = Date.now() - startTime;
-  insertSemanticAnalysis({
-    conversion_id: conversionId,
-    analysis_json: responseText,
-    created_at: new Date().toISOString(),
-    model_used: ANTHROPIC_CONFIG.phase1.model,
-    input_tokens: response.usage.input_tokens,
-    output_tokens: response.usage.output_tokens,
-    response_time_ms: duration
-  });
-
-  console.log('[Phase 1] Domain extraction complete:', {
-    duration: `${(duration / 1000).toFixed(2)}s`,
-    domain: domainModel.domain,
-    entities: domainModel.entities.length,
-    transitions: domainModel.transitions.length,
-    invariants: domainModel.invariants.length
-  });
-
-  return domainModel;
-}
-
-// ============================================================================
-// PHASE 2 EXECUTION: UTXO Architecture Design
-// ============================================================================
-
-interface Phase2Result {
-  architecture: UTXOArchitecture;
-  durationMs: number;
-  inputTokens: number;
-  outputTokens: number;
-}
-
-async function executeArchitectureDesign(
-  conversionId: number,
-  domainModel: DomainModel
-): Promise<Phase2Result> {
-  console.log('[Phase 2] Starting UTXO architecture design...');
-  const startTime = Date.now();
-
-  const userMessage = `Design a UTXO architecture for this domain model.
-
-DOMAIN MODEL:
-${JSON.stringify(domainModel, null, 2)}
-
-Design the UTXO architecture following the patterns and prime directives in the system prompt.`;
-
-  const response = await anthropic.beta.messages.create({
-    model: ANTHROPIC_CONFIG.phase1.model, // Use same model as phase 1
-    max_tokens: 16384, // Architecture design needs more tokens
-    betas: [...ANTHROPIC_CONFIG.betas],
-    output_format: phase2OutputSchema,
-    system: UTXO_ARCHITECTURE_PROMPT,
-    messages: [{
-      role: 'user',
-      content: userMessage
-    }]
-  });
-
-  const responseText = response.content[0].type === 'text'
-    ? response.content[0].text
-    : '';
-
-  const architecture = JSON.parse(responseText) as UTXOArchitecture;
-
-  // Validate required fields - fail loud if structured output failed
-  if (!Array.isArray(architecture.contracts)) {
-    throw new Error('Phase 2 returned invalid architecture: contracts missing');
-  }
-  if (!Array.isArray(architecture.transactionTemplates)) {
-    throw new Error('Phase 2 returned invalid architecture: transactionTemplates missing');
-  }
-
-  const duration = Date.now() - startTime;
-
-  console.log('[Phase 2] Architecture design complete:', {
-    duration: `${(duration / 1000).toFixed(2)}s`,
-    contracts: architecture.contracts.length,
-    transactions: architecture.transactionTemplates.length,
-    patterns: architecture.patterns?.map(p => p.name).join(', ') || '(none)'
-  });
-
-  // Store Phase 2 architecture in database
-  insertUtxoArchitecture({
-    conversion_id: conversionId,
-    architecture_json: responseText,
-    created_at: new Date().toISOString(),
-    model_used: ANTHROPIC_CONFIG.phase1.model,
-    input_tokens: response.usage.input_tokens,
-    output_tokens: response.usage.output_tokens,
-    response_time_ms: duration
-  });
-
-  return {
-    architecture,
-    durationMs: duration,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens
-  };
-}
-
-// ============================================================================
-// CONCURRENT REQUEST LIMITING
-// ============================================================================
-
+// Concurrent request limiting
 let activeConversions = 0;
-const MAX_CONCURRENT_CONVERSIONS = 100;
-
-// ============================================================================
-// INPUT VALIDATION HELPERS
-// ============================================================================
 
 function validateContractInput(contract: any): { valid: boolean; error?: string; statusCode?: number } {
-  // Must be a string
   if (typeof contract !== 'string') {
     return { valid: false, error: 'Contract must be a string', statusCode: 400 };
   }
-
-  // Must not be empty
   if (!contract || contract.trim().length === 0) {
     return { valid: false, error: 'Contract cannot be empty', statusCode: 400 };
   }
-
-  // Minimum length check (prevent trivial spam)
   if (contract.length < 10) {
     return { valid: false, error: 'Contract must be at least 10 characters', statusCode: 400 };
   }
-
-  // Maximum length check (50,000 chars ~= 50kb)
   if (contract.length > 50000) {
     return { valid: false, error: 'Contract too large. Maximum 50,000 characters allowed.', statusCode: 413 };
   }
-
   return { valid: true };
 }
 
-// ============================================================================
-// API ENDPOINT
-// ============================================================================
-
-// Streaming conversion endpoint with real-time progress
-app.post('/api/convert-stream', rateLimiter, async (req, res) => {
-  // Check concurrent request limit
-  if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) {
-    return res.status(503).json({
-      error: 'Server busy',
-      message: `Maximum ${MAX_CONCURRENT_CONVERSIONS} concurrent conversions. Please try again in a moment.`
-    });
-  }
-
-  activeConversions++;
-  const startTime = Date.now();
-  let conversionId: number | undefined;
-
-  // Set up SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.flushHeaders();
-
-  // Detect client disconnect (e.g., user clicked "Start Over")
-  // Listen on 'res' (response), not 'req' (request) - SSE keeps response stream open
-  let clientDisconnected = false;
-  res.on('close', () => {
-    clientDisconnected = true;
-  });
-
-  // Helper to send SSE events - throws on error (fail loud)
-  const sendEvent = (event: string, data: any) => {
-    if (!res.writable) {
-      throw new Error('AbortError: Client disconnected');
-    }
-    res.write(`event: ${event}\n`);
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
-  };
-
-  // Helper to end response stream - throws on error (fail loud)
-  const endResponse = () => {
-    if (!res.writable) {
-      throw new Error('AbortError: Client disconnected');
-    }
-    res.end();
-  };
-
-  // Track which contracts have been successfully sent to client
-  // Declared here so catch block can check if user already has working contracts
-  let sentContracts = new Set<string>();
-
-  try {
-    const { contract } = req.body;
-
-    // Validate input
-    const validation = validateContractInput(contract);
-    if (!validation.valid) {
-      sendEvent('error', { message: validation.error });
-      endResponse();
-      return;
-    }
-    const metadata = req.metadata!;
-
-    // Log conversion start
-    conversionId = logConversionStart(metadata, contract);
-
-    // ========================================
-    // PHASE 1: DOMAIN EXTRACTION (Platform-Agnostic)
-    // ========================================
-    sendEvent('phase1_start', { message: 'Extracting domain model...' });
-
-    let domainModel: DomainModel;
-    let domainModelJSON: string;
-
-    try {
-      // Check if client disconnected before expensive Phase 1 API call
-      if (clientDisconnected) {
-        throw new Error('AbortError: Client disconnected');
-      }
-
-      domainModel = await executeDomainExtraction(conversionId, contract);
-      domainModelJSON = JSON.stringify(domainModel, null, 2);
-      sendEvent('phase1_complete', {
-        message: 'Domain extraction complete',
-        domain: domainModel.domain,
-        entities: domainModel.entities.length,
-        transitions: domainModel.transitions.length
-      });
-    } catch (phase1Error) {
-      console.error('[Phase 1] Domain extraction failed:', phase1Error);
-      sendEvent('error', {
-        phase: 1,
-        message: 'Domain extraction failed',
-        details: phase1Error instanceof Error ? phase1Error.message : String(phase1Error)
-      });
-      endResponse();
-      return;
-    }
-
-    // ========================================
-    // PHASE 2: UTXO ARCHITECTURE DESIGN
-    // ========================================
-    sendEvent('phase2_start', { message: 'Designing UTXO architecture...' });
-
-    let utxoArchitecture: UTXOArchitecture;
-    let utxoArchitectureJSON: string;
-    let phase2DurationMs: number;
-
-    try {
-      if (clientDisconnected) {
-        throw new Error('AbortError: Client disconnected');
-      }
-
-      const phase2Result = await executeArchitectureDesign(conversionId, domainModel);
-      utxoArchitecture = phase2Result.architecture;
-      phase2DurationMs = phase2Result.durationMs;
-
-      // Filter out documentation-only contracts BEFORE Phase 3
-      // These have no validation logic and should NOT generate contracts
-      if (Array.isArray(utxoArchitecture.contracts)) {
-        const before = utxoArchitecture.contracts.length;
-        utxoArchitecture.contracts = utxoArchitecture.contracts.filter(c => {
-          if (isDocumentationOnlyContract(c)) {
-            console.log(`[Phase 2 Filter] Removing documentation-only contract: ${c.name}`);
-            console.log(`  - validates: ${c.validates}`);
-            console.log(`  - custodies: ${c.custodies}`);
-            return false;
-          }
-          return true;
-        });
-        const removed = before - utxoArchitecture.contracts.length;
-        if (removed > 0) {
-          console.log(`[Phase 2 Filter] Removed ${removed} documentation-only contract(s)`);
-        }
-      }
-
-      utxoArchitectureJSON = JSON.stringify(utxoArchitecture, null, 2);
-
-      // Defensive access for SSE event
-      const contractCount = Array.isArray(utxoArchitecture.contracts) ? utxoArchitecture.contracts.length : 0;
-      const patternNames = Array.isArray(utxoArchitecture.patterns)
-        ? utxoArchitecture.patterns.map(p => p?.name || 'unnamed')
-        : [];
-
-      sendEvent('phase2_complete', {
-        message: 'Architecture design complete',
-        contracts: contractCount,
-        patterns: patternNames,
-        durationMs: phase2DurationMs
-      });
-
-      // Send transaction templates and contract specs for UI
-      const transactionTemplates = Array.isArray(utxoArchitecture.transactionTemplates)
-        ? utxoArchitecture.transactionTemplates
-        : [];
-      const contractSpecs = Array.isArray(utxoArchitecture.contracts)
-        ? utxoArchitecture.contracts.map(c => ({ name: c.name, custodies: c.custodies, validates: c.validates }))
-        : [];
-      if (transactionTemplates.length > 0 || contractSpecs.length > 0) {
-        sendEvent('transactions_ready', {
-          transactions: transactionTemplates,
-          contractSpecs: contractSpecs
-        });
-      }
-    } catch (phase2Error) {
-      console.error('[Phase 2] Architecture design failed:', phase2Error);
-      sendEvent('error', {
-        phase: 2,
-        message: 'Architecture design failed',
-        details: phase2Error instanceof Error ? phase2Error.message : String(phase2Error)
-      });
-      endResponse();
-      return;
-    }
-
-    // ========================================
-    // PHASE 3: CODE GENERATION
-    // ========================================
-    sendEvent('phase3_start', { message: 'Generating CashScript...' });
-
-    const systemPrompt = `You are a CashScript expert. Convert EVM (Solidity) smart contracts to CashScript.
+// Build Phase 3 system prompt (code generation)
+function buildCodeGenerationPrompt(): string {
+  return `You are a CashScript expert. Convert EVM (Solidity) smart contracts to CashScript.
 
 CashScript Language Reference:
 ${knowledgeBase}
@@ -1566,26 +475,162 @@ Use multi-contract structure when:
 - Factory patterns that create child contracts
 
 Use your best judgment. Include deployment order and parameter sources for multi-contract systems.`;
+}
 
-    // Attempt validation with up to max retries attempts
+// Streaming conversion endpoint with real-time progress
+app.post('/api/convert-stream', rateLimiter, async (req, res) => {
+  if (activeConversions >= SERVER_CONFIG.maxConcurrentConversions) {
+    return res.status(503).json({
+      error: 'Server busy',
+      message: `Maximum ${SERVER_CONFIG.maxConcurrentConversions} concurrent conversions. Please try again in a moment.`
+    });
+  }
+
+  activeConversions++;
+  const startTime = Date.now();
+  let conversionId: number | undefined;
+
+  // Set up SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  let clientDisconnected = false;
+  res.on('close', () => {
+    clientDisconnected = true;
+  });
+
+  const sendEvent = (event: string, data: any) => {
+    if (!res.writable) {
+      throw new Error('AbortError: Client disconnected');
+    }
+    res.write(`event: ${event}\n`);
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  const endResponse = () => {
+    if (!res.writable) {
+      throw new Error('AbortError: Client disconnected');
+    }
+    res.end();
+  };
+
+  let sentContracts = new Set<string>();
+
+  try {
+    const { contract } = req.body;
+
+    const validation = validateContractInput(contract);
+    if (!validation.valid) {
+      sendEvent('error', { message: validation.error });
+      endResponse();
+      return;
+    }
+    const metadata = req.metadata!;
+    conversionId = logConversionStart(metadata, contract);
+
+    // PHASE 1: Domain Extraction
+    sendEvent('phase1_start', { message: 'Extracting domain model...' });
+
+    let domainModel: DomainModel;
+    let domainModelJSON: string;
+
+    try {
+      if (clientDisconnected) throw new Error('AbortError: Client disconnected');
+
+      const phase1Result = await executeDomainExtraction(anthropic, conversionId, contract);
+      domainModel = phase1Result.domainModel;
+      domainModelJSON = JSON.stringify(domainModel, null, 2);
+      sendEvent('phase1_complete', {
+        message: 'Domain extraction complete',
+        domain: domainModel.domain,
+        entities: domainModel.entities.length,
+        transitions: domainModel.transitions.length
+      });
+    } catch (phase1Error) {
+      console.error('[Phase 1] Domain extraction failed:', phase1Error);
+      sendEvent('error', {
+        phase: 1,
+        message: 'Domain extraction failed',
+        details: phase1Error instanceof Error ? phase1Error.message : String(phase1Error)
+      });
+      endResponse();
+      return;
+    }
+
+    // PHASE 2: UTXO Architecture Design
+    sendEvent('phase2_start', { message: 'Designing UTXO architecture...' });
+
+    let utxoArchitecture: UTXOArchitecture;
+    let utxoArchitectureJSON: string;
+
+    try {
+      if (clientDisconnected) throw new Error('AbortError: Client disconnected');
+
+      const phase2Result = await executeArchitectureDesign(anthropic, conversionId, domainModel);
+      utxoArchitecture = phase2Result.architecture;
+
+      // Filter documentation-only contracts before Phase 3
+      const { filtered, removedCount } = filterDocumentationOnlyContracts(utxoArchitecture);
+      utxoArchitecture = filtered;
+
+      utxoArchitectureJSON = JSON.stringify(utxoArchitecture, null, 2);
+
+      const contractCount = Array.isArray(utxoArchitecture.contracts) ? utxoArchitecture.contracts.length : 0;
+      const patternNames = Array.isArray(utxoArchitecture.patterns)
+        ? utxoArchitecture.patterns.map(p => p?.name || 'unnamed')
+        : [];
+
+      sendEvent('phase2_complete', {
+        message: 'Architecture design complete',
+        contracts: contractCount,
+        patterns: patternNames,
+        durationMs: phase2Result.durationMs
+      });
+
+      // Send transaction templates for UI
+      const transactionTemplates = Array.isArray(utxoArchitecture.transactionTemplates)
+        ? utxoArchitecture.transactionTemplates
+        : [];
+      const contractSpecs = Array.isArray(utxoArchitecture.contracts)
+        ? utxoArchitecture.contracts.map(c => ({ name: c.name, custodies: c.custodies, validates: c.validates }))
+        : [];
+      if (transactionTemplates.length > 0 || contractSpecs.length > 0) {
+        sendEvent('transactions_ready', {
+          transactions: transactionTemplates,
+          contractSpecs: contractSpecs
+        });
+      }
+    } catch (phase2Error) {
+      console.error('[Phase 2] Architecture design failed:', phase2Error);
+      sendEvent('error', {
+        phase: 2,
+        message: 'Architecture design failed',
+        details: phase2Error instanceof Error ? phase2Error.message : String(phase2Error)
+      });
+      endResponse();
+      return;
+    }
+
+    // PHASE 3: Code Generation
+    sendEvent('phase3_start', { message: 'Generating CashScript...' });
+
+    const systemPrompt = buildCodeGenerationPrompt();
     let parsed: any;
     let validationPassed = false;
     let validationError: string | undefined;
     let retryMessage: string = '';
-    let savedValidContracts: any[] = [];  // Track valid contracts across retries
-    let isMultiContractMode = false;      // Track if we're in multi-contract mode
-    let savedDeploymentGuide: any = null; // Track deployment guide from first attempt
-    let originalContractOrder: string[] = []; // Track original order from attempt 1
-    let contractAttempts: Map<string, number> = new Map(); // Track per-contract attempt numbers
-    // sentContracts now declared at function scope (line 734) to be accessible in catch block
-    let totalExpectedContracts = 0; // Total number of contracts expected
-    let expectedFailedNames: string[] = []; // Track names of failed contracts for retry matching
+    let savedValidContracts: any[] = [];
+    let isMultiContractMode = false;
+    let savedDeploymentGuide: any = null;
+    let originalContractOrder: string[] = [];
+    let contractAttempts: Map<string, number> = new Map();
+    let totalExpectedContracts = 0;
+    let expectedFailedNames: string[] = [];
 
     for (let attemptNumber = 1; attemptNumber <= ANTHROPIC_CONFIG.phase2.maxRetries; attemptNumber++) {
-      // Check if client disconnected
-      if (clientDisconnected) {
-        throw new Error('AbortError: Client disconnected');
-      }
+      if (clientDisconnected) throw new Error('AbortError: Client disconnected');
 
       const messageContent = attemptNumber === 1
         ? `DOMAIN MODEL (what the system does - platform-agnostic):
@@ -1606,18 +651,12 @@ Every contract must validate something. Every function must add constraints. No 
       const apiCallStartTime = Date.now();
       const apiCallId = logApiCallStart(conversionId, attemptNumber, messageContent);
 
-      // Check if client disconnected before expensive Phase 2 API call
-      if (clientDisconnected) {
-        throw new Error('AbortError: Client disconnected');
-      }
+      if (clientDisconnected) throw new Error('AbortError: Client disconnected');
 
-      // Select schema based on attempt number and contract mode
       let selectedSchema;
       if (attemptNumber === 1) {
-        // First attempt: use full schema (can return single or multi)
         selectedSchema = outputSchema;
       } else {
-        // Retries: use minimal schema based on contract mode
         selectedSchema = isMultiContractMode ? retryOutputSchemaMulti : retryOutputSchemaSingle;
       }
 
@@ -1644,7 +683,6 @@ Every contract must validate something. Every function must add constraints. No 
       const response = message.content[0].type === 'text' ? message.content[0].text : '';
       const usage = message.usage;
 
-      // Parse response
       try {
         parsed = JSON.parse(response);
       } catch (parseError) {
@@ -1657,13 +695,10 @@ Every contract must validate something. Every function must add constraints. No 
         return;
       }
 
-      // Normalize contract names by extracting from actual code
-      // Fixes AI tokenization artifacts like "Ball ot Initial izer" -> "BallotInitializer"
+      // Normalize and filter contracts
       if (parsed.contracts && Array.isArray(parsed.contracts)) {
         normalizeContractNames(parsed.contracts);
 
-        // Filter out placeholder contracts (require(false) only)
-        // These violate the rule: "If a contract validates nothing, it should NOT EXIST"
         const beforeFilter = parsed.contracts.length;
         parsed.contracts = parsed.contracts.filter((c: ContractInfo) => {
           if (isPlaceholderContract(c.code)) {
@@ -1678,20 +713,16 @@ Every contract must validate something. Every function must add constraints. No 
         }
       }
 
-      // After first attempt, mark Phase 3 complete and start Phase 4 (validation)
+      // After first attempt, track mode and start Phase 4
       if (attemptNumber === 1) {
         sendEvent('phase3_complete', { message: 'Code generation complete' });
         sendEvent('phase4_start', { message: 'Validating contracts... You\'ll be redirected to results as soon as we have something to show. We\'ll keep working on the rest in the background.' });
 
-        // Detect and save contract mode from first attempt
         isMultiContractMode = isMultiContractResponse(parsed);
         if (isMultiContractMode && parsed.deploymentGuide) {
           savedDeploymentGuide = parsed.deploymentGuide;
-          // Save original order of contract names from first attempt
           originalContractOrder = parsed.contracts.map((c: any) => c.name);
-          // Set total expected contracts
           totalExpectedContracts = parsed.contracts.length;
-          // Initialize attempt tracking (all start at attempt 1)
           parsed.contracts.forEach((c: any) => {
             contractAttempts.set(c.name, 1);
           });
@@ -1699,19 +730,14 @@ Every contract must validate something. Every function must add constraints. No 
           totalExpectedContracts = 1;
         }
       } else if (attemptNumber > 1 && isMultiContractMode) {
-        // Retry attempt: merge saved valid contracts with newly fixed contracts
+        // Merge saved valid contracts with newly fixed contracts
         const fixedContracts = parsed.contracts || [];
 
-        // Match fixed contracts to expected failed names if names changed during normalization
-        // This handles cases where AI renames the contract in the code during retry
         if (fixedContracts.length > 0 && expectedFailedNames.length > 0) {
           const validNames = new Set(savedValidContracts.map((c: any) => c.name));
 
           for (const fixedContract of fixedContracts) {
-            // If this contract name isn't in savedValidContracts and isn't in expectedFailedNames,
-            // it was probably renamed during retry - find the matching expected name
             if (!validNames.has(fixedContract.name) && !expectedFailedNames.includes(fixedContract.name)) {
-              // Find an expected failed name that hasn't been matched yet
               const unmatchedExpected = expectedFailedNames.find(name =>
                 !fixedContracts.some(c => c.name === name)
               );
@@ -1725,18 +751,12 @@ Every contract must validate something. Every function must add constraints. No 
           }
         }
 
-        // Update attempt numbers for fixed contracts
         for (const fixedContract of fixedContracts) {
           contractAttempts.set(fixedContract.name, attemptNumber);
         }
 
-        // Create contract map for easy lookup
         const contractMap = new Map();
-
-        // CRITICAL FIX: Deep copy saved valid contracts to prevent mutation
-        // Shallow references would allow validateMultiContractResponse to mutate the originals
         for (const contract of savedValidContracts) {
-          // Deep copy the contract object to isolate it from future mutations
           const contractCopy = {
             ...contract,
             dependencies: contract.dependencies ? [...contract.dependencies] : [],
@@ -1745,37 +765,32 @@ Every contract must validate something. Every function must add constraints. No 
           contractMap.set(contract.name, contractCopy);
         }
 
-        // Add/replace with newly fixed contracts
         for (const fixedContract of fixedContracts) {
           const wasValidated = savedValidContracts.some(c => c.name === fixedContract.name);
           if (wasValidated) {
             console.warn(`[Merge] WARNING: AI returned already-validated contract "${fixedContract.name}" - ignoring AI version, keeping original`);
-            // Don't overwrite - keep the validated version from savedValidContracts
           } else {
             contractMap.set(fixedContract.name, fixedContract);
           }
         }
 
-        // Rebuild contracts array in ORIGINAL order
-        // Log if any contracts are missing
         const mergedContracts: any[] = [];
         for (const name of originalContractOrder) {
           const contract = contractMap.get(name);
           if (contract) {
             mergedContracts.push(contract);
           } else {
-            console.error(`[Merge] ERROR: Contract "${name}" missing from merge - not in savedValidContracts or fixedContracts`);
+            console.error(`[Merge] ERROR: Contract "${name}" missing from merge`);
           }
         }
 
-        // Reconstruct full multi-contract response
         parsed = {
           contracts: mergedContracts,
           deploymentGuide: savedDeploymentGuide
         };
       }
 
-      // Validate
+      // Validate contracts
       const isMultiContract = isMultiContractResponse(parsed);
 
       if (isMultiContract) {
@@ -1784,16 +799,14 @@ Every contract must validate something. Every function must add constraints. No 
           contract_count: parsed.contracts.length
         });
 
-        // Pass sentContracts to skip re-validation of already-sent contracts
         const multiValidation = validateMultiContractResponse(parsed, sentContracts);
         validationPassed = multiValidation.allValid;
         validationError = multiValidation.firstError;
 
-        // Build contract status list for display during retries
         const contractStatus = parsed.contracts.map((c: ContractInfo) => ({
           name: c.name,
           validated: c.validated || false,
-          attempt: contractAttempts.get(c.name) || attemptNumber // Include per-contract attempt number
+          attempt: contractAttempts.get(c.name) || attemptNumber
         }));
 
         sendEvent('validation', {
@@ -1815,7 +828,6 @@ Every contract must validate something. Every function must add constraints. No 
               readySoFar: sentContracts.size + 1
             };
 
-            // Include deployment guide only with the FIRST contract
             if (sentContracts.size === 0 && savedDeploymentGuide) {
               contractReadyData.deploymentGuide = savedDeploymentGuide;
             }
@@ -1825,9 +837,9 @@ Every contract must validate something. Every function must add constraints. No 
           }
         }
       } else {
-        const validation = validateContract(parsed.primaryContract);
-        validationPassed = validation.valid;
-        validationError = validation.error ? enhanceErrorMessage(validation.error, parsed.primaryContract) : validation.error;
+        const singleValidation = validateContract(parsed.primaryContract);
+        validationPassed = singleValidation.valid;
+        validationError = singleValidation.error ? enhanceErrorMessage(singleValidation.error, parsed.primaryContract) : singleValidation.error;
 
         sendEvent('validation', {
           passed: validationPassed,
@@ -1838,13 +850,11 @@ Every contract must validate something. Every function must add constraints. No 
 
         if (validationPassed) {
           parsed.validated = true;
-          parsed.bytecodeSize = validation.bytecodeSize;
-          parsed.artifact = validation.artifact;
+          parsed.bytecodeSize = singleValidation.bytecodeSize;
+          parsed.artifact = singleValidation.artifact;
           updateConversion(conversionId, { contract_count: 1 });
 
-          // Send contract_ready event for single contract
           if (!sentContracts.has('primary')) {
-            // Extract actual contract name from CashScript code
             const contractNameMatch = parsed.primaryContract.match(/contract\s+(\w+)/);
             const contractName = contractNameMatch ? contractNameMatch[1] : 'Primary Contract';
 
@@ -1869,13 +879,11 @@ Every contract must validate something. Every function must add constraints. No 
         }
       }
 
-      // Save valid contracts after validation for use in retries
+      // Save valid contracts for retries
       if (isMultiContract && !validationPassed) {
-        // Save valid contracts to avoid regenerating them in retries
         savedValidContracts = parsed.contracts.filter((c: ContractInfo) => c.validated);
       }
 
-      // Log API call - let errors propagate (fail loud)
       logApiCallComplete(
         apiCallId,
         apiCallStartTime,
@@ -1937,13 +945,12 @@ Every contract must validate something. Every function must add constraints. No 
 
         sendEvent('phase4_complete', { message: 'Validation complete' });
 
-        // Post-validation: Check if contract names drifted and update transaction templates
+        // Check for name drift and update transaction templates
         if (isMultiContract && utxoArchitecture.transactionTemplates?.length > 0) {
           const nameMap = new Map<string, string>();
           const archContracts = utxoArchitecture.contracts || [];
           const validatedContracts = parsed.contracts || [];
 
-          // Match by index (order is preserved through retries via originalContractOrder)
           for (let i = 0; i < archContracts.length; i++) {
             const archName = archContracts[i]?.name;
             const validatedName = validatedContracts[i]?.name;
@@ -1953,7 +960,6 @@ Every contract must validate something. Every function must add constraints. No 
             }
           }
 
-          // If any names drifted, send updated transaction templates
           if (nameMap.size > 0) {
             const updatedTemplates = applyNameMappingToTemplates(
               utxoArchitecture.transactionTemplates,
@@ -1967,24 +973,20 @@ Every contract must validate something. Every function must add constraints. No 
         break;
       }
 
-      // Build retry message if validation failed
+      // Build retry message
       if (attemptNumber === ANTHROPIC_CONFIG.phase2.maxRetries) {
         sendEvent('error', {
           phase: 4,
           message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts. This is not a deterministic system, so just try again - it's likely to work!`,
           details: validationError
         });
-      endResponse();
+        endResponse();
         return;
       }
 
-      // Build retry message for next attempt with MINIMAL CHANGE instructions
-      // Include current contract code so AI can make targeted fixes instead of rewriting from scratch
       if (isMultiContract) {
         const failedContracts = parsed.contracts.filter((c: ContractInfo) => !c.validated);
         const failedContractNames = failedContracts.map((c: ContractInfo) => c.name).join(', ');
-
-        // Save expected failed names for matching on retry (handles AI renaming contracts)
         expectedFailedNames = failedContracts.map((c: ContractInfo) => c.name);
 
         retryMessage = `Fix ONLY the specific compilation errors in the following ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}:\n\n`;
@@ -2017,11 +1019,9 @@ Every contract must validate something. Every function must add constraints. No 
       }
     }
 
-    // Send final result - let errors propagate (fail loud)
     logConversionComplete(conversionId, startTime, 'success');
-
     sendEvent('done', parsed);
-      endResponse();
+    endResponse();
 
   } catch (error) {
     console.error('[Conversion] Error:', error);
@@ -2032,19 +1032,15 @@ Every contract must validate something. Every function must add constraints. No 
       logConversionComplete(conversionId, startTime, 'error');
     }
 
-    // Only send error to client if they don't already have working contracts
-    // If contracts were successfully sent, retry failures are just background noise
     if (sentContracts.size === 0) {
       sendEvent('error', {
         message: 'Internal server error',
         details: errorMessage
       });
     } else {
-      // Contracts were sent - send 'done' event so client knows we're finished
-      // Client already has contracts from contract_ready events, just needs completion signal
       sendEvent('done', { partialSuccess: true });
     }
-      endResponse();
+    endResponse();
   } finally {
     activeConversions--;
   }
@@ -2059,13 +1055,10 @@ init().then(() => {
     console.log(`[Server] Running on http://localhost:${SERVER_CONFIG.port}`);
   });
 
-  // Set timeout to handle long conversions
-  // With max retries and ~30s per attempt, we need sufficient time
   server.timeout = SERVER_CONFIG.timeout;
   server.keepAliveTimeout = SERVER_CONFIG.keepAliveTimeout;
   server.headersTimeout = SERVER_CONFIG.headersTimeout;
 
-  // Graceful shutdown
   process.on('SIGTERM', () => {
     console.log('[Server] SIGTERM received, shutting down gracefully...');
     server.close(() => {

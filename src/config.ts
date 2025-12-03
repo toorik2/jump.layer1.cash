@@ -47,6 +47,19 @@ export const SERVER_CONFIG = {
   timeout: parseInt(process.env.SERVER_TIMEOUT_MS || '600000', 10), // 10 minutes
   keepAliveTimeout: parseInt(process.env.KEEP_ALIVE_TIMEOUT_SEC || '610', 10) * 1000,
   headersTimeout: parseInt(process.env.HEADERS_TIMEOUT_SEC || '615', 10) * 1000,
+
+  // Concurrency
+  maxConcurrentConversions: parseInt(process.env.MAX_CONCURRENT_CONVERSIONS || '100', 10),
+} as const;
+
+// ============================================================================
+// RATE LIMITING CONFIGURATION
+// ============================================================================
+
+export const RATE_LIMIT_CONFIG = {
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '300000', 10), // 5 minutes
+  maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5', 10),
+  cleanupIntervalMs: parseInt(process.env.RATE_LIMIT_CLEANUP_MS || '600000', 10), // 10 minutes
 } as const;
 
 // ============================================================================

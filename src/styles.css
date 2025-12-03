@@ -499,6 +499,56 @@ h1 {
   font-size: 0.875rem;
 }
 
+.error-display {
+  color: #FF6B6B;
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-radius: 8px;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.error-display .error-message {
+  font-size: 0.9375rem;
+  margin-bottom: 1rem;
+}
+
+.error-display .error-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.error-display .error-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.error-display .error-btn.retry {
+  background: #39FF14;
+  color: #0D1117;
+  border: none;
+}
+
+.error-display .error-btn.retry:hover {
+  opacity: 0.85;
+}
+
+.error-display .error-btn.reset {
+  background: transparent;
+  color: #8B949E;
+  border: 1px solid #30363D;
+}
+
+.error-display .error-btn.reset:hover {
+  color: #C9D1D9;
+  border-color: #8B949E;
+}
+
 .expandable-sections {
   margin-top: 2rem;
   border-top: 1px solid #30363D;
