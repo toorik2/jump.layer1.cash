@@ -313,16 +313,43 @@ If you cannot answer with CONCRETE validation rules, DO NOT CREATE THE CONTRACT.
 - All transitions are "user decides" with no system rules
 - The only "validation" would be require(false) or a placeholder
 
+## EMBED vs SEPARATE CONTRACT Decision
+
+**Ask**: "Does this entity's NFT need to be an INPUT to validate its own state changes?"
+
+| Answer | Decision | Rationale |
+|--------|----------|-----------|
+| **YES** | Separate contract | Entity actively participates in transactions that modify it |
+| **NO** | Embed in parent's commitment | Entity is passive data modified as side effect of other operations |
+
+**Active Entity** (needs contract):
+- Its NFT is SPENT to authorize operations on itself
+- It has independent lifecycle transitions
+- Example: Voter NFT is input to castVote(), delegateVote()
+
+**Passive Data** (embed in parent):
+- Just bytes in another entity's commitment
+- Modified as side effect of parent's operations
+- Example: Proposal vote counts - updated when Ballot receives votes, NOT as independent Proposal NFT inputs
+
+**Real-world example**:
+- Voter: ACTIVE - the Voter NFT must be input to prove "I am allowed to vote"
+- Proposal: PASSIVE - vote count is just data in Ballot, modified when Ballot.receiveVoteTally() runs
+
+This is why Proposal should NOT be a separate contract - it would have no validation logic because it never authorizes anything. Its data just gets updated when the Ballot processes votes.
+
 ## Examples
 
-| Entity | Has Enforced Rules? | Contract? |
-|--------|---------------------|-----------|
-| Voter (can vote once) | YES | YES - validates vote count, delegation |
-| VoteReceipt (proof of voting) | NO | NO - just NFT user holds |
-| LockedToken (vesting period) | YES | YES - validates time lock |
-| Badge/Trophy (freely owned) | NO | NO - just NFT in user's P2PKH |
-| Escrow (release conditions) | YES | YES - validates release rules |
-| NFTToken (simple ownership) | NO | NO - data only, no constraints |
+| Entity | Active/Passive? | Contract? | Custody |
+|--------|-----------------|-----------|---------|
+| Voter (can vote once) | ACTIVE | YES | Contract - validates voting rules |
+| Proposal (vote counts) | PASSIVE | NO | Embed in Ballot commitment |
+| LockedToken (vesting) | ACTIVE | YES | Contract - validates time lock |
+| VoteReceipt (proof) | PASSIVE | NO | User P2PKH - just ownership proof |
+| Escrow (release rules) | ACTIVE | YES | Contract - validates release |
+| Badge/Trophy (freely owned) | PASSIVE | NO | User P2PKH - no constraints |
+| Product inventory count | PASSIVE | NO | Embed in Store commitment |
+| Order (requires approval) | ACTIVE | YES | Contract - validates approval flow |
 
 ## In the output JSON:
 - \`tokenCategories\` = ALL NFT types (including data-only ones)
