@@ -783,12 +783,14 @@ footer a:hover {
 /* Skeleton loading styles */
 .pending-contract-state.skeleton {
   align-items: stretch;
-  padding: 1.5rem;
+  justify-content: flex-start;
+  padding: 0;
+  min-height: auto;
 }
 
 .skeleton-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
@@ -1351,6 +1353,41 @@ footer a:hover {
   padding: 0 1rem;
 }
 
+.contracts-overview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.contract-spec-card {
+  background: #161B22;
+  border: 1px solid #30363D;
+  border-radius: 8px;
+  padding: 1rem;
+  flex: 1;
+  min-width: 250px;
+}
+
+.contract-spec-card strong {
+  color: #FFA500;
+  font-size: 0.95rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.spec-detail {
+  font-size: 0.8rem;
+  color: #8B949E;
+  margin: 0.25rem 0;
+  line-height: 1.4;
+}
+
+.spec-detail .spec-label {
+  color: #58A6FF;
+  margin-right: 0.5rem;
+}
+
 .transactions-loading {
   display: flex;
   flex-direction: column;
@@ -1411,6 +1448,7 @@ footer a:hover {
   background: rgba(88, 166, 255, 0.15);
   color: #58A6FF;
   white-space: nowrap;
+  margin-top: 0.2rem;
 }
 
 .tx-name {

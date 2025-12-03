@@ -1084,6 +1084,7 @@ export default function App() {
                           </div>
                         </div>
                       </Show>
+
                       <Show when={transactions().length > 0}>
                         <div class="transactions-list">
                           <For each={transactions()}>
@@ -1273,12 +1274,9 @@ export default function App() {
 
                           return (
                             <div class="pending-contract-state skeleton">
-                              <div class="skeleton-header">
-                                <div class="pending-spinner"></div>
-                                <div class="pending-message">
-                                  <strong>{contract.name}</strong>
-                                  <p class="phase-info">{phaseMessage}</p>
-                                </div>
+                              <div style="margin-bottom: 1rem;">
+                                <strong>{contract.name}</strong>
+                                <p class="phase-info">{phaseMessage}</p>
                               </div>
 
                               {/* Show contract spec info if available */}
@@ -1361,21 +1359,16 @@ export default function App() {
                         }
                         return (
                           <div class="pending-contract-state skeleton">
-                            <div class="skeleton-header">
-                              <div class="pending-spinner"></div>
-                              <div class="pending-message">
-                                <p class="phase-info">{phaseMessage}</p>
-                              </div>
-                            </div>
+                            <p class="phase-info" style="margin-bottom: 1rem;">{phaseMessage}</p>
                             <div class="skeleton-code">
-                          <div class="skeleton-line w-40"></div>
-                          <div class="skeleton-line w-60"></div>
-                          <div class="skeleton-line w-80"></div>
-                          <div class="skeleton-line w-50"></div>
-                          <div class="skeleton-line w-70"></div>
-                          <div class="skeleton-line w-45"></div>
-                          <div class="skeleton-line w-90"></div>
-                          <div class="skeleton-line w-55"></div>
+                              <div class="skeleton-line w-40"></div>
+                              <div class="skeleton-line w-60"></div>
+                              <div class="skeleton-line w-80"></div>
+                              <div class="skeleton-line w-50"></div>
+                              <div class="skeleton-line w-70"></div>
+                              <div class="skeleton-line w-45"></div>
+                              <div class="skeleton-line w-90"></div>
+                              <div class="skeleton-line w-55"></div>
                             </div>
                           </div>
                         );
