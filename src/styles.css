@@ -1005,7 +1005,307 @@ footer a:hover {
   margin-bottom: 0.25rem;
 }
 
+/* ============================================================================
+   MAIN TABS (Transactions / Contracts)
+   ============================================================================ */
+
+.main-tabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #30363D;
+  padding-bottom: 0.75rem;
+}
+
+.main-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid #30363D;
+  border-radius: 6px;
+  color: #8B949E;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.main-tab:hover {
+  background: rgba(57, 255, 20, 0.05);
+  border-color: #39FF14;
+  color: #39FF14;
+}
+
+.main-tab.active {
+  background: rgba(57, 255, 20, 0.1);
+  border-color: #39FF14;
+  color: #39FF14;
+}
+
+.main-tab .tab-count {
+  background: rgba(57, 255, 20, 0.2);
+  color: #39FF14;
+  padding: 0.125rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.main-tab.original-btn {
+  margin-left: auto;
+}
+
+.main-tab.start-over-btn {
+  background: rgba(255, 99, 71, 0.1);
+  border-color: #FF6347;
+  color: #FF6347;
+}
+
+.main-tab.start-over-btn:hover {
+  background: rgba(255, 99, 71, 0.2);
+}
+
+/* ============================================================================
+   TRANSACTIONS VIEW
+   ============================================================================ */
+
+.transactions-view {
+  padding: 0 1rem;
+}
+
+.transactions-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: #8B949E;
+}
+
+.transactions-loading p {
+  margin-top: 1rem;
+}
+
+.transactions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ============================================================================
+   TRANSACTION CARD
+   ============================================================================ */
+
+.transaction-card {
+  background: #0D1117;
+  border: 1px solid #30363D;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tx-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #30363D;
+  background: #161B22;
+}
+
+.tx-name {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #39FF14;
+}
+
+.tx-description {
+  margin: 0;
+  color: #8B949E;
+  font-size: 0.875rem;
+}
+
+.tx-flow {
+  display: flex;
+  padding: 1.25rem;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.tx-inputs,
+.tx-outputs {
+  flex: 1;
+  min-width: 0;
+}
+
+.tx-inputs h4,
+.tx-outputs h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8B949E;
+}
+
+.tx-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: #39FF14;
+  padding: 0 0.5rem;
+  margin-top: 2rem;
+}
+
+.tx-slot {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: #161B22;
+  border: 1px solid #30363D;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.tx-slot.contract {
+  border-left: 3px solid #39FF14;
+}
+
+.tx-slot.user {
+  border-left: 3px solid #58A6FF;
+}
+
+.slot-index {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: #6E7681;
+  min-width: 2rem;
+}
+
+.slot-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.slot-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: #F0F6FC;
+  margin-bottom: 0.25rem;
+}
+
+.slot-type {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.slot-type.contract-nft {
+  background: rgba(57, 255, 20, 0.15);
+  color: #39FF14;
+}
+
+.slot-type.user-nft {
+  background: rgba(88, 166, 255, 0.15);
+  color: #58A6FF;
+}
+
+.slot-type.bch {
+  background: rgba(255, 193, 7, 0.15);
+  color: #FFC107;
+}
+
+.slot-type.fungible {
+  background: rgba(255, 99, 71, 0.15);
+  color: #FF6347;
+}
+
+.slot-description {
+  font-size: 0.8125rem;
+  color: #8B949E;
+  line-height: 1.4;
+}
+
+.slot-changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.change-badge {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.change-badge.unchanged {
+  background: rgba(139, 148, 158, 0.15);
+  color: #8B949E;
+}
+
+.change-badge.updated {
+  background: rgba(57, 255, 20, 0.15);
+  color: #39FF14;
+}
+
+.change-badge.derived {
+  background: rgba(88, 166, 255, 0.15);
+  color: #58A6FF;
+}
+
+.tx-meta {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  background: #161B22;
+  border-top: 1px solid #30363D;
+  font-size: 0.8125rem;
+  color: #8B949E;
+}
+
+.tx-meta strong {
+  color: #6E7681;
+}
+
+.tx-flow-description {
+  border-top: 1px solid #30363D;
+}
+
+.tx-flow-description summary {
+  padding: 0.75rem 1.25rem;
+  color: #8B949E;
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.tx-flow-description summary:hover {
+  color: #39FF14;
+}
+
+.tx-flow-description p {
+  padding: 0 1.25rem 1rem;
+  margin: 0;
+  color: #9CA3AF;
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
 @media (max-width: 768px) {
+  .main-tabs {
+    flex-wrap: wrap;
+  }
+
+  .main-tab.original-btn {
+    margin-left: 0;
+  }
+
   .contract-tabs {
     flex-direction: column;
   }
@@ -1016,5 +1316,19 @@ footer a:hover {
 
   .params-table {
     font-size: 0.75rem;
+  }
+
+  .tx-flow {
+    flex-direction: column;
+  }
+
+  .tx-arrow {
+    transform: rotate(90deg);
+    margin: 0.5rem 0;
+  }
+
+  .tx-meta {
+    flex-direction: column;
+    gap: 0.5rem;
   }
 }

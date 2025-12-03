@@ -446,10 +446,15 @@ require(checkSig(adminSig, adminPk));
 
 ### 7. TIMELOCK SYNTAX
 \`\`\`cashscript
-// ONLY >= operator allowed with tx.time and this.age
-require(tx.time >= lockTime);           // After locktime
-require(deadline >= tx.time);           // Before deadline (INVERTED!)
+// tx.time MUST be on LEFT side of >= ONLY - no other position/operator allowed!
+require(tx.time >= lockTime);           // After locktime - ONLY valid pattern
 require(this.age >= vestingPeriod);     // After waiting period
+
+// WRONG - tx.time CANNOT be on right side (compile error):
+// require(deadline >= tx.time);        // COMPILE ERROR!
+
+// "Before deadline" CANNOT be enforced with timelocks!
+// Use separate functions for before/after phases instead.
 \`\`\`
 
 ### 8. TOKEN CATEGORY ARITHMETIC

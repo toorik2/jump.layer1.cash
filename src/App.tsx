@@ -301,6 +301,10 @@ export default function App() {
   const [isMultiContract, setIsMultiContract] = createSignal(false);
   const [currentAbortController, setCurrentAbortController] = createSignal<AbortController | null>(null);
 
+  // Transactions tab state
+  const [transactions, setTransactions] = createSignal<any[]>([]);
+  const [activeMainTab, setActiveMainTab] = createSignal<'transactions' | 'contracts'>('transactions');
+
   // Sorted contracts: primary first, then helper, then state
   const sortedContracts = createMemo(() => {
     // For incremental display, use validatedContracts
@@ -396,6 +400,9 @@ export default function App() {
     setTotalExpected(0);
     setContractAttempts(new Map());
     setIsMultiContract(false);
+    // Reset transactions tab state
+    setTransactions([]);
+    setActiveMainTab('transactions');
     // Abort any ongoing SSE connection
     const controller = currentAbortController();
     if (controller) {
@@ -668,6 +675,13 @@ export default function App() {
                 // Stay at phase 2 until phase 3 starts
                 break;
 
+              case 'transactions_ready':
+                // Receive transaction templates from Phase 2
+                if (data.transactions && Array.isArray(data.transactions)) {
+                  setTransactions(data.transactions);
+                }
+                break;
+
               case 'phase3_start':
                 setCurrentPhase(3);
                 break;
@@ -899,65 +913,170 @@ export default function App() {
 
               return (
                 <>
-                  {/* Unified tabs for all results */}
-                  <div class="contract-tabs">
-                    {isMulti ? (
-                      // Multi-contract tabs
-                      <For each={contractsToDisplay}>
-                        {(contract, idx) => {
-                          const attemptNum = contractAttempts().get(contract.name);
-                          return (
-                            <button
-                              class={`contract-tab ${activeContractTab() === idx() ? 'active' : ''} ${!contract.validated ? 'pending' : ''}`}
-                              onClick={() => setActiveContractTab(idx())}
-                            >
-                              <span class="tab-name">{contract.name}</span>
-                              {contract.validated ? (
-                                <span class="tab-status valid">✓</span>
-                              ) : (
-                                <span class="tab-status pending">
-                                  <span class="tab-spinner"></span>
-                                  {attemptNum && attemptNum > 1 && (
-                                    <span class="attempt-badge">attempt {attemptNum}</span>
-                                  )}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        }}
-                      </For>
-                    ) : (
-                      // Single contract tab
-                      (() => {
-                        // Get actual contract name from incremental data or use generic name
-                        const contractName = hasIncrementalData && validatedContracts()[0]
-                          ? validatedContracts()[0].name
-                          : 'CashScript';
-
-                        return (
-                          <button
-                            class={`contract-tab ${activeContractTab() === 0 ? 'active' : ''}`}
-                            onClick={() => setActiveContractTab(0)}
-                          >
-                            <span class="tab-name">{contractName}</span>
-                            <span class="tab-status valid">✓</span>
-                          </button>
-                        );
-                      })()
-                    )}
-
-                    {/* Original and Start over buttons on the right */}
+                  {/* Main tabs: Transactions / Contracts / Original / Start Over */}
+                  <div class="main-tabs">
                     <button
-                      class={`original-btn ${isOriginalTab ? 'active' : ''}`}
-                      onClick={() => setActiveContractTab(9999)}
+                      class={`main-tab ${activeMainTab() === 'transactions' ? 'active' : ''}`}
+                      onClick={() => setActiveMainTab('transactions')}
+                    >
+                      Transactions
+                      <Show when={transactions().length > 0}>
+                        <span class="tab-count">{transactions().length}</span>
+                      </Show>
+                    </button>
+
+                    <button
+                      class={`main-tab ${activeMainTab() === 'contracts' ? 'active' : ''}`}
+                      onClick={() => setActiveMainTab('contracts')}
+                    >
+                      Contracts
+                      <Show when={contractsToDisplay.length > 0}>
+                        <span class="tab-count">{contractsToDisplay.length}</span>
+                      </Show>
+                    </button>
+
+                    <button
+                      class={`main-tab original-btn ${isOriginalTab && activeMainTab() === 'contracts' ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveMainTab('contracts');
+                        setActiveContractTab(9999);
+                      }}
                     >
                       Original
                     </button>
 
-                    <button class="start-over-btn" onClick={handleReset}>
+                    <button class="main-tab start-over-btn" onClick={handleReset}>
                       Start over
                     </button>
                   </div>
+
+                  {/* Content based on active main tab */}
+                  <Show when={activeMainTab() === 'transactions'}>
+                    <div class="transactions-view">
+                      <Show when={transactions().length === 0}>
+                        <div class="transactions-loading">
+                          <div class="pending-spinner"></div>
+                          <p>Waiting for architecture design...</p>
+                        </div>
+                      </Show>
+                      <Show when={transactions().length > 0}>
+                        <div class="transactions-list">
+                          <For each={transactions()}>
+                            {(tx) => (
+                              <div class="transaction-card">
+                                <div class="tx-header">
+                                  <h3 class="tx-name">{tx.name}</h3>
+                                  <p class="tx-description">{tx.description}</p>
+                                </div>
+
+                                <div class="tx-flow">
+                                  <div class="tx-inputs">
+                                    <h4>Inputs</h4>
+                                    <For each={tx.inputs || []}>
+                                      {(input: any) => (
+                                        <div class={`tx-slot input-slot ${input.contract ? 'contract' : 'user'}`}>
+                                          <div class="slot-index">[{input.index}]</div>
+                                          <div class="slot-content">
+                                            <div class="slot-label">
+                                              {input.contract || input.from}
+                                              <Show when={input.type}>
+                                                <span class={`slot-type ${input.type}`}>{input.type}</span>
+                                              </Show>
+                                            </div>
+                                            <div class="slot-description">{input.description}</div>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </For>
+                                  </div>
+
+                                  <div class="tx-arrow">→</div>
+
+                                  <div class="tx-outputs">
+                                    <h4>Outputs</h4>
+                                    <For each={tx.outputs || []}>
+                                      {(output: any) => (
+                                        <div class={`tx-slot output-slot ${output.contract ? 'contract' : 'user'}`}>
+                                          <div class="slot-index">[{output.index}]</div>
+                                          <div class="slot-content">
+                                            <div class="slot-label">
+                                              {output.contract || output.to}
+                                              <Show when={output.type}>
+                                                <span class={`slot-type ${output.type}`}>{output.type}</span>
+                                              </Show>
+                                            </div>
+                                            <div class="slot-description">{output.description}</div>
+                                            <Show when={output.changes && output.changes.length > 0}>
+                                              <div class="slot-changes">
+                                                <For each={output.changes}>
+                                                  {(change: any) => (
+                                                    <span class={`change-badge ${change.changeType}`}>
+                                                      {change.field}: {change.changeType}
+                                                    </span>
+                                                  )}
+                                                </For>
+                                              </div>
+                                            </Show>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </For>
+                                  </div>
+                                </div>
+
+                                <div class="tx-meta">
+                                  <span class="tx-contracts">
+                                    <strong>Contracts:</strong> {(tx.participatingContracts || []).join(', ')}
+                                  </span>
+                                  <span class="tx-max-outputs">
+                                    <strong>Max outputs:</strong> {tx.maxOutputs}
+                                  </span>
+                                </div>
+
+                                <Show when={tx.flowDescription}>
+                                  <details class="tx-flow-description">
+                                    <summary>Flow Description</summary>
+                                    <p>{tx.flowDescription}</p>
+                                  </details>
+                                </Show>
+                              </div>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
+                    </div>
+                  </Show>
+
+                  {/* Contracts view (existing) */}
+                  <Show when={activeMainTab() === 'contracts'}>
+                    {/* Contract sub-tabs for multi-contract */}
+                    <Show when={isMulti}>
+                      <div class="contract-tabs">
+                        <For each={contractsToDisplay}>
+                          {(contract, idx) => {
+                            const attemptNum = contractAttempts().get(contract.name);
+                            return (
+                              <button
+                                class={`contract-tab ${activeContractTab() === idx() ? 'active' : ''} ${!contract.validated ? 'pending' : ''}`}
+                                onClick={() => setActiveContractTab(idx())}
+                              >
+                                <span class="tab-name">{contract.name}</span>
+                                {contract.validated ? (
+                                  <span class="tab-status valid">✓</span>
+                                ) : (
+                                  <span class="tab-status pending">
+                                    <span class="tab-spinner"></span>
+                                    {attemptNum && attemptNum > 1 && (
+                                      <span class="attempt-badge">attempt {attemptNum}</span>
+                                    )}
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          }}
+                        </For>
+                      </div>
+                    </Show>
 
                   {/* Contract card (active tab content) */}
                   <div class="contract-card">
@@ -1138,6 +1257,7 @@ export default function App() {
                       )}
                     </div>
                   )}
+                  </Show>
                 </>
               );
             })()}

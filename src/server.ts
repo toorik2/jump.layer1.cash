@@ -1046,6 +1046,16 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
         patterns: patternNames,
         durationMs: phase2DurationMs
       });
+
+      // Send transaction templates for Transactions tab
+      const transactionTemplates = Array.isArray(utxoArchitecture.transactionTemplates)
+        ? utxoArchitecture.transactionTemplates
+        : [];
+      if (transactionTemplates.length > 0) {
+        sendEvent('transactions_ready', {
+          transactions: transactionTemplates
+        });
+      }
     } catch (phase2Error) {
       console.error('[Phase 2] Architecture design failed:', phase2Error);
       sendEvent('error', {
@@ -1217,27 +1227,39 @@ CRITICAL RULES:
     require(this.age < vestingPeriod);   // Same error
     require(this.age <= vestingPeriod);  // Same error
 
-    ✅ CORRECT - Only >= operator is allowed:
+    ✅ CORRECT - tx.time MUST be on the LEFT side of >= ONLY:
     require(tx.time >= lockTime);        // Transaction is at or after lock time
     require(this.age >= vestingPeriod);  // Has aged at least N blocks
-    require(deadline >= tx.time);        // INVERTED: Transaction is before deadline
+
+    ❌ WRONG - tx.time CANNOT appear on the right side of any operator:
+    require(deadline >= tx.time);        // COMPILE ERROR! tx.time cannot be on right
+    require(deadline <= tx.time);        // COMPILE ERROR! Same issue
+    require(!(tx.time >= deadline));     // COMPILE ERROR! Even negation fails
 
     **Why this restriction exists:**
     - Bitcoin Script nLocktime uses OP_CHECKLOCKTIMEVERIFY which only supports >= semantics
-    - The compiler restricts to >= to match the underlying opcode behavior
-    - For "before deadline" logic, you MUST invert the comparison: deadline >= tx.time
+    - The compiler grammar ONLY allows: require(tx.time >= <expression>)
+    - You CANNOT enforce "before deadline" with timelocks - this is a Bitcoin limitation!
 
     **Common time-based patterns:**
-    // "Must execute BEFORE deadline" (voting, auctions, pledges):
-    require(deadline >= tx.time);              // ✅ INVERTED comparison!
-    // OR use logical negation:
-    require(!(tx.time >= deadline + 1));       // ✅ Also valid but less readable
-
     // "Can only execute AFTER locktime" (timelocks, vesting, refunds):
-    require(tx.time >= lockTime);              // ✅ Standard pattern
+    require(tx.time >= lockTime);              // ✅ Only valid pattern
 
     // "Must wait N blocks" (age-based logic):
-    require(this.age >= vestingPeriod);        // ✅ Standard pattern
+    require(this.age >= vestingPeriod);        // ✅ Only valid pattern
+
+    **CRITICAL: "Before deadline" logic CANNOT use tx.time!**
+    For deadline-based systems (voting, auctions, crowdfunding), use STATE-BASED approach:
+    - Store deadline in NFT commitment as bytes8
+    - Have separate functions for "before deadline" and "after deadline" phases
+    - Use DIFFERENT FUNCTIONS, not timelock checks:
+      function pledgeDuringCampaign() { ... }     // Called while campaign active
+      function claimAfterDeadline() {             // Only callable after deadline
+        require(tx.time >= int(deadline));        // ✅ Correct usage
+      }
+      function refundAfterDeadline() {            // Only callable after deadline
+        require(tx.time >= int(deadline));        // ✅ Correct usage
+      }
 
     **Loop conditions are different - <, >, <= are valid there:**
     while (inputIndex < tx.inputs.length) { }     // ✅ Valid for loops
