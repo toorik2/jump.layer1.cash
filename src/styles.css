@@ -996,36 +996,9 @@ footer a:hover {
   overflow: hidden;
 }
 
-.phase-connector::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
+.connector-fill {
   height: 100%;
-  width: 0%;
-  background: #30363D;
-  transition: none;
-}
-
-.phase-connector.filling::after {
-  width: 100%;
-  background: linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3));
-  animation: connector-fill 60s linear forwards;
-}
-
-.phase-connector.filled::after {
-  width: 100%;
-  background: rgba(57, 255, 20, 0.5);
-  animation: none;
-}
-
-@keyframes connector-fill {
-  from {
-    width: 0%;
-  }
-  to {
-    width: 100%;
-  }
+  transition: width 0.3s ease-out;
 }
 
 /* Skeleton transaction cards */
@@ -1425,20 +1398,19 @@ footer a:hover {
 
 .tx-header-right {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
   flex-shrink: 0;
 }
 
-.tx-header-right .tx-contracts {
-  font-size: 0.75rem;
+.tx-badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: rgba(88, 166, 255, 0.15);
   color: #58A6FF;
-}
-
-.tx-header-right .tx-max-outputs {
-  font-size: 0.75rem;
-  color: #8B949E;
+  white-space: nowrap;
 }
 
 .tx-name {

@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, For, Show } from 'solid-js';
+import { createSignal, createEffect, createMemo, For, Show, onCleanup } from 'solid-js';
 import { codeToHtml } from 'shiki';
 import { Copy, Check, X } from 'lucide-solid';
 import { API_STREAM_URL } from './config.frontend';
@@ -284,6 +284,8 @@ export default function App() {
   const [originalContractHTML, setOriginalContractHTML] = createSignal('');
   const [activeContractTab, setActiveContractTab] = createSignal(0);
   const [currentPhase, setCurrentPhase] = createSignal(1);
+  const [phaseStartTimes, setPhaseStartTimes] = createSignal<{[key: number]: number}>({});
+  const [connectorProgress, setConnectorProgress] = createSignal<{[key: number]: number}>({});
   const [retryCount, setRetryCount] = createSignal(0);
   const [validationDetails, setValidationDetails] = createSignal<{
     isMultiContract: boolean;
@@ -419,6 +421,64 @@ export default function App() {
       setCurrentAbortController(null);
     }
   };
+
+  // Track connector progress based on elapsed time (60s per phase)
+  const PHASE_DURATION_MS = 60000;
+
+  // Record phase start times when phase changes
+  createEffect(() => {
+    const phase = currentPhase();
+    if (phase >= 1 && phase <= 4) {
+      setPhaseStartTimes(prev => {
+        if (!prev[phase]) {
+          return { ...prev, [phase]: Date.now() };
+        }
+        return prev;
+      });
+    }
+  });
+
+  // Separate interval for progress updates (not tied to reactive tracking)
+  let progressInterval: ReturnType<typeof setInterval> | null = null;
+
+  createEffect(() => {
+    const isLoading = loading();
+
+    if (isLoading && !progressInterval) {
+      progressInterval = setInterval(() => {
+        const now = Date.now();
+        const times = phaseStartTimes();
+        const phase = currentPhase();
+        const progress: {[key: number]: number} = {};
+
+        for (let p = 1; p <= 3; p++) {
+          const startTime = times[p];
+          if (startTime && phase === p) {
+            const elapsed = now - startTime;
+            progress[p] = Math.min(100, (elapsed / PHASE_DURATION_MS) * 100);
+          } else if (phase > p) {
+            progress[p] = 100;
+          } else {
+            progress[p] = 0;
+          }
+        }
+
+        setConnectorProgress(progress);
+      }, 500);
+    } else if (!isLoading && progressInterval) {
+      clearInterval(progressInterval);
+      progressInterval = null;
+      // Set all completed
+      setConnectorProgress({ 1: 100, 2: 100, 3: 100 });
+    }
+
+    onCleanup(() => {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+      }
+    });
+  });
 
   // Track which contracts are currently being highlighted to prevent duplicates
   const highlightingInProgress = new Set<string>();
@@ -688,22 +748,33 @@ export default function App() {
                 // Receive transaction templates and contract specs from Phase 2
                 if (data.transactions && Array.isArray(data.transactions)) {
                   // Derive participatingContracts from inputs/outputs if not provided
-                  const enrichedTransactions = data.transactions.map((tx: any) => {
+                  // Filter out empty transactions (off-chain queries with no inputs/outputs)
+                  const enrichedTransactions = data.transactions
+                    .filter((tx: any) => {
+                      const hasInputs = (tx.inputs || []).length > 0;
+                      const hasOutputs = (tx.outputs || []).length > 0;
+                      return hasInputs || hasOutputs;
+                    })
+                    .map((tx: any) => {
                     if (!tx.participatingContracts || tx.participatingContracts.length === 0) {
                       const contracts = new Set<string>();
 
-                      // Helper to extract contract name from type field like "BallotContract (minting NFT)"
+                      // Helper to extract contract name from type field like "CampaignNFT at CampaignContract"
                       const extractContract = (typeStr: string) => {
                         if (!typeStr) return null;
                         // Skip P2PKH, BCH, OP_RETURN, User entries
                         if (typeStr.includes('P2PKH') || typeStr.startsWith('BCH') ||
                             typeStr.includes('OP_RETURN') || typeStr.includes('User') ||
                             typeStr.includes('change')) return null;
-                        // Extract contract name before parenthesis or "at" keyword
-                        const atMatch = typeStr.match(/at\s+(\w+Contract)/);
+                        // Try "at ContractName" pattern (most common: "CampaignNFT at CampaignContract")
+                        const atMatch = typeStr.match(/at\s+(\w+)/);
                         if (atMatch) return atMatch[1];
-                        const parenMatch = typeStr.match(/^(\w+Contract)/);
+                        // Try "ContractName (description)" pattern
+                        const parenMatch = typeStr.match(/^(\w+)\s*\(/);
                         if (parenMatch) return parenMatch[1];
+                        // Try just contract name at start
+                        const startMatch = typeStr.match(/^(\w+Contract)/);
+                        if (startMatch) return startMatch[1];
                         return null;
                       };
 
@@ -955,21 +1026,27 @@ export default function App() {
                               </div>
                               <span>Domain Model</span>
                             </div>
-                            <div class={`phase-connector ${currentPhase() === 1 ? 'filling' : ''} ${currentPhase() > 1 ? 'filled' : ''}`}></div>
+                            <div class="phase-connector">
+                              <div class="connector-fill" style={{ width: `${connectorProgress()[1] || 0}%`, background: (connectorProgress()[1] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
+                            </div>
                             <div class={`phase-step ${currentPhase() >= 2 ? 'active' : ''} ${currentPhase() > 2 ? 'completed' : ''}`}>
                               <div class="phase-indicator">
                                 {currentPhase() > 2 ? '✓' : currentPhase() === 2 ? <span class="phase-spinner"></span> : '2'}
                               </div>
                               <span>Architecture</span>
                             </div>
-                            <div class={`phase-connector ${currentPhase() === 2 ? 'filling' : ''} ${currentPhase() > 2 ? 'filled' : ''}`}></div>
+                            <div class="phase-connector">
+                              <div class="connector-fill" style={{ width: `${connectorProgress()[2] || 0}%`, background: (connectorProgress()[2] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
+                            </div>
                             <div class={`phase-step ${currentPhase() >= 3 ? 'active' : ''} ${currentPhase() > 3 ? 'completed' : ''}`}>
                               <div class="phase-indicator">
                                 {currentPhase() > 3 ? '✓' : currentPhase() === 3 ? <span class="phase-spinner"></span> : '3'}
                               </div>
                               <span>Code Gen</span>
                             </div>
-                            <div class={`phase-connector ${currentPhase() === 3 ? 'filling' : ''} ${currentPhase() > 3 ? 'filled' : ''}`}></div>
+                            <div class="phase-connector">
+                              <div class="connector-fill" style={{ width: `${connectorProgress()[3] || 0}%`, background: (connectorProgress()[3] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
+                            </div>
                             <div class={`phase-step ${currentPhase() >= 4 ? 'active' : ''}`}>
                               <div class="phase-indicator">
                                 {currentPhase() === 4 ? <span class="phase-spinner"></span> : '4'}
@@ -1015,10 +1092,11 @@ export default function App() {
                                     <h3 class="tx-name">{tx.name}</h3>
                                     <p class="tx-description">{tx.description}</p>
                                   </div>
-                                  <div class="tx-header-right">
-                                    <span class="tx-contracts">{(tx.participatingContracts || []).join(', ')}</span>
-                                    <span class="tx-max-outputs">Max outputs: {tx.maxOutputs}</span>
-                                  </div>
+                                  <Show when={(tx.participatingContracts || []).length > 0}>
+                                    <div class="tx-header-right">
+                                      <span class="tx-badge">{(tx.participatingContracts || []).join(' · ')}</span>
+                                    </div>
+                                  </Show>
                                 </div>
 
                                 <div class="tx-flow">
@@ -1094,7 +1172,7 @@ export default function App() {
                   <Show when={activeMainTab() === 'contracts'}>
                     {/* Contract sub-tabs */}
                     <div class="contract-tabs">
-                      <Show when={isMulti}>
+                      <Show when={contractsToDisplay.length > 0}>
                         <For each={contractsToDisplay}>
                           {(contract, idx) => {
                             const attemptNum = contractAttempts().get(contract.name);
@@ -1270,17 +1348,6 @@ export default function App() {
                     ) : loading() && !hasIncrementalData && !r ? (
                       // Show skeleton during early loading phases (1-2)
                       <div class="pending-contract-state skeleton">
-                        <div class="skeleton-header">
-                          <div class="pending-spinner"></div>
-                          <div class="pending-message">
-                            <strong>Converting...</strong>
-                            <p class="phase-info">
-                              {currentPhase() === 1 && 'Phase 1: Extracting domain model...'}
-                              {currentPhase() === 2 && 'Phase 2: Designing UTXO architecture...'}
-                              {currentPhase() >= 3 && 'Generating contracts...'}
-                            </p>
-                          </div>
-                        </div>
                         <div class="skeleton-code">
                           <div class="skeleton-line w-40"></div>
                           <div class="skeleton-line w-60"></div>

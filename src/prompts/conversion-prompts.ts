@@ -36,7 +36,14 @@ Transitions are named state changes. Ask:
 - What changes when each operation happens?
 - Who can authorize each operation?
 
-Examples: RegisterUser, CastVote, TransferFunds, CloseAuction
+**IMPORTANT: Only include operations that MODIFY state.**
+- ✅ RegisterUser, CastVote, TransferFunds, CloseAuction (these CHANGE something)
+- ❌ GetBalance, QueryOwner, ViewProposal, CheckStatus (these only READ)
+
+View/query operations (Solidity \`view\` or \`pure\` functions) are NOT transitions.
+They read state without changing it and should NOT be included in the domain model.
+
+Examples of REAL transitions: RegisterUser, CastVote, TransferFunds, CloseAuction
 
 For each transition, identify:
 - Name: Clear action name (verb-noun format)
@@ -256,6 +263,29 @@ Each domain entity maps to exactly ONE contract:
 | Authorization "possession" | User's NFT required as input |
 | Authorization "role" | Check for role NFT or special pubkey |
 | Authorization "none" | No authorization (permissionless) |
+
+**CRITICAL: What is NOT a Transaction Template**
+
+In Solidity, \`view\` and \`pure\` functions read state without modifying it. Examples:
+- \`ownerOf(tokenId)\` - reads who owns a token
+- \`balanceOf(address)\` - reads token balance
+- \`winningProposal()\` - computes winner from current state
+- \`getVoteCount()\` - reads vote tally
+
+**These are NOT transaction templates in UTXO!**
+
+In UTXO, "reading" is done off-chain by examining UTXOs:
+- The SDK queries the blockchain for UTXOs at addresses
+- It parses NFT commitments to read state
+- No on-chain transaction is needed
+
+**Rule**: A transaction template MUST have at least one input OR output that is a contract UTXO.
+If a domain transition would have ZERO contract inputs AND ZERO contract outputs, it is NOT a transaction - it's an off-chain query handled by the SDK.
+
+| Solidity Function Type | UTXO Equivalent |
+|------------------------|-----------------|
+| State-changing (sends tx) | Transaction template with inputs/outputs |
+| View/pure (reads only) | Off-chain SDK query - NO transaction template |
 
 ## Invariants → Validation Rules
 | Domain Concept | UTXO Implementation |
