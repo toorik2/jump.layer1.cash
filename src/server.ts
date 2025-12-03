@@ -197,17 +197,27 @@ function extractJSON<T>(text: string): T {
   // Try direct parse first
   try {
     return JSON.parse(text);
-  } catch {
+  } catch (directError) {
+    console.error('[JSON] Direct parse failed:', directError instanceof Error ? directError.message : directError);
+
     // Try to find JSON in markdown code blocks
     const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[1].trim());
+      try {
+        return JSON.parse(jsonMatch[1].trim());
+      } catch (blockError) {
+        console.error('[JSON] Markdown block parse failed:', blockError instanceof Error ? blockError.message : blockError);
+      }
     }
 
     // Try to find raw JSON object/array
     const objectMatch = text.match(/\{[\s\S]*\}/);
     if (objectMatch) {
-      return JSON.parse(objectMatch[0]);
+      try {
+        return JSON.parse(objectMatch[0]);
+      } catch (objectError) {
+        console.error('[JSON] Raw object parse failed:', objectError instanceof Error ? objectError.message : objectError);
+      }
     }
 
     throw new Error('Could not extract JSON from response');
@@ -745,24 +755,10 @@ function validateMultiContractResponse(
   const failedContracts: string[] = [];
 
   for (const contract of parsed.contracts) {
-    // CRITICAL FIX: Skip re-validation for already-sent contracts
-    // These contracts were already validated and sent to the user - DON'T touch them
+    // Skip already-sent contracts - they were validated before being sent
     if (alreadySentContracts && alreadySentContracts.has(contract.name)) {
-      // Contract was already validated in a previous attempt
-      // Trust the existing validation status, don't re-validate
-      if (contract.validated) {
-        validCount++;
-      } else {
-        // This shouldn't happen - already-sent contracts should be validated
-        console.warn(`[Validation] WARNING: Already-sent contract "${contract.name}" has validated=false!`);
-        failedCount++;
-        failedContracts.push(contract.name);
-        if (allValid) {
-          allValid = false;
-          firstError = `${contract.name}: Already-sent contract is not validated`;
-        }
-      }
-      continue; // Skip to next contract
+      validCount++;
+      continue;
     }
 
     // Validate contracts that haven't been sent yet
@@ -815,13 +811,16 @@ async function executeDomainExtraction(
 
   const domainModel = JSON.parse(responseText) as DomainModel;
 
-  // Ensure required arrays exist (defensive)
-  domainModel.entities = domainModel.entities || [];
-  domainModel.transitions = domainModel.transitions || [];
-  domainModel.invariants = domainModel.invariants || [];
-  domainModel.relationships = domainModel.relationships || [];
-  domainModel.roles = domainModel.roles || [];
-  domainModel.domain = domainModel.domain || 'other';
+  // Validate required fields - fail loud if structured output failed
+  if (!Array.isArray(domainModel.entities)) {
+    throw new Error('Phase 1 returned invalid domain model: entities missing');
+  }
+  if (!Array.isArray(domainModel.transitions)) {
+    throw new Error('Phase 1 returned invalid domain model: transitions missing');
+  }
+  if (!domainModel.domain) {
+    throw new Error('Phase 1 returned invalid domain model: domain missing');
+  }
 
   // Log to database (reusing semantic_analysis table for now)
   const duration = Date.now() - startTime;
@@ -889,26 +888,21 @@ Design the UTXO architecture following the patterns and prime directives in the 
 
   const architecture = JSON.parse(responseText) as UTXOArchitecture;
 
-  // Ensure required arrays exist (model might not return all fields without structured output)
-  architecture.contracts = architecture.contracts || [];
-  architecture.transactionTemplates = architecture.transactionTemplates || [];
-  architecture.patterns = architecture.patterns || [];
-  architecture.warnings = architecture.warnings || [];
+  // Validate required fields - fail loud if structured output failed
+  if (!Array.isArray(architecture.contracts)) {
+    throw new Error('Phase 2 returned invalid architecture: contracts missing');
+  }
+  if (!Array.isArray(architecture.transactionTemplates)) {
+    throw new Error('Phase 2 returned invalid architecture: transactionTemplates missing');
+  }
 
   const duration = Date.now() - startTime;
 
-  // Defensive logging - handle cases where model returns unexpected structure
-  const contractCount = Array.isArray(architecture.contracts) ? architecture.contracts.length : 0;
-  const txTemplateCount = Array.isArray(architecture.transactionTemplates) ? architecture.transactionTemplates.length : 0;
-  const patternNames = Array.isArray(architecture.patterns)
-    ? architecture.patterns.map(p => p?.name || 'unnamed').join(', ')
-    : '';
-
   console.log('[Phase 2] Architecture design complete:', {
     duration: `${(duration / 1000).toFixed(2)}s`,
-    contracts: contractCount,
-    transactions: txTemplateCount,
-    patterns: patternNames || '(none)'
+    contracts: architecture.contracts.length,
+    transactions: architecture.transactionTemplates.length,
+    patterns: architecture.patterns?.map(p => p.name).join(', ') || '(none)'
   });
 
   // Store Phase 2 architecture in database
@@ -2027,4 +2021,7 @@ init().then(() => {
       process.exit(0);
     });
   });
+}).catch((error) => {
+  console.error('[FATAL] Server initialization failed:', error);
+  process.exit(1);
 });

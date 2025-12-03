@@ -1412,6 +1412,33 @@ footer a:hover {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #30363D;
   background: #161B22;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.tx-header-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.tx-header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.tx-header-right .tx-contracts {
+  font-size: 0.75rem;
+  color: #58A6FF;
+}
+
+.tx-header-right .tx-max-outputs {
+  font-size: 0.75rem;
+  color: #8B949E;
 }
 
 .tx-name {
@@ -1562,20 +1589,6 @@ footer a:hover {
 .change-badge.derived {
   background: rgba(88, 166, 255, 0.15);
   color: #58A6FF;
-}
-
-.tx-meta {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.75rem 1.25rem;
-  background: #161B22;
-  border-top: 1px solid #30363D;
-  font-size: 0.8125rem;
-  color: #8B949E;
-}
-
-.tx-meta strong {
-  color: #6E7681;
 }
 
 .tx-flow-description {

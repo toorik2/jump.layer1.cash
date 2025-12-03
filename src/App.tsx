@@ -1011,8 +1011,14 @@ export default function App() {
                             {(tx) => (
                               <div class="transaction-card">
                                 <div class="tx-header">
-                                  <h3 class="tx-name">{tx.name}</h3>
-                                  <p class="tx-description">{tx.description}</p>
+                                  <div class="tx-header-left">
+                                    <h3 class="tx-name">{tx.name}</h3>
+                                    <p class="tx-description">{tx.description}</p>
+                                  </div>
+                                  <div class="tx-header-right">
+                                    <span class="tx-contracts">{(tx.participatingContracts || []).join(', ')}</span>
+                                    <span class="tx-max-outputs">Max outputs: {tx.maxOutputs}</span>
+                                  </div>
                                 </div>
 
                                 <div class="tx-flow">
@@ -1068,15 +1074,6 @@ export default function App() {
                                       )}
                                     </For>
                                   </div>
-                                </div>
-
-                                <div class="tx-meta">
-                                  <span class="tx-contracts">
-                                    <strong>Contracts:</strong> {(tx.participatingContracts || []).join(', ')}
-                                  </span>
-                                  <span class="tx-max-outputs">
-                                    <strong>Max outputs:</strong> {tx.maxOutputs}
-                                  </span>
                                 </div>
 
                                 <Show when={tx.flowDescription}>
@@ -1276,7 +1273,7 @@ export default function App() {
                         <div class="skeleton-header">
                           <div class="pending-spinner"></div>
                           <div class="pending-message">
-                            <strong>Analyzing contract...</strong>
+                            <strong>Converting...</strong>
                             <p class="phase-info">
                               {currentPhase() === 1 && 'Phase 1: Extracting domain model...'}
                               {currentPhase() === 2 && 'Phase 2: Designing UTXO architecture...'}
