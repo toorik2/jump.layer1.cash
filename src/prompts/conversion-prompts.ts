@@ -447,13 +447,20 @@ Generate JSON with:
 \`\`\`json
 {
   "patterns": [{ "name": "...", "appliedTo": "...", "rationale": "..." }],
-  "custodyDecisions": [{
-    "entity": "Voter",
-    "custody": "contract",
-    "contractName": "VoterContract",
-    "rationale": "Must enforce voting rules - can't vote twice, valid delegation",
-    "ownerFieldInCommitment": "ownerPkh (bytes20)"
-  }],
+  "custodyDecisions": [
+    {
+      "entity": "Voter",
+      "custody": "contract",
+      "contractName": "VoterContract",
+      "rationale": "Must enforce voting rules - can't vote twice, valid delegation",
+      "ownerFieldInCommitment": "ownerPkh (bytes20)"
+    },
+    {
+      "entity": "Badge",
+      "custody": "p2pkh",
+      "rationale": "Simple ownership receipt with no constraints - user has full control"
+    }
+  ],
   "tokenCategories": [{
     "name": "...",
     "purpose": "...",
@@ -464,7 +471,7 @@ Generate JSON with:
   "contracts": [{
     "name": "...",
     "custodies": "What NFTs are locked at this contract's address",
-    "validates": "What this contract validates",
+    "validates": "CONCRETE validation rules - if none, DO NOT include this contract",
     "functions": [{ "name": "...", "validates": "...", "maxOutputs": N }],
     "stateFields": ["..."]
   }],

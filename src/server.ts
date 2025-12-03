@@ -170,6 +170,41 @@ function isPlaceholderContract(code: string): boolean {
 }
 
 /**
+ * Detect if a contract spec from Phase 2 indicates no real validation logic
+ * These contracts should NOT be sent to Phase 3 for code generation
+ */
+function isDocumentationOnlyContract(contract: { name: string; validates?: string; custodies?: string }): boolean {
+  const validates = (contract.validates || '').toLowerCase();
+
+  // Patterns that indicate no real validation logic
+  const docOnlyPatterns = [
+    'documentation only',
+    'no validation',
+    'freely transferable',
+    'no enforced rules',
+    'no constraints',
+    'no spending rules',
+    'p2pkh custody',
+    'user p2pkh',
+    'standard p2pkh',
+  ];
+
+  for (const pattern of docOnlyPatterns) {
+    if (validates.includes(pattern)) {
+      return true;
+    }
+  }
+
+  // Also check custodies - if "NONE" and no real validation, it's documentation-only
+  const custodies = (contract.custodies || '').toLowerCase();
+  if (custodies.includes('none') && (validates.includes('none') || validates === '')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Apply name mapping to transaction templates
  * Updates contract references in participatingContracts, inputs, and outputs
  */
@@ -424,12 +459,12 @@ const phase2OutputSchema = {
           type: "object",
           properties: {
             entity: { type: "string" },
-            custody: { type: "string" },
-            contractName: { type: "string" },
+            custody: { type: "string", description: "Either 'contract' or 'p2pkh'" },
+            contractName: { type: "string", description: "Only for custody='contract'. Omit or set to 'NONE' for P2PKH." },
             rationale: { type: "string" },
             ownerFieldInCommitment: { type: "string" }
           },
-          required: ["entity", "custody", "contractName", "rationale", "ownerFieldInCommitment"],
+          required: ["entity", "custody", "rationale"],
           additionalProperties: false
         }
       },
@@ -1083,6 +1118,26 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
       const phase2Result = await executeArchitectureDesign(conversionId, domainModel);
       utxoArchitecture = phase2Result.architecture;
       phase2DurationMs = phase2Result.durationMs;
+
+      // Filter out documentation-only contracts BEFORE Phase 3
+      // These have no validation logic and should NOT generate contracts
+      if (Array.isArray(utxoArchitecture.contracts)) {
+        const before = utxoArchitecture.contracts.length;
+        utxoArchitecture.contracts = utxoArchitecture.contracts.filter(c => {
+          if (isDocumentationOnlyContract(c)) {
+            console.log(`[Phase 2 Filter] Removing documentation-only contract: ${c.name}`);
+            console.log(`  - validates: ${c.validates}`);
+            console.log(`  - custodies: ${c.custodies}`);
+            return false;
+          }
+          return true;
+        });
+        const removed = before - utxoArchitecture.contracts.length;
+        if (removed > 0) {
+          console.log(`[Phase 2 Filter] Removed ${removed} documentation-only contract(s)`);
+        }
+      }
+
       utxoArchitectureJSON = JSON.stringify(utxoArchitecture, null, 2);
 
       // Defensive access for SSE event

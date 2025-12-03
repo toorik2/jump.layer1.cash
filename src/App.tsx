@@ -985,7 +985,7 @@ export default function App() {
                         <div class="phase-indicator">
                           {currentPhase() > 1 ? '✓' : currentPhase() === 1 ? <span class="phase-spinner"></span> : '1'}
                         </div>
-                        <span>Domain Model</span>
+                        <span>Extracting Intent</span>
                       </div>
                       <div class="phase-connector">
                         <div class="connector-fill" style={{ width: `${connectorProgress()[1] || 0}%`, background: (connectorProgress()[1] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
@@ -994,7 +994,7 @@ export default function App() {
                         <div class="phase-indicator">
                           {currentPhase() > 2 ? '✓' : currentPhase() === 2 ? <span class="phase-spinner"></span> : '2'}
                         </div>
-                        <span>Architecture</span>
+                        <span>Designing Architecture</span>
                       </div>
                       <div class="phase-connector">
                         <div class="connector-fill" style={{ width: `${connectorProgress()[2] || 0}%`, background: (connectorProgress()[2] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
@@ -1003,7 +1003,7 @@ export default function App() {
                         <div class="phase-indicator">
                           {currentPhase() > 3 ? '✓' : currentPhase() === 3 ? <span class="phase-spinner"></span> : '3'}
                         </div>
-                        <span>Code Gen</span>
+                        <span>Building Contracts</span>
                       </div>
                       <div class="phase-connector">
                         <div class="connector-fill" style={{ width: `${connectorProgress()[3] || 0}%`, background: (connectorProgress()[3] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
@@ -1012,7 +1012,7 @@ export default function App() {
                         <div class="phase-indicator">
                           {currentPhase() === 4 ? <span class="phase-spinner"></span> : '4'}
                         </div>
-                        <span>Validation</span>
+                        <span>Fixing Errors</span>
                       </div>
                     </div>
                   </Show>
