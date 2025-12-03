@@ -25,3 +25,6 @@ npm-debug.log*
 
 test-*.sol
 test-*.json
+
+# Reports
+reports/
