@@ -212,25 +212,6 @@ export default function App() {
     }
   });
 
-  // Highlight original Solidity contract
-  createEffect(async () => {
-    const contract = evmContract();
-    const shouldHighlight = store.loading() || store.contracts().length > 0 || store.transactions().length > 0;
-    if (shouldHighlight && contract) {
-      try {
-        const html = await codeToHtml(contract, {
-          lang: 'solidity',
-          theme: 'dark-plus'
-        });
-        setOriginalContractHTML(html);
-      } catch (error) {
-        console.error('[Jump] Shiki highlighting failed for original:', error);
-        const html = `<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(contract)}</code></pre>`;
-        setOriginalContractHTML(html);
-      }
-    }
-  });
-
   // Enrich transactions with participating contracts
   const enrichTransactions = (txs: any[]): Transaction[] => {
     return txs
@@ -327,6 +308,10 @@ export default function App() {
     setContractHighlightedHTML({});
     setArtifactHTML('');
     setActiveContractTab(0);
+
+    // Highlight original contract BEFORE starting conversion
+    const html = await codeToHtml(contract, { lang: 'solidity', theme: 'dark-plus' });
+    setOriginalContractHTML(html);
 
     const abortController = store.startConversion();
 
@@ -487,12 +472,12 @@ export default function App() {
                   setActiveTab={setActiveContractTab}
                   contractAttempts={store.contractAttempts}
                   loading={store.loading}
-                  isOriginalTab={isOriginalTab()}
+                  isOriginalTab={isOriginalTab}
                 />
 
                 <ContractCard
                   contract={activeContract()}
-                  isOriginal={isOriginalTab()}
+                  isOriginal={isOriginalTab}
                   originalCode={evmContract}
                   originalHTML={originalContractHTML}
                   contractHTML={contractHighlightedHTML}

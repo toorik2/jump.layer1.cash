@@ -8,7 +8,7 @@ type Props = {
   setActiveTab: Setter<number>;
   contractAttempts: Accessor<Map<string, number>>;
   loading: Accessor<boolean>;
-  isOriginalTab: boolean;
+  isOriginalTab: Accessor<boolean>;
 };
 
 export default function ContractTabs(props: Props) {
@@ -67,7 +67,7 @@ export default function ContractTabs(props: Props) {
 
       {/* Original button - always on right side */}
       <button
-        class={`contract-tab original-tab ${props.isOriginalTab ? 'active' : ''}`}
+        class={`contract-tab original-tab ${props.isOriginalTab() ? 'active' : ''}`}
         onClick={() => props.setActiveTab(9999)}
       >
         <span class="tab-name">Original</span>
