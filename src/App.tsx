@@ -955,21 +955,21 @@ export default function App() {
                               </div>
                               <span>Domain Model</span>
                             </div>
-                            <div class="phase-connector"></div>
+                            <div class={`phase-connector ${currentPhase() === 1 ? 'filling' : ''} ${currentPhase() > 1 ? 'filled' : ''}`}></div>
                             <div class={`phase-step ${currentPhase() >= 2 ? 'active' : ''} ${currentPhase() > 2 ? 'completed' : ''}`}>
                               <div class="phase-indicator">
                                 {currentPhase() > 2 ? '✓' : currentPhase() === 2 ? <span class="phase-spinner"></span> : '2'}
                               </div>
                               <span>Architecture</span>
                             </div>
-                            <div class="phase-connector"></div>
+                            <div class={`phase-connector ${currentPhase() === 2 ? 'filling' : ''} ${currentPhase() > 2 ? 'filled' : ''}`}></div>
                             <div class={`phase-step ${currentPhase() >= 3 ? 'active' : ''} ${currentPhase() > 3 ? 'completed' : ''}`}>
                               <div class="phase-indicator">
                                 {currentPhase() > 3 ? '✓' : currentPhase() === 3 ? <span class="phase-spinner"></span> : '3'}
                               </div>
                               <span>Code Gen</span>
                             </div>
-                            <div class="phase-connector"></div>
+                            <div class={`phase-connector ${currentPhase() === 3 ? 'filling' : ''} ${currentPhase() > 3 ? 'filled' : ''}`}></div>
                             <div class={`phase-step ${currentPhase() >= 4 ? 'active' : ''}`}>
                               <div class="phase-indicator">
                                 {currentPhase() === 4 ? <span class="phase-spinner"></span> : '4'}

@@ -992,6 +992,40 @@ footer a:hover {
   background: #30363D;
   margin: 0 0.5rem;
   margin-bottom: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.phase-connector::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 0%;
+  background: #30363D;
+  transition: none;
+}
+
+.phase-connector.filling::after {
+  width: 100%;
+  background: linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3));
+  animation: connector-fill 60s linear forwards;
+}
+
+.phase-connector.filled::after {
+  width: 100%;
+  background: rgba(57, 255, 20, 0.5);
+  animation: none;
+}
+
+@keyframes connector-fill {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
 }
 
 /* Skeleton transaction cards */
