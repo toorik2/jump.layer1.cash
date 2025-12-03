@@ -387,8 +387,15 @@ This is why Proposal should NOT be a separate contract - it would have no valida
 
 **If an entity appears in tokenCategories but NOT in contracts, that's correct!**
 
+**CRITICAL**: Do NOT include an entity in the \`contracts\` array if:
+- Its custody is P2PKH (no contract enforcement)
+- Its validation is handled by another contract (e.g., coordinator validates minted tokens)
+- It has no functions or only functions with \`require(false)\`/\`require(true)\`
+
 Do NOT create stub contracts with \`require(false)\` or "documentationOnly" functions.
 If there's nothing to validate, there's no contract - period.
+
+The commitment structure for data-only NFTs should ONLY appear in \`tokenCategories\`, not duplicated in \`contracts\`.
 
 # COMMITMENT CONSTRAINTS (128 BYTES MAX)
 

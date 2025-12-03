@@ -146,20 +146,27 @@ function normalizeContractNames(contracts: ContractInfo[]): void {
  *
  * Signs of a placeholder contract:
  * - Contains require(false) as the only meaningful validation
+ * - Contains require(true) as the only "validation" (validates nothing!)
  * - Has "documentationOnly" or similar placeholder function names
  */
 function isPlaceholderContract(code: string): boolean {
-  // Check for require(false) - the telltale sign of "nothing to validate"
+  // Check for placeholder require statements
   const hasRequireFalse = /require\s*\(\s*false\s*\)/.test(code);
-  if (!hasRequireFalse) return false;
+  const hasRequireTrue = /require\s*\(\s*true\s*\)/.test(code);
+
+  // If neither placeholder pattern exists, it's not a placeholder
+  if (!hasRequireFalse && !hasRequireTrue) return false;
 
   // Count all require statements
   const allRequires = code.match(/require\s*\([^)]+\)/g) || [];
-  // Filter out require(false)
-  const nonFalseRequires = allRequires.filter(r => !/require\s*\(\s*false\s*\)/.test(r));
 
-  // If require(false) is the ONLY require statement, it's a placeholder
-  return nonFalseRequires.length === 0;
+  // Filter out placeholder requires (both false and true)
+  const meaningfulRequires = allRequires.filter(r =>
+    !/require\s*\(\s*false\s*\)/.test(r) && !/require\s*\(\s*true\s*\)/.test(r)
+  );
+
+  // If placeholder requires are the ONLY require statements, it's a placeholder contract
+  return meaningfulRequires.length === 0;
 }
 
 /**

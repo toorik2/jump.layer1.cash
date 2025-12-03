@@ -978,6 +978,45 @@ export default function App() {
 
               return (
                 <>
+                  {/* Phase progress indicator - visible during loading regardless of tab */}
+                  <Show when={loading()}>
+                    <div class="phase-progress">
+                      <div class={`phase-step ${currentPhase() >= 1 ? 'active' : ''} ${currentPhase() > 1 ? 'completed' : ''}`}>
+                        <div class="phase-indicator">
+                          {currentPhase() > 1 ? '✓' : currentPhase() === 1 ? <span class="phase-spinner"></span> : '1'}
+                        </div>
+                        <span>Domain Model</span>
+                      </div>
+                      <div class="phase-connector">
+                        <div class="connector-fill" style={{ width: `${connectorProgress()[1] || 0}%`, background: (connectorProgress()[1] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
+                      </div>
+                      <div class={`phase-step ${currentPhase() >= 2 ? 'active' : ''} ${currentPhase() > 2 ? 'completed' : ''}`}>
+                        <div class="phase-indicator">
+                          {currentPhase() > 2 ? '✓' : currentPhase() === 2 ? <span class="phase-spinner"></span> : '2'}
+                        </div>
+                        <span>Architecture</span>
+                      </div>
+                      <div class="phase-connector">
+                        <div class="connector-fill" style={{ width: `${connectorProgress()[2] || 0}%`, background: (connectorProgress()[2] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
+                      </div>
+                      <div class={`phase-step ${currentPhase() >= 3 ? 'active' : ''} ${currentPhase() > 3 ? 'completed' : ''}`}>
+                        <div class="phase-indicator">
+                          {currentPhase() > 3 ? '✓' : currentPhase() === 3 ? <span class="phase-spinner"></span> : '3'}
+                        </div>
+                        <span>Code Gen</span>
+                      </div>
+                      <div class="phase-connector">
+                        <div class="connector-fill" style={{ width: `${connectorProgress()[3] || 0}%`, background: (connectorProgress()[3] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
+                      </div>
+                      <div class={`phase-step ${currentPhase() >= 4 ? 'active' : ''}`}>
+                        <div class="phase-indicator">
+                          {currentPhase() === 4 ? <span class="phase-spinner"></span> : '4'}
+                        </div>
+                        <span>Validation</span>
+                      </div>
+                    </div>
+                  </Show>
+
                   {/* Main tabs: Transactions / Contracts / Original / Start Over */}
                   <div class="main-tabs">
                     <button
@@ -1018,43 +1057,6 @@ export default function App() {
                     <div class="transactions-view">
                       <Show when={transactions().length === 0 && loading()}>
                         <div class="transactions-skeleton">
-                          {/* Phase progress indicator */}
-                          <div class="phase-progress">
-                            <div class={`phase-step ${currentPhase() >= 1 ? 'active' : ''} ${currentPhase() > 1 ? 'completed' : ''}`}>
-                              <div class="phase-indicator">
-                                {currentPhase() > 1 ? '✓' : currentPhase() === 1 ? <span class="phase-spinner"></span> : '1'}
-                              </div>
-                              <span>Domain Model</span>
-                            </div>
-                            <div class="phase-connector">
-                              <div class="connector-fill" style={{ width: `${connectorProgress()[1] || 0}%`, background: (connectorProgress()[1] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
-                            </div>
-                            <div class={`phase-step ${currentPhase() >= 2 ? 'active' : ''} ${currentPhase() > 2 ? 'completed' : ''}`}>
-                              <div class="phase-indicator">
-                                {currentPhase() > 2 ? '✓' : currentPhase() === 2 ? <span class="phase-spinner"></span> : '2'}
-                              </div>
-                              <span>Architecture</span>
-                            </div>
-                            <div class="phase-connector">
-                              <div class="connector-fill" style={{ width: `${connectorProgress()[2] || 0}%`, background: (connectorProgress()[2] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
-                            </div>
-                            <div class={`phase-step ${currentPhase() >= 3 ? 'active' : ''} ${currentPhase() > 3 ? 'completed' : ''}`}>
-                              <div class="phase-indicator">
-                                {currentPhase() > 3 ? '✓' : currentPhase() === 3 ? <span class="phase-spinner"></span> : '3'}
-                              </div>
-                              <span>Code Gen</span>
-                            </div>
-                            <div class="phase-connector">
-                              <div class="connector-fill" style={{ width: `${connectorProgress()[3] || 0}%`, background: (connectorProgress()[3] || 0) >= 100 ? 'rgba(57, 255, 20, 0.5)' : 'linear-gradient(90deg, rgba(255, 165, 0, 0.6), rgba(255, 165, 0, 0.3))' }}></div>
-                            </div>
-                            <div class={`phase-step ${currentPhase() >= 4 ? 'active' : ''}`}>
-                              <div class="phase-indicator">
-                                {currentPhase() === 4 ? <span class="phase-spinner"></span> : '4'}
-                              </div>
-                              <span>Validation</span>
-                            </div>
-                          </div>
-
                           {/* Skeleton transaction cards */}
                           <div class="skeleton-transactions">
                             <For each={[1, 2, 3]}>
@@ -1247,8 +1249,8 @@ export default function App() {
                             : <Copy size={20} />}
                         </button>
                       </div>
-                    ) : isMulti ? (
-                      // Show multi-contract content
+                    ) : contractsToDisplay.length > 0 ? (
+                      // Show contract content (single or multi)
                       (() => {
                         const contract = contractsToDisplay[activeContractTab()];
                         if (!contract) return null;
@@ -1347,8 +1349,25 @@ export default function App() {
                       })()
                     ) : loading() && !hasIncrementalData && !r ? (
                       // Show skeleton during early loading phases (1-2)
-                      <div class="pending-contract-state skeleton">
-                        <div class="skeleton-code">
+                      (() => {
+                        const phase = currentPhase();
+                        let phaseMessage = 'Starting...';
+                        if (phase === 1) {
+                          phaseMessage = 'Phase 1: Extracting domain model...';
+                        } else if (phase === 2) {
+                          phaseMessage = 'Phase 2: Designing UTXO architecture...';
+                        } else if (phase >= 3) {
+                          phaseMessage = 'Phase 3: Generating CashScript code...';
+                        }
+                        return (
+                          <div class="pending-contract-state skeleton">
+                            <div class="skeleton-header">
+                              <div class="pending-spinner"></div>
+                              <div class="pending-message">
+                                <p class="phase-info">{phaseMessage}</p>
+                              </div>
+                            </div>
+                            <div class="skeleton-code">
                           <div class="skeleton-line w-40"></div>
                           <div class="skeleton-line w-60"></div>
                           <div class="skeleton-line w-80"></div>
@@ -1357,8 +1376,10 @@ export default function App() {
                           <div class="skeleton-line w-45"></div>
                           <div class="skeleton-line w-90"></div>
                           <div class="skeleton-line w-55"></div>
-                        </div>
-                      </div>
+                            </div>
+                          </div>
+                        );
+                      })()
                     ) : (
                       // Show single contract content
                       (() => {
