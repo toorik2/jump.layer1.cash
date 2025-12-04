@@ -23,7 +23,7 @@ export interface ConversionState {
   pendingContracts: PendingContract[];
   transactions: Transaction[];
   deploymentGuide: DeploymentGuideType | null;
-  contractAttempts: Map<string, number>;
+  retryAttempt: number;
   isMultiContract: boolean;
 }
 
@@ -35,7 +35,7 @@ const initialState: ConversionState = {
   pendingContracts: [],
   transactions: [],
   deploymentGuide: null,
-  contractAttempts: new Map(),
+  retryAttempt: 1,
   isMultiContract: false
 };
 
@@ -55,7 +55,7 @@ export function createConversionStore() {
   const pendingContracts = createMemo(() => state().pendingContracts);
   const transactions = createMemo(() => state().transactions);
   const deploymentGuide = createMemo(() => state().deploymentGuide);
-  const contractAttempts = createMemo(() => state().contractAttempts);
+  const retryAttempt = createMemo(() => state().retryAttempt);
   const isMultiContract = createMemo(() => state().isMultiContract);
 
   // Actions
@@ -65,7 +65,7 @@ export function createConversionStore() {
       controller.abort();
       setAbortController(null);
     }
-    setState({ ...initialState, contractAttempts: new Map() });
+    setState({ ...initialState });
   }
 
   function startConversion(): AbortController {
@@ -77,8 +77,7 @@ export function createConversionStore() {
     setState({
       ...initialState,
       status: 'phase1',
-      phase: 1,
-      contractAttempts: new Map()
+      phase: 1
     });
 
     return controller;
@@ -103,14 +102,8 @@ export function createConversionStore() {
     }));
   }
 
-  function updateValidation(contractStatuses: { name: string; attempt: number }[]) {
-    setState(s => {
-      const newAttempts = new Map(s.contractAttempts);
-      for (const c of contractStatuses) {
-        if (c.attempt) newAttempts.set(c.name, c.attempt);
-      }
-      return { ...s, contractAttempts: newAttempts };
-    });
+  function setRetryAttempt(attempt: number) {
+    setState(s => ({ ...s, retryAttempt: attempt }));
   }
 
   function addValidatedContract(contract: ContractInfo, guide: DeploymentGuideType | null, totalExpected: number) {
@@ -144,7 +137,7 @@ export function createConversionStore() {
     pendingContracts,
     transactions,
     deploymentGuide,
-    contractAttempts,
+    retryAttempt,
     isMultiContract,
 
     // Actions
@@ -152,7 +145,7 @@ export function createConversionStore() {
     startConversion,
     setPhase,
     addTransactions,
-    updateValidation,
+    setRetryAttempt,
     addValidatedContract,
     complete,
     setError

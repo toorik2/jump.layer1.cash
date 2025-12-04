@@ -305,6 +305,20 @@ contract Voter(bytes32 ballotCategory) {
 **For same-system contracts**: All share same base category, differ by capability byte.
 **For cross-system trust**: Pass category as constructor param at deployment.
 
+# NAMING CONVENTION (REQUIRED)
+
+**All contract names MUST end with "Contract"** - this is mandatory for pattern detection:
+- ✓ `VoterContract`, `BallotContract`, `EscrowContract`
+- ✗ `Voter`, `Ballot`, `VoterMinter`, `TokenVault`
+
+**User wallets use "P2PKH" or "User"**:
+- `from: "P2PKH"` or `from: "User"` for user wallet inputs
+- `to: "P2PKH"` or `to: "User"` for user wallet outputs
+
+**The `from`/`to` field is the ONLY identifier** - no separate "contract" field:
+- Contract UTXOs: `from: "VoterContract"`, `to: "BallotContract"`
+- User UTXOs: `from: "P2PKH"`, `to: "User"`
+
 # OUTPUT REQUIREMENTS
 
 Generate JSON with:
@@ -316,7 +330,7 @@ Generate JSON with:
     {
       "entity": "Voter",
       "custody": "contract",
-      "contractName": "VoterContract",
+      "contractName": "VoterContract",  // MUST end with "Contract"
       "rationale": "Must enforce voting rules - can't vote twice, valid delegation",
       "ownerFieldInCommitment": "ownerPkh (bytes20)"
     },
@@ -343,8 +357,8 @@ Generate JSON with:
   "transactionTemplates": [{
     "name": "...",
     "purpose": "...",
-    "inputs": [{ "index": 0, "contract": "...", "from": "ContractName or P2PKH", "description": "..." }],
-    "outputs": [{ "index": 0, "to": "ContractName or P2PKH", "description": "..." }],
+    "inputs": [{ "index": 0, "from": "VoterContract", "type": "contract-nft", "description": "..." }],
+    "outputs": [{ "index": 0, "to": "VoterContract", "type": "contract-nft", "description": "..." }],
     "maxOutputs": N
   }],
   "invariantEnforcement": [{ "invariant": "...", "enforcedBy": "...", "mechanism": "..." }],

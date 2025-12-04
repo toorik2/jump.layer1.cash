@@ -38,7 +38,7 @@ export default function PhaseProgress(props: Props) {
         <div class={styles.indicator}>
           {phase() > 2 ? '✓' : phase() === 2 ? <span class={styles.spinner}></span> : '2'}
         </div>
-        <span class={styles.label}>Designing Architecture</span>
+        <span class={styles.label}>Designing New Architecture</span>
       </div>
       <div class={styles.connector}>
         <div class={styles.connectorFill} style={connectorStyle(2)}></div>

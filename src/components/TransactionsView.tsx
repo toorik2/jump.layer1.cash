@@ -8,6 +8,11 @@ type Props = {
   loading: Accessor<boolean>;
 };
 
+const isContractName = (name?: string): boolean => {
+  if (!name) return false;
+  return name.includes('Contract');
+};
+
 export default function TransactionsView(props: Props) {
   const getSlotTypeClass = (type: string) => {
     if (type?.includes('NFT') && type?.includes('contract')) return styles.slotTypeContractNft;
@@ -76,11 +81,11 @@ export default function TransactionsView(props: Props) {
                     <h4>Inputs</h4>
                     <For each={tx.inputs || []}>
                       {(input) => (
-                        <div class={input.contract ? styles.slotContract : styles.slotUser}>
+                        <div class={isContractName(input.from) ? styles.slotContract : styles.slotUser}>
                           <div class={styles.slotIndex}>[{input.index}]</div>
                           <div class={styles.slotContent}>
                             <div class={styles.slotLabel}>
-                              {input.contract || input.from}
+                              {input.from}
                               <Show when={input.type}>
                                 <span class={getSlotTypeClass(input.type)}>{input.type}</span>
                               </Show>
@@ -98,11 +103,11 @@ export default function TransactionsView(props: Props) {
                     <h4>Outputs</h4>
                     <For each={tx.outputs || []}>
                       {(output) => (
-                        <div class={output.contract ? styles.slotContract : styles.slotUser}>
+                        <div class={isContractName(output.to) ? styles.slotContract : styles.slotUser}>
                           <div class={styles.slotIndex}>[{output.index}]</div>
                           <div class={styles.slotContent}>
                             <div class={styles.slotLabel}>
-                              {output.contract || output.to}
+                              {output.to}
                               <Show when={output.type}>
                                 <span class={getSlotTypeClass(output.type)}>{output.type}</span>
                               </Show>

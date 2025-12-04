@@ -208,20 +208,18 @@ export interface TransactionTemplate {
 
 export interface TransactionInput {
   index: number;
-  contract?: string; // Contract name if from a contract
   nftCapability?: 'minting' | 'mutable' | 'immutable';
   type: 'contract-nft' | 'user-nft' | 'bch' | 'fungible';
-  from: string; // Who provides this input
+  from: string; // Contract name (ending with "Contract") or "P2PKH"/"User" for wallets
   description: string;
   required: boolean;
 }
 
 export interface TransactionOutput {
   index: number;
-  contract?: string;
   nftCapability?: 'minting' | 'mutable' | 'immutable';
   type: 'contract-nft' | 'user-nft' | 'bch' | 'fungible';
-  to: string; // Who receives this output
+  to: string; // Contract name (ending with "Contract") or "P2PKH"/"User" for wallets
   description: string;
 
   /**

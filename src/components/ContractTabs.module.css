@@ -3,6 +3,7 @@
   gap: 0.5rem;
   margin-bottom: 1.5rem;
   flex-wrap: wrap;
+  padding: 0 1rem;
 }
 
 .tab {
@@ -123,4 +124,13 @@
   .tab {
     width: 100%;
   }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

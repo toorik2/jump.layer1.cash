@@ -13,7 +13,7 @@ type Props = {
   copyStatus: Accessor<{ [key: string]: 'idle' | 'copied' | 'error' }>;
   onCopy: (code: string, id: string) => void;
   currentPhase: Accessor<number>;
-  contractAttempts: Accessor<Map<string, number>>;
+  retryAttempt: Accessor<number>;
   loading: Accessor<boolean>;
   hasIncrementalData: boolean;
   validatedContracts: Accessor<ContractInfo[]>;
@@ -47,9 +47,9 @@ export default function ContractCard(props: Props) {
                 <p class={styles.phaseInfo}>
                   {props.currentPhase() === 3 ? 'Phase 3: Generating CashScript code...' :
                    props.currentPhase() === 4 ? (
-                     props.contractAttempts().get(props.contract!.name) && props.contractAttempts().get(props.contract!.name)! > 1
-                       ? `Phase 4: Fixing contract (attempt ${props.contractAttempts().get(props.contract!.name)})`
-                       : 'Phase 4: Validating with compiler...'
+                     props.retryAttempt() > 1
+                       ? `Phase 4: Fixing compiler errors (attempt ${props.retryAttempt()})`
+                       : 'Phase 4: Fixing compiler errors...'
                    ) : 'Waiting...'}
                 </p>
               </div>

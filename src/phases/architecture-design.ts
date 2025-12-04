@@ -110,10 +110,11 @@ export const phase2OutputSchema = {
                 type: "object",
                 properties: {
                   index: { type: "integer" },
+                  from: { type: "string", description: "Contract name (ending with 'Contract') or 'P2PKH'/'User'" },
                   type: { type: "string" },
                   description: { type: "string" }
                 },
-                required: ["index", "type", "description"],
+                required: ["index", "from", "type", "description"],
                 additionalProperties: false
               }
             },
@@ -123,10 +124,11 @@ export const phase2OutputSchema = {
                 type: "object",
                 properties: {
                   index: { type: "integer" },
+                  to: { type: "string", description: "Contract name (ending with 'Contract') or 'P2PKH'/'User'" },
                   type: { type: "string" },
                   description: { type: "string" }
                 },
-                required: ["index", "type", "description"],
+                required: ["index", "to", "type", "description"],
                 additionalProperties: false
               }
             },

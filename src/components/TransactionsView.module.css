@@ -187,12 +187,12 @@
 
 .slotContract {
   composes: slot;
-  border-left: 3px solid var(--color-accent);
+  border-left: 3px solid var(--color-info);
 }
 
 .slotUser {
   composes: slot;
-  border-left: 3px solid var(--color-info);
+  border-left: 3px solid #0ac18e;
 }
 
 .slotIndex {
@@ -223,30 +223,32 @@
   border-radius: 3px;
   text-transform: uppercase;
   font-weight: 600;
+  background: rgba(139, 148, 158, 0.15);
+  color: var(--color-text-muted);
 }
 
 .slotTypeContractNft {
   composes: slotType;
-  background: rgba(57, 255, 20, 0.15);
-  color: var(--color-accent);
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
 }
 
 .slotTypeUserNft {
   composes: slotType;
-  background: rgba(88, 166, 255, 0.15);
-  color: var(--color-info);
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
 }
 
 .slotTypeBch {
   composes: slotType;
-  background: rgba(255, 193, 7, 0.15);
-  color: #FFC107;
+  background: rgba(10, 193, 142, 0.15);
+  color: #0ac18e;
 }
 
 .slotTypeFungible {
   composes: slotType;
-  background: rgba(255, 99, 71, 0.15);
-  color: #FF6347;
+  background: rgba(6, 182, 212, 0.15);
+  color: #06b6d4;
 }
 
 .slotDescription {
@@ -320,4 +322,9 @@
     transform: rotate(90deg);
     margin: 0.5rem 0;
   }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }

@@ -205,6 +205,7 @@ export async function handleConversion(
 
         case 'retrying':
           console.log(`[Orchestrator] Retry attempt ${event.attempt} for: ${event.failedNames.join(', ')}`);
+          sse.sendEvent('retrying', { attempt: event.attempt });
           break;
 
         case 'complete':

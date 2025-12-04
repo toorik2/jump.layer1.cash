@@ -344,12 +344,10 @@ export function applyNameMappingToTemplates(
     ),
     inputs: tx.inputs?.map((input: any) => ({
       ...input,
-      contract: input.contract ? (nameMap.get(input.contract) || input.contract) : input.contract,
       from: nameMap.get(input.from) || input.from
     })),
     outputs: tx.outputs?.map((output: any) => ({
       ...output,
-      contract: output.contract ? (nameMap.get(output.contract) || output.contract) : output.contract,
       to: nameMap.get(output.to) || output.to
     }))
   }));

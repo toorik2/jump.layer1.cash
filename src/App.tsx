@@ -235,9 +235,6 @@ export default function App() {
         break;
       case 'validation':
         store.setPhase(4);
-        if (event.data.contracts && Array.isArray(event.data.contracts)) {
-          store.updateValidation(event.data.contracts);
-        }
         break;
       case 'contract_ready':
         store.addValidatedContract(
@@ -245,6 +242,9 @@ export default function App() {
           event.data.deploymentGuide || null,
           event.data.totalExpected || 1
         );
+        break;
+      case 'retrying':
+        store.setRetryAttempt(event.data.attempt);
         break;
       case 'done':
         store.complete();
@@ -427,7 +427,7 @@ export default function App() {
                   contracts={contractsToDisplay}
                   activeTab={activeContractTab}
                   setActiveTab={setActiveContractTab}
-                  contractAttempts={store.contractAttempts}
+                  retryAttempt={store.retryAttempt}
                   loading={store.loading}
                   isOriginalTab={isOriginalTab}
                 />
@@ -441,7 +441,7 @@ export default function App() {
                   copyStatus={contractCopyStatus}
                   onCopy={copyContractToClipboard}
                   currentPhase={store.currentPhase}
-                  contractAttempts={store.contractAttempts}
+                  retryAttempt={store.retryAttempt}
                   loading={store.loading}
                   hasIncrementalData={hasIncrementalData()}
                   validatedContracts={store.contracts}

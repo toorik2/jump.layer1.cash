@@ -7,7 +7,7 @@ type Props = {
   contracts: Accessor<DisplayContract[]>;
   activeTab: Accessor<number>;
   setActiveTab: Setter<number>;
-  contractAttempts: Accessor<Map<string, number>>;
+  retryAttempt: Accessor<number>;
   loading: Accessor<boolean>;
   isOriginalTab: Accessor<boolean>;
 };
@@ -18,7 +18,6 @@ export default function ContractTabs(props: Props) {
       <Show when={props.contracts().length > 0}>
         <For each={props.contracts()}>
           {(contract, idx) => {
-            const attemptNum = props.contractAttempts().get(contract.name);
             const tabClass = () => {
               if (props.activeTab() === idx()) {
                 return contract.validated ? styles.tabActive : `${styles.tabPending} ${styles.tabActive}`;
@@ -33,8 +32,8 @@ export default function ContractTabs(props: Props) {
                 ) : (
                   <span class={styles.tabStatusPending}>
                     <span class={styles.tabSpinner}></span>
-                    {attemptNum && attemptNum > 1 && (
-                      <span class={styles.attemptBadge}>attempt {attemptNum}</span>
+                    {props.retryAttempt() > 1 && (
+                      <span class={styles.attemptBadge}>attempt {props.retryAttempt()}</span>
                     )}
                   </span>
                 )}

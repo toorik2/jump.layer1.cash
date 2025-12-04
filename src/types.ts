@@ -37,7 +37,6 @@ export type DeploymentGuide = {
 
 export type TransactionInput = {
   index: number;
-  contract?: string;
   from: string;
   type?: string;
   description: string;
@@ -46,7 +45,6 @@ export type TransactionInput = {
 
 export type TransactionOutput = {
   index: number;
-  contract?: string;
   to: string;
   type?: string;
   description: string;
