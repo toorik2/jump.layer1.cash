@@ -111,6 +111,13 @@ export class ValidationOrchestrator {
       attempt: 1,
     };
 
+    // Log initial validation errors
+    for (const c of contracts) {
+      if (c.validationError) {
+        console.log(`[Orchestrator] Initial ${c.name} error: ${c.validationError.split('\n')[0]}`);
+      }
+    }
+
     // Emit all contracts (validated show code, failed show code + error)
     yield* this.emitContracts(contracts);
     this.registry.markValidated(contracts.filter(c => c.validated));
@@ -123,6 +130,11 @@ export class ValidationOrchestrator {
       const failed = contracts.filter(c => failedNames.includes(c.name));
 
       yield { type: 'retrying', attempt, failedNames };
+
+      // Log actual errors for debugging
+      for (const c of failed) {
+        console.log(`[Orchestrator] ${c.name} error: ${c.validationError?.split('\n')[0]}`);
+      }
 
       const fixed = await this.retryFix(failed);
       const merged = this.registry.mergeFixed(fixed, attempt);
