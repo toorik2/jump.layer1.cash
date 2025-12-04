@@ -39,22 +39,19 @@ export default function ContractCard(props: Props) {
 
       {/* Contract content */}
       <Show when={!props.isOriginal() && props.contract}>
-        <Show when={!props.contract!.validated}>
+        {/* Skeleton: no code yet */}
+        <Show when={props.contract!.isSkeleton && !props.contract!.code}>
           <div class={styles.card}>
             <div class={styles.pendingState}>
               <div style="margin-bottom: 1rem;">
                 <strong>{props.contract!.name}</strong>
                 <p class={styles.phaseInfo}>
                   {props.currentPhase() === 3 ? 'Phase 3: Generating CashScript code...' :
-                   props.currentPhase() === 4 ? (
-                     props.retryAttempt() > 1
-                       ? `Phase 4: Fixing compiler errors (attempt ${props.retryAttempt()})`
-                       : 'Phase 4: Fixing compiler errors...'
-                   ) : 'Waiting...'}
+                   props.currentPhase() === 4 ? 'Phase 4: Validating...' : 'Waiting...'}
                 </p>
               </div>
 
-              <Show when={props.contract!.isSkeleton && (props.contract!.custodies || props.contract!.validates)}>
+              <Show when={props.contract!.custodies || props.contract!.validates}>
                 <div class={styles.skeletonSpecs}>
                   <Show when={props.contract!.custodies}>
                     <div class={styles.specItem}>
@@ -85,8 +82,16 @@ export default function ContractCard(props: Props) {
           </div>
         </Show>
 
-        <Show when={props.contract!.validated}>
+        {/* Has code (validated or being fixed) */}
+        <Show when={props.contract!.code}>
           <div class={styles.card}>
+            {/* Error banner for contracts being fixed */}
+            <Show when={props.contract!.validationError}>
+              <div class={styles.errorBanner}>
+                <pre>{props.contract!.validationError}</pre>
+              </div>
+            </Show>
+
             <Show when={props.contract!.dependencies && props.contract!.dependencies!.length > 0}>
               <div class={styles.dependencies}>
                 <strong>Dependencies:</strong> {props.contract!.dependencies!.join(', ')}

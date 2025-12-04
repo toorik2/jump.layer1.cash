@@ -111,8 +111,8 @@ export class ValidationOrchestrator {
       attempt: 1,
     };
 
-    // Emit validated contracts
-    yield* this.emitValidated(contracts);
+    // Emit all contracts (validated show code, failed show code + error)
+    yield* this.emitContracts(contracts);
     this.registry.markValidated(contracts.filter(c => c.validated));
 
     // Retry loop
@@ -140,8 +140,8 @@ export class ValidationOrchestrator {
         attempt,
       };
 
-      // Emit newly validated
-      yield* this.emitValidated(merged);
+      // Emit updated contracts (isUpdate=true to allow re-emission)
+      yield* this.emitContracts(merged, true);
       this.registry.markValidated(merged.filter(c => c.validated));
 
       // Update contracts array for next iteration
@@ -240,12 +240,14 @@ Every contract must validate something. Every function must add constraints. No 
     return contracts;
   }
 
-  private *emitValidated(contracts: ContractInfo[]): Generator<OrchestratorEvent> {
+  private *emitContracts(contracts: ContractInfo[], isUpdate = false): Generator<OrchestratorEvent> {
     const guide = this.registry.getDeploymentGuide();
     const total = this.registry.getTotalExpected();
 
     for (const contract of contracts) {
-      if (contract.validated && !this.sentContracts.has(contract.name)) {
+      // Emit if has code (validated OR failed with error)
+      const shouldEmit = contract.code && (isUpdate || !this.sentContracts.has(contract.name));
+      if (shouldEmit) {
         this.sentContracts.add(contract.name);
         yield {
           type: 'contract_validated',

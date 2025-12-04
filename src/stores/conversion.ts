@@ -104,7 +104,11 @@ export function createConversionStore() {
 
   function addValidatedContract(contract: ContractInfo, guide: DeploymentGuideType | null) {
     setState(s => {
-      const newContracts = [...s.contracts, contract];
+      // Replace existing contract by name (for updates during retry)
+      const newContracts = [
+        ...s.contracts.filter(c => c.name !== contract.name),
+        contract
+      ];
       const newPending = s.pendingContracts.filter(c => c.name !== contract.name);
       return {
         ...s,
