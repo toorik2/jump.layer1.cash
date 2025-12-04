@@ -96,12 +96,6 @@ export default function ContractCard(props: Props) {
               </div>
             </Show>
 
-            <Show when={props.contract!.dependencies && props.contract!.dependencies!.length > 0}>
-              <div class={styles.dependencies}>
-                <strong>Dependencies:</strong> {props.contract!.dependencies!.join(', ')}
-              </div>
-            </Show>
-
             <div class={styles.codeContainer}>
               <div class={styles.codeBlock} innerHTML={props.contractHTML()[props.contract!.id!]} />
               <CopyButton

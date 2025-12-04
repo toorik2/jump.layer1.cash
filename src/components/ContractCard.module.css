@@ -26,20 +26,6 @@
   line-height: 1.6;
 }
 
-/* Dependencies */
-.dependencies {
-  background: var(--color-surface);
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius-md);
-  margin-bottom: 1rem;
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-}
-
-.dependencies strong {
-  color: var(--color-text);
-}
-
 .bytecodeSize {
   margin-top: 1rem;
   color: var(--color-text-muted);
