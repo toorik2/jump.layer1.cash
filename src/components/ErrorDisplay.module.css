@@ -1,0 +1,51 @@
+.error {
+  color: var(--color-error);
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.2);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.message {
+  font-size: 0.9375rem;
+  margin-bottom: 1rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.btnRetry {
+  composes: btn;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border: none;
+}
+
+.btnRetry:hover {
+  opacity: 0.85;
+}
+
+.btnReset {
+  composes: btn;
+  background: transparent;
+  color: var(--color-text-dim);
+  border: 1px solid var(--color-border);
+}
+
+.btnReset:hover {
+  color: var(--color-text-secondary);
+  border-color: var(--color-text-dim);
+}

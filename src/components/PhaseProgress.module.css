@@ -1,0 +1,96 @@
+.progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  opacity: 0.4;
+  transition: opacity 0.3s ease;
+}
+
+.stepActive {
+  composes: step;
+  opacity: 1;
+}
+
+.stepCompleted {
+  composes: step;
+  opacity: 0.8;
+}
+
+.indicator {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--color-surface-elevated);
+  border: 2px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-faint);
+  transition: all 0.3s ease;
+}
+
+.stepActive .indicator {
+  border-color: var(--color-warning);
+  background: rgba(255, 165, 0, 0.1);
+  color: var(--color-warning);
+}
+
+.stepCompleted .indicator {
+  border-color: var(--color-accent);
+  background: rgba(57, 255, 20, 0.1);
+  color: var(--color-accent);
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 165, 0, 0.3);
+  border-top-color: var(--color-warning);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.label {
+  font-size: 0.7rem;
+  color: var(--color-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.stepActive .label {
+  color: var(--color-warning);
+}
+
+.stepCompleted .label {
+  color: var(--color-accent);
+}
+
+.connector {
+  width: 40px;
+  height: 2px;
+  background: var(--color-border);
+  margin: 0 0.5rem;
+  margin-bottom: 1.5rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.connectorFill {
+  height: 100%;
+  transition: width 0.3s ease-out;
+}

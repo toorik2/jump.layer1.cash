@@ -1,0 +1,338 @@
+/* Layout */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  position: relative;
+}
+
+/* Navigation */
+.headerNav {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+}
+
+.navLink {
+  font-family: var(--font-sans);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 400;
+  transition: color 0.2s ease;
+}
+
+.navLink:hover {
+  color: var(--color-text-secondary);
+}
+
+.navLinkActive {
+  composes: navLink;
+  color: var(--color-text-secondary);
+  text-decoration: underline;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 6rem 0 3rem 0;
+}
+
+.title {
+  font-size: 4rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+  color: var(--color-text-secondary);
+  letter-spacing: -0.02em;
+}
+
+.intro {
+  color: var(--color-text-muted);
+  font-size: 1.125rem;
+  font-weight: 400;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Converter */
+.converter {
+  padding-bottom: 6rem;
+}
+
+/* Input Section */
+.inputSection {
+  margin-bottom: 2rem;
+}
+
+.textareaWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.inputTextarea {
+  width: 100%;
+  min-height: 300px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1rem;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  resize: vertical;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.inputTextarea::placeholder {
+  color: var(--color-text-dim);
+}
+
+.inputTextarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.1);
+}
+
+/* Example Buttons */
+.exampleButtonsOverlay {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.exampleLabel {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  font-weight: 400;
+  margin-bottom: 0.5rem;
+  text-align: right;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.exampleBtn {
+  background: rgba(22, 27, 34, 0.95);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.4rem 0.75rem;
+  color: var(--color-text-faint);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  pointer-events: auto;
+  white-space: nowrap;
+}
+
+.exampleBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+  background: rgba(22, 27, 34, 1);
+  box-shadow: 0 0 0 1px rgba(57, 255, 20, 0.2);
+}
+
+/* Convert Button */
+.convertBtn {
+  background: var(--color-accent);
+  color: #000000;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 1rem 2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  margin-bottom: 2rem;
+}
+
+.convertBtn:hover {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(57, 255, 20, 0.3);
+}
+
+.convertBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Output Section */
+.outputSection {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  min-height: 300px;
+}
+
+/* Main Tabs */
+.mainTabs {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.75rem;
+}
+
+.mainTab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-dim);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mainTab:hover {
+  background: rgba(57, 255, 20, 0.05);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.mainTabActive {
+  composes: mainTab;
+  background: rgba(57, 255, 20, 0.1);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.tabCount {
+  background: rgba(57, 255, 20, 0.2);
+  color: var(--color-accent);
+  padding: 0.125rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tabCountLoading {
+  composes: tabCount;
+  background: rgba(255, 165, 0, 0.2);
+  color: var(--color-warning);
+}
+
+.tabSpinnerInline {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 165, 0, 0.3);
+  border-top-color: var(--color-warning);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.startOverBtn {
+  composes: mainTab;
+  margin-left: auto;
+  background: transparent;
+  border-color: var(--color-border);
+  color: var(--color-text-faint);
+}
+
+.startOverBtn:hover {
+  background: rgba(255, 99, 71, 0.1);
+  border-color: #FF6347;
+  color: #FF6347;
+}
+
+/* Footer */
+.footer {
+  text-align: center;
+  margin-top: 4rem;
+  padding-top: 2rem;
+  padding-bottom: 4rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.footer a {
+  color: var(--color-accent);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid transparent;
+}
+
+.footer a:hover {
+  color: #4AFF29;
+  border-bottom: 1px solid var(--color-accent);
+  text-shadow: 0 0 8px rgba(57, 255, 20, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container {
+    padding: 0 1rem;
+  }
+
+  .headerNav {
+    top: 1rem;
+    right: 1rem;
+    gap: 1rem;
+  }
+
+  .header {
+    padding: 2rem 0 1.5rem 0;
+  }
+
+  .title {
+    font-size: 2.5rem;
+  }
+
+  .intro {
+    font-size: 1rem;
+  }
+
+  .inputTextarea {
+    min-height: 200px;
+    font-size: 0.8125rem;
+  }
+
+  .convertBtn {
+    font-size: 0.9375rem;
+    padding: 0.875rem 1.5rem;
+  }
+
+  .outputSection {
+    padding: 1.25rem;
+    min-height: 200px;
+  }
+
+  .mainTabs {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .headerNav {
+    top: 0.5rem;
+    right: 0.5rem;
+    gap: 0.5rem;
+  }
+
+  .navLink {
+    font-size: 0.75rem;
+  }
+}

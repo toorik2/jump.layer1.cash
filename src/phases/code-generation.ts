@@ -52,113 +52,96 @@ export function isMultiContractResponse(parsed: any): parsed is MultiContractRes
   return parsed != null && Array.isArray(parsed.contracts);
 }
 
-// JSON Schema for structured outputs - supports both single and multi-contract
+// JSON Schema for structured outputs - multi-contract only (single path)
 export const outputSchema = {
   type: "json_schema",
   schema: {
-    anyOf: [
-      {
-        // Single contract response
-        type: "object",
-        properties: {
-          primaryContract: {
-            type: "string",
-            description: "Complete production-ready CashScript contract code with pragma and all IMPLEMENTABLE functions (Solidity view/pure functions must be deleted entirely - do not create placeholders)"
-          }
-        },
-        required: ["primaryContract"],
-        additionalProperties: false
+    type: "object",
+    properties: {
+      contracts: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            purpose: { type: "string" },
+            code: { type: "string" },
+            role: {
+              type: "string",
+              enum: ["primary", "helper", "state"]
+            },
+            deploymentOrder: { type: "integer" },
+            dependencies: {
+              type: "array",
+              items: { type: "string" }
+            },
+            constructorParams: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  type: { type: "string" },
+                  description: { type: "string" },
+                  source: { type: "string" },
+                  sourceContractId: {
+                    type: ["string", "null"]
+                  }
+                },
+                required: ["name", "type", "description", "source", "sourceContractId"],
+                additionalProperties: false
+              }
+            }
+          },
+          required: ["id", "name", "purpose", "code", "role", "deploymentOrder", "dependencies", "constructorParams"],
+          additionalProperties: false
+        }
       },
-      {
-        // Multi-contract response
+      deploymentGuide: {
         type: "object",
         properties: {
-          contracts: {
+          steps: {
             type: "array",
             items: {
               type: "object",
               properties: {
-                id: { type: "string" },
-                name: { type: "string" },
-                purpose: { type: "string" },
-                code: { type: "string" },
-                role: {
-                  type: "string",
-                  enum: ["primary", "helper", "state"]
-                },
-                deploymentOrder: { type: "integer" },
-                dependencies: {
+                order: { type: "integer" },
+                contractId: { type: "string" },
+                description: { type: "string" },
+                prerequisites: {
                   type: "array",
                   items: { type: "string" }
                 },
-                constructorParams: {
+                outputs: {
                   type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      name: { type: "string" },
-                      type: { type: "string" },
-                      description: { type: "string" },
-                      source: { type: "string" },
-                      sourceContractId: {
-                        type: ["string", "null"]
-                      }
-                    },
-                    required: ["name", "type", "description", "source", "sourceContractId"],
-                    additionalProperties: false
-                  }
+                  items: { type: "string" }
                 }
               },
-              required: ["id", "name", "purpose", "code", "role", "deploymentOrder", "dependencies", "constructorParams"],
+              required: ["order", "contractId", "description", "prerequisites", "outputs"],
               additionalProperties: false
             }
           },
-          deploymentGuide: {
-            type: "object",
-            properties: {
-              steps: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    order: { type: "integer" },
-                    contractId: { type: "string" },
-                    description: { type: "string" },
-                    prerequisites: {
-                      type: "array",
-                      items: { type: "string" }
-                    },
-                    outputs: {
-                      type: "array",
-                      items: { type: "string" }
-                    }
-                  },
-                  required: ["order", "contractId", "description", "prerequisites", "outputs"],
-                  additionalProperties: false
-                }
-              },
-              warnings: {
-                type: "array",
-                items: { type: "string" }
-              },
-              testingNotes: {
-                type: "array",
-                items: { type: "string" }
-              }
-            },
-            required: ["steps", "warnings", "testingNotes"],
-            additionalProperties: false
+          warnings: {
+            type: "array",
+            items: { type: "string" }
+          },
+          testingNotes: {
+            type: "array",
+            items: { type: "string" }
           }
         },
-        required: ["contracts", "deploymentGuide"],
+        required: ["steps", "warnings", "testingNotes"],
         additionalProperties: false
       }
-    ]
+    },
+    required: ["contracts", "deploymentGuide"],
+    additionalProperties: false
   }
 } as const;
 
-// Minimal schemas for retry attempts (only request fixed contracts back)
-export const retryOutputSchemaMulti = {
+// Minimal schema for retry attempts (only request fixed contracts back)
+export const retryOutputSchema = {
   type: "json_schema",
   schema: {
     type: "object",
@@ -209,24 +192,9 @@ export const retryOutputSchemaMulti = {
   }
 } as const;
 
-export const retryOutputSchemaSingle = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      primaryContract: {
-        type: "string",
-        description: "Complete CashScript contract code with pragma, documentation, and all functions"
-      }
-    },
-    required: ["primaryContract"],
-    additionalProperties: false
-  }
-} as const;
-
 // Validation utilities
 
-export function validateContract(code: string): { valid: boolean; error?: string; bytecodeSize?: number; artifact?: any } {
+function validateContract(code: string): { valid: boolean; error?: string; bytecodeSize?: number; artifact?: any } {
   try {
     const artifact = compileString(code);
     const bytecodeSize = artifact.bytecode.length / 2;
@@ -241,7 +209,7 @@ export function validateContract(code: string): { valid: boolean; error?: string
  * Extract 3 lines of code context (before, error, after) with visual marker
  * Fails loudly if line number is invalid - no silent fallbacks
  */
-export function getCodeContext(code: string, errorLine: number): string {
+function getCodeContext(code: string, errorLine: number): string {
   const lines = code.split('\n');
 
   if (errorLine < 1 || errorLine > lines.length) {
@@ -266,7 +234,7 @@ export function getCodeContext(code: string, errorLine: number): string {
  * Enhance compiler error message with code context
  * Returns original message if no line number is present
  */
-export function enhanceErrorMessage(error: string, code: string): string {
+function enhanceErrorMessage(error: string, code: string): string {
   const lineMatch = error.match(/at Line (\d+), Column (\d+)/);
 
   if (!lineMatch) {
@@ -284,7 +252,7 @@ export function enhanceErrorMessage(error: string, code: string): string {
  * Extract contract name from CashScript code
  * AI sometimes outputs names with tokenization artifacts
  */
-export function extractContractNameFromCode(code: string): string | null {
+function extractContractNameFromCode(code: string): string | null {
   const match = code.match(/contract\s+(\w+)/);
   return match ? match[1] : null;
 }
@@ -301,24 +269,6 @@ export function normalizeContractNames(contracts: ContractInfo[]): void {
       contract.name = extractedName;
     }
   }
-}
-
-/**
- * Detect if a contract is a placeholder/documentation-only stub
- * These violate the rule: "If a contract validates nothing, it should NOT EXIST"
- */
-export function isPlaceholderContract(code: string): boolean {
-  const hasRequireFalse = /require\s*\(\s*false\s*\)/.test(code);
-  const hasRequireTrue = /require\s*\(\s*true\s*\)/.test(code);
-
-  if (!hasRequireFalse && !hasRequireTrue) return false;
-
-  const allRequires = code.match(/require\s*\([^)]+\)/g) || [];
-  const meaningfulRequires = allRequires.filter(r =>
-    !/require\s*\(\s*false\s*\)/.test(r) && !/require\s*\(\s*true\s*\)/.test(r)
-  );
-
-  return meaningfulRequires.length === 0;
 }
 
 /**
@@ -408,44 +358,26 @@ export function applyNameMappingToTemplates(
 /**
  * Build retry message for failed contracts
  */
-export function buildRetryMessage(
-  failedContracts: ContractInfo[],
-  isMultiContract: boolean,
-  singleContractCode?: string,
-  validationError?: string
-): string {
-  if (isMultiContract) {
-    const failedContractNames = failedContracts.map(c => c.name).join(', ');
-    let message = `Fix ONLY the specific compilation errors in the following ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}:\n\n`;
+export function buildRetryMessage(failedContracts: ContractInfo[]): string {
+  const failedContractNames = failedContracts.map(c => c.name).join(', ');
+  let message = `Fix ONLY the specific compilation errors in the following ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}:\n\n`;
 
-    failedContracts.forEach(c => {
-      message += `CONTRACT: ${c.name}\n`;
-      message += `CURRENT CODE:\n${c.code}\n\n`;
-      message += `COMPILATION ERROR:\n${c.validationError}\n\n`;
-      message += `INSTRUCTIONS: Make MINIMAL changes to fix ONLY this specific error. Do NOT restructure the contract, change function logic, or modify working code. Only fix what the compiler is complaining about.\n\n`;
-      message += `---\n\n`;
-    });
+  failedContracts.forEach(c => {
+    message += `CONTRACT: ${c.name}\n`;
+    message += `CURRENT CODE:\n${c.code}\n\n`;
+    message += `COMPILATION ERROR:\n${c.validationError}\n\n`;
+    message += `INSTRUCTIONS: Make MINIMAL changes to fix ONLY this specific error. Do NOT restructure the contract, change function logic, or modify working code. Only fix what the compiler is complaining about.\n\n`;
+    message += `---\n\n`;
+  });
 
-    message += `CRITICAL RULES:\n`;
-    message += `1. Return ONLY these ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}: ${failedContractNames}\n`;
-    message += `2. Do NOT include any already-validated contracts in your response\n`;
-    message += `3. Make MINIMAL changes - only fix the specific compilation error\n`;
-    message += `4. Do NOT change contract structure, logic, or working code\n`;
-    message += `5. If the error is about an unused variable, remove ONLY that variable\n`;
-    message += `6. If the error is about a missing parameter, add ONLY that parameter\n`;
-    message += `7. Do NOT rewrite functions, change business logic, or alter contract behavior`;
+  message += `CRITICAL RULES:\n`;
+  message += `1. Return ONLY these ${failedContracts.length} ${failedContracts.length === 1 ? 'contract' : 'contracts'}: ${failedContractNames}\n`;
+  message += `2. Do NOT include any already-validated contracts in your response\n`;
+  message += `3. Make MINIMAL changes - only fix the specific compilation error\n`;
+  message += `4. Do NOT change contract structure, logic, or working code\n`;
+  message += `5. If the error is about an unused variable, remove ONLY that variable\n`;
+  message += `6. If the error is about a missing parameter, add ONLY that parameter\n`;
+  message += `7. Do NOT rewrite functions, change business logic, or alter contract behavior`;
 
-    return message;
-  } else {
-    let message = `Fix the following compilation error:\n\n`;
-    message += `CURRENT CODE:\n${singleContractCode}\n\n`;
-    message += `COMPILATION ERROR:\n${validationError}\n\n`;
-    message += `INSTRUCTIONS:\n`;
-    message += `Make MINIMAL changes to fix ONLY this specific error.\n`;
-    message += `Do NOT restructure the contract or change its logic.\n`;
-    message += `Only fix what the compiler is complaining about.\n\n`;
-    message += `Return the corrected contract code.`;
-
-    return message;
-  }
+  return message;
 }

@@ -1,6 +1,7 @@
 import { Show, For } from 'solid-js';
 import type { Accessor } from 'solid-js';
 import type { DeploymentGuide as DeploymentGuideType } from '../types';
+import styles from './DeploymentGuide.module.css';
 
 type Props = {
   guide: Accessor<DeploymentGuideType | null>;
@@ -11,23 +12,23 @@ export default function DeploymentGuide(props: Props) {
 
   return (
     <Show when={guide()}>
-      <details class="detail-section">
-        <summary class="detail-summary">Deployment Guide</summary>
-        <div class="deployment-guide">
-          <div class="deployment-steps">
+      <details class={styles.section}>
+        <summary class={styles.summary}>Deployment Guide</summary>
+        <div class={styles.guide}>
+          <div class={styles.steps}>
             <strong>Deployment Steps:</strong>
             <ol>
               <For each={guide()!.steps}>
                 {(step) => (
                   <li>
-                    <div class="step-description">{step.description}</div>
+                    <div class={styles.stepDescription}>{step.description}</div>
                     {step.prerequisites.length > 0 && (
-                      <div class="step-prereqs">
+                      <div class={styles.stepPrereqs}>
                         Prerequisites: {step.prerequisites.join(', ')}
                       </div>
                     )}
                     {step.outputs.length > 0 && (
-                      <div class="step-outputs">
+                      <div class={styles.stepOutputs}>
                         Outputs: {step.outputs.join(', ')}
                       </div>
                     )}
@@ -38,18 +39,18 @@ export default function DeploymentGuide(props: Props) {
           </div>
 
           <Show when={guide()!.warnings.length > 0}>
-            <div class="deployment-warnings">
+            <div class={styles.warnings}>
               <strong>Warnings:</strong>
               <ul>
                 <For each={guide()!.warnings}>
-                  {(warning) => <li class="warning-item">{warning}</li>}
+                  {(warning) => <li class={styles.warningItem}>{warning}</li>}
                 </For>
               </ul>
             </div>
           </Show>
 
           <Show when={guide()!.testingNotes.length > 0}>
-            <div class="deployment-testing">
+            <div class={styles.testing}>
               <strong>Testing Notes:</strong>
               <ul>
                 <For each={guide()!.testingNotes}>

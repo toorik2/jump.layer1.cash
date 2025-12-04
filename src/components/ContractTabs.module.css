@@ -1,0 +1,126 @@
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.tab {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.tab:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.tabActive {
+  composes: tab;
+  background: rgba(57, 255, 20, 0.1);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.tabPending {
+  composes: tab;
+  border-color: var(--color-warning);
+  opacity: 0.8;
+}
+
+.tabPending:hover {
+  border-color: var(--color-warning);
+  opacity: 1;
+}
+
+.tabName {
+  font-weight: 600;
+}
+
+.tabStatus {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.tabStatusValid {
+  composes: tabStatus;
+  color: var(--color-accent);
+}
+
+.tabStatusPending {
+  composes: tabStatus;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tabSpinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-warning);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.attemptBadge {
+  font-size: 0.75rem;
+  color: var(--color-warning);
+  margin-left: 0.25rem;
+  font-weight: 500;
+}
+
+/* Skeleton tabs */
+.skeletonTab {
+  composes: tabPending;
+  cursor: pointer;
+}
+
+.tabNameSkeleton {
+  display: inline-block;
+  width: 60px;
+  height: 14px;
+  background: linear-gradient(90deg, var(--color-surface-elevated) 25%, var(--color-border) 50%, var(--color-surface-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* Original tab */
+.originalTab {
+  composes: tab;
+  margin-left: auto;
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.originalTab:hover {
+  border-color: var(--color-text-faint);
+}
+
+.originalTabActive {
+  composes: originalTab;
+  border-color: var(--color-accent);
+  background: rgba(57, 255, 20, 0.1);
+}
+
+@media (max-width: 768px) {
+  .tabs {
+    flex-direction: column;
+  }
+
+  .tab {
+    width: 100%;
+  }
+}

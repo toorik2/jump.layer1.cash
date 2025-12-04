@@ -8,7 +8,7 @@ export interface SSEEvent {
   data: any;
 }
 
-export type SSEEventHandler = (event: SSEEvent) => void;
+type SSEEventHandler = (event: SSEEvent) => void;
 
 export interface SSEParserState {
   buffer: string;

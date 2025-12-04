@@ -1,0 +1,128 @@
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.codeContainer {
+  position: relative;
+}
+
+.codeBlock {
+  border: 1px solid rgba(57, 255, 20, 0.2);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.codeBlock :global(pre) {
+  margin: 0 !important;
+  padding: 1.5rem !important;
+  background: #1E1E1E !important;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+/* Dependencies */
+.dependencies {
+  background: var(--color-surface);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.dependencies strong {
+  color: var(--color-text);
+}
+
+.bytecodeSize {
+  margin-top: 1rem;
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  text-align: right;
+}
+
+/* Skeleton / Pending State */
+.pendingState {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 0;
+  min-height: auto;
+}
+
+.phaseInfo {
+  color: var(--color-warning) !important;
+  font-family: var(--font-mono);
+  font-size: 0.8rem !important;
+}
+
+.skeletonSpecs {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.specItem {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.specItem:last-child {
+  margin-bottom: 0;
+}
+
+.specLabel {
+  color: var(--color-text-faint);
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.specValue {
+  color: var(--color-text-secondary);
+}
+
+.skeletonCode {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.skeletonLine {
+  height: 1rem;
+  background: linear-gradient(90deg, var(--color-surface-elevated) 25%, var(--color-border) 50%, var(--color-surface-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+.w40 { width: 40%; }
+.w45 { width: 45%; }
+.w50 { width: 50%; }
+.w55 { width: 55%; }
+.w60 { width: 60%; }
+.w70 { width: 70%; }
+.w80 { width: 80%; }
+.w90 { width: 90%; }
+
+@media (max-width: 768px) {
+  .codeBlock :global(pre) {
+    font-size: 0.75rem !important;
+    padding: 1rem !important;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+}

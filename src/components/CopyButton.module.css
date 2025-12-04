@@ -1,0 +1,38 @@
+.btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  padding: 0.25rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.btn:hover {
+  transform: scale(1.1) rotate(5deg);
+  filter: drop-shadow(0 0 8px rgba(57, 255, 20, 0.6));
+}
+
+.btnCopied {
+  composes: btn;
+  color: var(--color-accent);
+}
+
+.btnError {
+  composes: btn;
+  color: var(--color-error);
+}
+
+@media (max-width: 768px) {
+  .btn {
+    padding: 0.75rem;
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+}

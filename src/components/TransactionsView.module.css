@@ -1,0 +1,323 @@
+.view {
+  padding: 0 1rem;
+}
+
+/* Skeleton */
+.skeleton {
+  padding: 2rem;
+}
+
+.skeletonList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.skeletonCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+
+.skeletonHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--color-surface-elevated);
+}
+
+.skeletonFlow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.skeletonSide {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.skeletonSlot {
+  height: 2.5rem;
+  background: linear-gradient(90deg, var(--color-surface-elevated) 25%, var(--color-border) 50%, var(--color-surface-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-md);
+}
+
+.skeletonArrow {
+  width: 30px;
+  height: 2px;
+  background: var(--color-border);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.skeletonArrow::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: -4px;
+  border: 5px solid transparent;
+  border-left-color: var(--color-border);
+}
+
+.skeletonLine {
+  height: 1rem;
+  background: linear-gradient(90deg, var(--color-surface-elevated) 25%, var(--color-border) 50%, var(--color-surface-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+.w20 { width: 20%; }
+.w40 { width: 40%; }
+.w70 { width: 70%; }
+
+/* Transaction List */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.headerLeft {
+  flex: 1;
+  min-width: 0;
+}
+
+.headerRight {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.name {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.description {
+  margin: 0;
+  color: var(--color-text-dim);
+  font-size: 0.875rem;
+}
+
+.badge {
+  font-size: 0.7rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--color-info);
+  white-space: nowrap;
+  margin-top: 0.2rem;
+}
+
+/* Flow */
+.flow {
+  display: flex;
+  padding: 1.25rem;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.inputs,
+.outputs {
+  flex: 1;
+  min-width: 0;
+}
+
+.inputs h4,
+.outputs h4 {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-dim);
+}
+
+.arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: var(--color-accent);
+  padding: 0 0.5rem;
+  margin-top: 2rem;
+}
+
+/* Slots */
+.slot {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 0.5rem;
+}
+
+.slotContract {
+  composes: slot;
+  border-left: 3px solid var(--color-accent);
+}
+
+.slotUser {
+  composes: slot;
+  border-left: 3px solid var(--color-info);
+}
+
+.slotIndex {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-faint);
+  min-width: 2rem;
+  padding-top: 0.2rem;
+}
+
+.slotContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.slotLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: var(--color-text);
+  margin-bottom: 0.25rem;
+}
+
+.slotType {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.slotTypeContractNft {
+  composes: slotType;
+  background: rgba(57, 255, 20, 0.15);
+  color: var(--color-accent);
+}
+
+.slotTypeUserNft {
+  composes: slotType;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--color-info);
+}
+
+.slotTypeBch {
+  composes: slotType;
+  background: rgba(255, 193, 7, 0.15);
+  color: #FFC107;
+}
+
+.slotTypeFungible {
+  composes: slotType;
+  background: rgba(255, 99, 71, 0.15);
+  color: #FF6347;
+}
+
+.slotDescription {
+  font-size: 0.8125rem;
+  color: var(--color-text-dim);
+  line-height: 1.4;
+}
+
+.slotChanges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.changeBadge {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 3px;
+  font-weight: 500;
+}
+
+.changeBadgeUnchanged {
+  composes: changeBadge;
+  background: rgba(139, 148, 158, 0.15);
+  color: var(--color-text-dim);
+}
+
+.changeBadgeUpdated {
+  composes: changeBadge;
+  background: rgba(57, 255, 20, 0.15);
+  color: var(--color-accent);
+}
+
+.changeBadgeDerived {
+  composes: changeBadge;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--color-info);
+}
+
+/* Flow Description */
+.flowDescription {
+  border-top: 1px solid var(--color-border);
+}
+
+.flowDescription summary {
+  padding: 0.75rem 1.25rem;
+  color: var(--color-text-dim);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.flowDescription summary:hover {
+  color: var(--color-accent);
+}
+
+.flowDescription p {
+  padding: 0 1.25rem 1rem;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 768px) {
+  .flow {
+    flex-direction: column;
+  }
+
+  .arrow {
+    transform: rotate(90deg);
+    margin: 0.5rem 0;
+  }
+}

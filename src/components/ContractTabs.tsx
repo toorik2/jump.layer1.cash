@@ -1,6 +1,7 @@
 import { Show, For } from 'solid-js';
 import type { Accessor, Setter } from 'solid-js';
 import type { DisplayContract } from '../types';
+import styles from './ContractTabs.module.css';
 
 type Props = {
   contracts: Accessor<DisplayContract[]>;
@@ -13,24 +14,27 @@ type Props = {
 
 export default function ContractTabs(props: Props) {
   return (
-    <div class="contract-tabs">
+    <div class={styles.tabs}>
       <Show when={props.contracts().length > 0}>
         <For each={props.contracts()}>
           {(contract, idx) => {
             const attemptNum = props.contractAttempts().get(contract.name);
+            const tabClass = () => {
+              if (props.activeTab() === idx()) {
+                return contract.validated ? styles.tabActive : `${styles.tabPending} ${styles.tabActive}`;
+              }
+              return contract.validated ? styles.tab : styles.tabPending;
+            };
             return (
-              <button
-                class={`contract-tab ${props.activeTab() === idx() ? 'active' : ''} ${!contract.validated ? 'pending' : ''}`}
-                onClick={() => props.setActiveTab(idx())}
-              >
-                <span class="tab-name">{contract.name}</span>
+              <button class={tabClass()} onClick={() => props.setActiveTab(idx())}>
+                <span class={styles.tabName}>{contract.name}</span>
                 {contract.validated ? (
-                  <span class="tab-status valid">✓</span>
+                  <span class={styles.tabStatusValid}>✓</span>
                 ) : (
-                  <span class="tab-status pending">
-                    <span class="tab-spinner"></span>
+                  <span class={styles.tabStatusPending}>
+                    <span class={styles.tabSpinner}></span>
                     {attemptNum && attemptNum > 1 && (
-                      <span class="attempt-badge">attempt {attemptNum}</span>
+                      <span class={styles.attemptBadge}>attempt {attemptNum}</span>
                     )}
                   </span>
                 )}
@@ -43,34 +47,34 @@ export default function ContractTabs(props: Props) {
       {/* Skeleton tabs during early phases */}
       <Show when={props.loading() && props.contracts().length === 0}>
         <button
-          class={`contract-tab pending skeleton-tab ${props.activeTab() === 0 ? 'active' : ''}`}
+          class={`${styles.skeletonTab} ${props.activeTab() === 0 ? styles.tabActive : ''}`}
           onClick={() => props.setActiveTab(0)}
         >
-          <span class="tab-name-skeleton"></span>
-          <span class="tab-status pending"><span class="tab-spinner"></span></span>
+          <span class={styles.tabNameSkeleton}></span>
+          <span class={styles.tabStatusPending}><span class={styles.tabSpinner}></span></span>
         </button>
         <button
-          class={`contract-tab pending skeleton-tab ${props.activeTab() === 1 ? 'active' : ''}`}
+          class={`${styles.skeletonTab} ${props.activeTab() === 1 ? styles.tabActive : ''}`}
           onClick={() => props.setActiveTab(1)}
         >
-          <span class="tab-name-skeleton"></span>
-          <span class="tab-status pending"><span class="tab-spinner"></span></span>
+          <span class={styles.tabNameSkeleton}></span>
+          <span class={styles.tabStatusPending}><span class={styles.tabSpinner}></span></span>
         </button>
         <button
-          class={`contract-tab pending skeleton-tab ${props.activeTab() === 2 ? 'active' : ''}`}
+          class={`${styles.skeletonTab} ${props.activeTab() === 2 ? styles.tabActive : ''}`}
           onClick={() => props.setActiveTab(2)}
         >
-          <span class="tab-name-skeleton"></span>
-          <span class="tab-status pending"><span class="tab-spinner"></span></span>
+          <span class={styles.tabNameSkeleton}></span>
+          <span class={styles.tabStatusPending}><span class={styles.tabSpinner}></span></span>
         </button>
       </Show>
 
       {/* Original button - always on right side */}
       <button
-        class={`contract-tab original-tab ${props.isOriginalTab() ? 'active' : ''}`}
+        class={props.isOriginalTab() ? styles.originalTabActive : styles.originalTab}
         onClick={() => props.setActiveTab(9999)}
       >
-        <span class="tab-name">Original</span>
+        <span class={styles.tabName}>Original</span>
       </button>
     </div>
   );

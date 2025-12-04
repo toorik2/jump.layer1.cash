@@ -137,7 +137,6 @@ export function createConversionStore() {
 
   return {
     // State accessors
-    state,
     loading,
     currentPhase,
     error,
@@ -147,7 +146,6 @@ export function createConversionStore() {
     deploymentGuide,
     contractAttempts,
     isMultiContract,
-    abortController,
 
     // Actions
     reset,

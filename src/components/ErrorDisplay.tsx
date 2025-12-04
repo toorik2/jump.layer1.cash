@@ -1,5 +1,6 @@
 import { Show } from 'solid-js';
 import type { Accessor } from 'solid-js';
+import styles from './ErrorDisplay.module.css';
 
 type Props = {
   error: Accessor<string | null>;
@@ -13,15 +14,15 @@ export default function ErrorDisplay(props: Props) {
 
   return (
     <Show when={error()}>
-      <div class="error-display">
-        <div class="error-message">{error()}</div>
-        <div class="error-actions">
+      <div class={styles.error}>
+        <div class={styles.message}>{error()}</div>
+        <div class={styles.actions}>
           <Show when={props.canRetry}>
-            <button class="error-btn retry" onClick={props.onRetry}>
+            <button class={styles.btnRetry} onClick={props.onRetry}>
               Try Again
             </button>
           </Show>
-          <button class="error-btn reset" onClick={props.onReset}>
+          <button class={styles.btnReset} onClick={props.onReset}>
             Start Over
           </button>
         </div>

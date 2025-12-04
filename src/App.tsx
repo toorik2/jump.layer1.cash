@@ -2,7 +2,8 @@ import { createSignal, createEffect, createMemo, Show, onCleanup } from 'solid-j
 import { codeToHtml } from 'shiki';
 import { API_STREAM_URL } from './config.frontend';
 import { SIMPLE_EXAMPLE, COMPLEX_EXAMPLE, NATURAL_LANGUAGE_EXAMPLE } from './data/examples';
-import type { ContractInfo, Transaction, PendingContract, DisplayContract, DeploymentGuide as DeploymentGuideType } from './types';
+import type { DisplayContract } from './types';
+import { enrichTransactions } from './utils/transactions';
 import { createConversionStore } from './stores/conversion';
 import { streamSSE, type SSEEvent } from './hooks/useSSE';
 import PhaseProgress from './components/PhaseProgress';
@@ -11,7 +12,8 @@ import ContractTabs from './components/ContractTabs';
 import ContractCard from './components/ContractCard';
 import DeploymentGuide from './components/DeploymentGuide';
 import ErrorDisplay from './components/ErrorDisplay';
-import './styles.css';
+import './styles/global.css';
+import styles from './App.module.css';
 
 export default function App() {
   // Conversion state (single source of truth)
@@ -23,9 +25,7 @@ export default function App() {
   // UI state (separate from conversion state)
   const [copyStatus, setCopyStatus] = createSignal<'idle' | 'copied' | 'error'>('idle');
   const [contractCopyStatus, setContractCopyStatus] = createSignal<{[key: string]: 'idle' | 'copied' | 'error'}>({});
-  const [highlightedHTML, setHighlightedHTML] = createSignal('');
   const [contractHighlightedHTML, setContractHighlightedHTML] = createSignal<{[key: string]: string}>({});
-  const [artifactHTML, setArtifactHTML] = createSignal('');
   const [originalContractHTML, setOriginalContractHTML] = createSignal('');
   const [activeContractTab, setActiveContractTab] = createSignal(0);
   const [activeMainTab, setActiveMainTab] = createSignal<'transactions' | 'contracts'>('transactions');
@@ -87,9 +87,7 @@ export default function App() {
 
   const handleReset = () => {
     setEvmContract('');
-    setHighlightedHTML('');
     setContractHighlightedHTML({});
-    setArtifactHTML('');
     setOriginalContractHTML('');
     setActiveContractTab(0);
     setCopyStatus('idle');
@@ -212,45 +210,6 @@ export default function App() {
     }
   });
 
-  // Enrich transactions with participating contracts
-  const enrichTransactions = (txs: any[]): Transaction[] => {
-    return txs
-      .filter((tx: any) => (tx.inputs || []).length > 0 || (tx.outputs || []).length > 0)
-      .map((tx: any) => {
-        if (!tx.participatingContracts || tx.participatingContracts.length === 0) {
-          const contracts = new Set<string>();
-          const extractContract = (typeStr: string) => {
-            if (!typeStr) return null;
-            if (typeStr.includes('P2PKH') || typeStr.startsWith('BCH') ||
-                typeStr.includes('OP_RETURN') || typeStr.includes('User') ||
-                typeStr.includes('change')) return null;
-            const genericWords = ['contract', 'address', 'minter', 'user', 'owner', 'sender', 'recipient'];
-            const atMatch = typeStr.match(/at\s+(\w+)/);
-            if (atMatch && !genericWords.includes(atMatch[1].toLowerCase())) return atMatch[1];
-            const parenMatch = typeStr.match(/^(\w+)\s*\(/);
-            if (parenMatch && !genericWords.includes(parenMatch[1].toLowerCase())) return parenMatch[1];
-            const startMatch = typeStr.match(/^(\w+Contract)/);
-            if (startMatch) return startMatch[1];
-            return null;
-          };
-          (tx.inputs || []).forEach((i: any) => {
-            if (i.contract) contracts.add(i.contract);
-            if (i.from && !i.from.includes('P2PKH') && !i.from.includes('User')) contracts.add(i.from);
-            const fromType = extractContract(i.type);
-            if (fromType) contracts.add(fromType);
-          });
-          (tx.outputs || []).forEach((o: any) => {
-            if (o.contract) contracts.add(o.contract);
-            if (o.to && !o.to.includes('P2PKH') && !o.to.includes('User')) contracts.add(o.to);
-            const toType = extractContract(o.type);
-            if (toType) contracts.add(toType);
-          });
-          return { ...tx, participatingContracts: Array.from(contracts) };
-        }
-        return tx;
-      });
-  };
-
   const handleSSEEvent = (event: SSEEvent) => {
     if (!store.loading()) return;
 
@@ -304,9 +263,7 @@ export default function App() {
     hasAutoSwitched = false;
     setPhaseStartTimes({});
     setConnectorProgress({});
-    setHighlightedHTML('');
     setContractHighlightedHTML({});
-    setArtifactHTML('');
     setActiveContractTab(0);
 
     // Highlight original contract BEFORE starting conversion
@@ -366,39 +323,39 @@ export default function App() {
 
   return (
     <>
-      <div class="container">
-        <nav class="header-nav">
-          <a href="https://faq.layer1.cash" class="nav-link">FAQ</a>
-          <a href="https://arena.layer1.cash" class="nav-link">Arena</a>
-          <a href="https://jump.layer1.cash" class="nav-link active">Jump</a>
+      <div class={styles.container}>
+        <nav class={styles.headerNav}>
+          <a href="https://faq.layer1.cash" class={styles.navLink}>FAQ</a>
+          <a href="https://arena.layer1.cash" class={styles.navLink}>Arena</a>
+          <a href="https://jump.layer1.cash" class={styles.navLinkActive}>Jump</a>
         </nav>
-        <header>
-          <h1>Jump to layer 1 (beta)</h1>
-          <p class="intro">Convert your Solidity smart contract to CashScript</p>
+        <header class={styles.header}>
+          <h1 class={styles.title}>Jump to layer 1 (beta)</h1>
+          <p class={styles.intro}>Convert your Solidity smart contract to CashScript</p>
         </header>
 
-        <div class="converter">
+        <div class={styles.converter}>
           <Show when={!store.loading() && store.contracts().length === 0 && store.transactions().length === 0}>
-            <div class="input-section">
-              <div class="textarea-wrapper">
+            <div class={styles.inputSection}>
+              <div class={styles.textareaWrapper}>
                 <textarea
-                  class="input-textarea"
+                  class={styles.inputTextarea}
                   placeholder="Paste your EVM smart contract code here..."
                   value={evmContract()}
                   onInput={(e) => setEvmContract(e.currentTarget.value)}
                   spellcheck={false}
                 />
-                <div class="example-buttons-overlay">
+                <div class={styles.exampleButtonsOverlay}>
                   <Show when={!evmContract()}>
-                    <span class="example-label">...Or choose an example:</span>
+                    <span class={styles.exampleLabel}>...Or choose an example:</span>
                   </Show>
-                  <button class="example-btn" onClick={() => setEvmContract(SIMPLE_EXAMPLE)} title="Load simple NFT contract example">
+                  <button class={styles.exampleBtn} onClick={() => setEvmContract(SIMPLE_EXAMPLE)} title="Load simple NFT contract example">
                     Simple
                   </button>
-                  <button class="example-btn" onClick={() => setEvmContract(COMPLEX_EXAMPLE)} title="Load complex voting contract example">
+                  <button class={styles.exampleBtn} onClick={() => setEvmContract(COMPLEX_EXAMPLE)} title="Load complex voting contract example">
                     Complex
                   </button>
-                  <button class="example-btn" onClick={() => setEvmContract(NATURAL_LANGUAGE_EXAMPLE)} title="Try natural language description (experimental)">
+                  <button class={styles.exampleBtn} onClick={() => setEvmContract(NATURAL_LANGUAGE_EXAMPLE)} title="Try natural language description (experimental)">
                     Natural language (experimental)
                   </button>
                 </div>
@@ -406,7 +363,7 @@ export default function App() {
             </div>
 
             <button
-              class="convert-btn"
+              class={styles.convertBtn}
               onClick={handleConvert}
               disabled={store.loading() || !evmContract().trim()}
             >
@@ -414,7 +371,7 @@ export default function App() {
             </button>
           </Show>
 
-          <div class="output-section">
+          <div class={styles.outputSection}>
             <ErrorDisplay
               error={store.error}
               onRetry={handleConvert}
@@ -427,19 +384,19 @@ export default function App() {
                 <PhaseProgress currentPhase={store.currentPhase} connectorProgress={connectorProgress} />
               </Show>
 
-              <div class="main-tabs">
+              <div class={styles.mainTabs}>
                 <button
-                  class={`main-tab ${activeMainTab() === 'transactions' ? 'active' : ''}`}
+                  class={activeMainTab() === 'transactions' ? styles.mainTabActive : styles.mainTab}
                   onClick={() => setActiveMainTab('transactions')}
                 >
                   Transactions
                   <Show when={store.transactions().length > 0}>
-                    <span class="tab-count">{store.transactions().length}</span>
+                    <span class={styles.tabCount}>{store.transactions().length}</span>
                   </Show>
                 </button>
 
                 <button
-                  class={`main-tab ${activeMainTab() === 'contracts' ? 'active' : ''}`}
+                  class={activeMainTab() === 'contracts' ? styles.mainTabActive : styles.mainTab}
                   onClick={() => setActiveMainTab('contracts')}
                 >
                   Contracts
@@ -447,8 +404,8 @@ export default function App() {
                     {(() => {
                       const allValidated = contractsToDisplay().every(c => c.validated);
                       return (
-                        <span class={`tab-count ${!allValidated ? 'loading' : ''}`}>
-                          {allValidated ? contractsToDisplay().length : <span class="tab-spinner-inline"></span>}
+                        <span class={allValidated ? styles.tabCount : styles.tabCountLoading}>
+                          {allValidated ? contractsToDisplay().length : <span class={styles.tabSpinnerInline}></span>}
                           {!allValidated && ` ${contractsToDisplay().filter(c => c.validated).length}/${contractsToDisplay().length}`}
                         </span>
                       );
@@ -456,7 +413,7 @@ export default function App() {
                   </Show>
                 </button>
 
-                <button class="main-tab start-over-btn" onClick={handleReset}>
+                <button class={styles.startOverBtn} onClick={handleReset}>
                   Start over
                 </button>
               </div>
@@ -488,25 +445,12 @@ export default function App() {
                   loading={store.loading}
                   hasIncrementalData={hasIncrementalData()}
                   validatedContracts={store.contracts}
-                  highlightedHTML={highlightedHTML}
                   mainCopyStatus={copyStatus}
                   onMainCopy={copyToClipboard}
                 />
 
-                <Show when={!isOriginalTab()}>
-                  <div class="expandable-sections">
-                    <Show when={isMulti()}>
-                      <DeploymentGuide guide={store.deploymentGuide} />
-                    </Show>
-                    <Show when={!isMulti() && store.contracts()[0]?.artifact}>
-                      <details class="detail-section">
-                        <summary class="detail-summary">Compiled Artifact</summary>
-                        <div class="code-container">
-                          <div class="code-block" innerHTML={artifactHTML()} />
-                        </div>
-                      </details>
-                    </Show>
-                  </div>
+                <Show when={!isOriginalTab() && isMulti()}>
+                  <DeploymentGuide guide={store.deploymentGuide} />
                 </Show>
               </Show>
             </Show>
@@ -514,7 +458,7 @@ export default function App() {
         </div>
       </div>
 
-      <footer>
+      <footer class={styles.footer}>
         contact:{' '}
         <a href="https://t.me/Toorik_2" target="_blank" rel="noopener noreferrer">
           https://t.me/Toorik_2

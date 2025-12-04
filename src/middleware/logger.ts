@@ -11,6 +11,9 @@ declare global {
   }
 }
 
+// Type for requests that have been processed by loggerMiddleware
+export type RequestWithMetadata = Request & { metadata: RequestMetadata };
+
 export function loggerMiddleware(req: Request, res: Response, next: NextFunction): void {
   // Generate or retrieve session ID from cookie/header
   let sessionId = req.cookies?.session_id || req.headers['x-session-id'] as string;
