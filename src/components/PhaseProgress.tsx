@@ -54,9 +54,18 @@ export default function PhaseProgress(props: Props) {
       </div>
       <div class={stepClass(4)}>
         <div class={styles.indicator}>
-          {phase() === 4 ? <span class={styles.spinner}></span> : '4'}
+          {phase() > 4 ? '✓' : phase() === 4 ? <span class={styles.spinner}></span> : '4'}
         </div>
         <span class={styles.label}>Fixing Errors</span>
+      </div>
+      <div class={styles.connector}>
+        <div class={styles.connectorFill} style={connectorStyle(4)}></div>
+      </div>
+      <div class={stepClass(5)}>
+        <div class={styles.indicator}>
+          {phase() >= 5 ? '✓' : ''}
+        </div>
+        <span class={styles.label}>Done</span>
       </div>
     </div>
   );

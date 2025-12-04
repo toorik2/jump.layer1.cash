@@ -116,7 +116,7 @@ export function createConversionStore() {
   }
 
   function complete() {
-    setState(s => ({ ...s, status: 'complete' }));
+    setState(s => ({ ...s, status: 'complete', phase: 5 }));
   }
 
   function setError(message: string) {

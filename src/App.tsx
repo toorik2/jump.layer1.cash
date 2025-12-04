@@ -98,7 +98,16 @@ export default function App() {
     store.reset();
   };
 
-  const PHASE_DURATION_MS = 60000;
+  // Linear duration model from DB regression analysis
+  const getPhaseDuration = (phase: number, chars: number): number => {
+    switch (phase) {
+      case 1: return 24000 + chars * 4.4;
+      case 2: return 41000 + chars * 7.6;
+      case 3: return 15000 + chars * 8;
+      case 4: return 30000 + chars * 17;
+      default: return 60000;
+    }
+  };
 
   // Record phase start times when phase changes
   createEffect(() => {
@@ -118,6 +127,7 @@ export default function App() {
 
   createEffect(() => {
     const isLoading = store.loading();
+    const contractLength = evmContract().length;
 
     if (isLoading && !progressInterval) {
       progressInterval = setInterval(() => {
@@ -126,11 +136,12 @@ export default function App() {
         const phase = store.currentPhase();
         const progress: {[key: number]: number} = {};
 
-        for (let p = 1; p <= 3; p++) {
+        for (let p = 1; p <= 4; p++) {
           const startTime = times[p];
+          const duration = getPhaseDuration(p, contractLength);
           if (startTime && phase === p) {
             const elapsed = now - startTime;
-            progress[p] = Math.min(100, (elapsed / PHASE_DURATION_MS) * 100);
+            progress[p] = Math.min(100, (elapsed / duration) * 100);
           } else if (phase > p) {
             progress[p] = 100;
           } else {
@@ -143,7 +154,7 @@ export default function App() {
     } else if (!isLoading && progressInterval) {
       clearInterval(progressInterval);
       progressInterval = null;
-      setConnectorProgress({ 1: 100, 2: 100, 3: 100 });
+      setConnectorProgress({ 1: 100, 2: 100, 3: 100, 4: 100 });
     }
 
     onCleanup(() => {
