@@ -139,6 +139,11 @@ export class ValidationOrchestrator {
       const fixed = await this.retryFix(failed);
       const merged = this.registry.mergeFixed(fixed, attempt);
 
+      // Clear failed contracts from sentContracts so they get re-validated
+      for (const name of failedNames) {
+        this.sentContracts.delete(name);
+      }
+
       // Revalidate merged contracts
       const revalidation = validateMultiContractResponse(
         { contracts: merged, deploymentGuide: initial.deploymentGuide! },

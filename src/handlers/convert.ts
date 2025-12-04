@@ -95,6 +95,7 @@ export async function handleConversion(
 ): Promise<void> {
   const startTime = Date.now();
   let conversionId: number | undefined;
+  const allContracts: Map<string, ContractInfo> = new Map();
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -173,7 +174,6 @@ export async function handleConversion(
     const orchestrator = new ValidationOrchestrator(anthropic, systemPrompt);
     let finalContracts: ContractInfo[] = [];
     let finalDeploymentGuide: any = null;
-    const allContracts: Map<string, ContractInfo> = new Map();
 
     for await (const event of orchestrator.run(domainModelJSON, utxoArchitectureJSON)) {
       if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
@@ -271,6 +271,10 @@ export async function handleConversion(
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     if (conversionId) {
+      // Persist any contracts collected before the error (for debugging)
+      if (allContracts.size > 0) {
+        persistContracts(conversionId, Array.from(allContracts.values()), true);
+      }
       logConversionComplete(conversionId, startTime, 'error');
     }
 
