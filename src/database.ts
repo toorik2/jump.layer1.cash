@@ -77,9 +77,15 @@ function createTables() {
       bytecode_size INTEGER,
       line_count INTEGER,
       is_validated INTEGER NOT NULL DEFAULT 0,
+      validation_error TEXT,
       FOREIGN KEY (conversion_id) REFERENCES conversions(id) ON DELETE CASCADE
     )
   `);
+
+  // Add validation_error column if missing (migration)
+  try {
+    db.exec(`ALTER TABLE contracts ADD COLUMN validation_error TEXT`);
+  } catch { /* column already exists */ }
 
   // SEMANTIC_ANALYSES - Phase 1 semantic extraction results
   db.exec(`
@@ -241,14 +247,15 @@ interface ContractRecord {
   bytecode_size?: number;
   line_count?: number;
   is_validated: boolean;
+  validation_error?: string;
 }
 
 export function insertContract(record: Omit<ContractRecord, 'id'>): number {
   const stmt = db.prepare(`
     INSERT INTO contracts (
       conversion_id, contract_uuid, produced_by_attempt, name, role, purpose,
-      cashscript_code, code_hash, deployment_order, bytecode_size, line_count, is_validated
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      cashscript_code, code_hash, deployment_order, bytecode_size, line_count, is_validated, validation_error
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -263,7 +270,8 @@ export function insertContract(record: Omit<ContractRecord, 'id'>): number {
     record.deployment_order || null,
     record.bytecode_size || null,
     record.line_count || null,
-    record.is_validated ? 1 : 0
+    record.is_validated ? 1 : 0,
+    record.validation_error || null
   );
 
   return result.lastInsertRowid as number;

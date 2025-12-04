@@ -58,7 +58,7 @@ function validateContractInput(contract: any): { valid: boolean; error?: string 
   return { valid: true };
 }
 
-function persistContracts(conversionId: number, contracts: ContractInfo[]): void {
+function persistContracts(conversionId: number, contracts: ContractInfo[], failed: boolean = false): void {
   updateConversion(conversionId, {
     is_multi_contract: contracts.length > 1,
     contract_count: contracts.length,
@@ -68,7 +68,7 @@ function persistContracts(conversionId: number, contracts: ContractInfo[]): void
     insertContract({
       conversion_id: conversionId,
       contract_uuid: generateUUID(),
-      produced_by_attempt: 1, // Simplified - could track actual attempt
+      produced_by_attempt: 1,
       name: contract.name,
       role: contract.role,
       purpose: contract.purpose,
@@ -78,7 +78,12 @@ function persistContracts(conversionId: number, contracts: ContractInfo[]): void
       bytecode_size: contract.bytecodeSize,
       line_count: contract.code.split('\n').length,
       is_validated: contract.validated || false,
+      validation_error: contract.validationError,
     });
+  }
+
+  if (failed) {
+    console.log(`[Conversion] Persisted ${contracts.length} contracts with failures for debugging`);
   }
 }
 
@@ -168,6 +173,7 @@ export async function handleConversion(
     const orchestrator = new ValidationOrchestrator(anthropic, systemPrompt);
     let finalContracts: ContractInfo[] = [];
     let finalDeploymentGuide: any = null;
+    const allContracts: Map<string, ContractInfo> = new Map();
 
     for await (const event of orchestrator.run(domainModelJSON, utxoArchitectureJSON)) {
       if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
@@ -194,6 +200,8 @@ export async function handleConversion(
           break;
 
         case 'contract_validated':
+          // Track all contracts (validated or not) for potential failure persistence
+          allContracts.set(event.contract.name, event.contract);
           sse.sendEvent('contract_ready', {
             contract: event.contract,
             totalExpected: event.totalExpected,
@@ -213,6 +221,11 @@ export async function handleConversion(
           break;
 
         case 'max_retries_exceeded':
+          // Persist failed contracts for debugging
+          if (conversionId && allContracts.size > 0) {
+            persistContracts(conversionId, Array.from(allContracts.values()), true);
+            logConversionComplete(conversionId, startTime, 'failed');
+          }
           sse.sendEvent('error', {
             phase: 4,
             message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts. This is not a deterministic system, so just try again - it's likely to work!`,
