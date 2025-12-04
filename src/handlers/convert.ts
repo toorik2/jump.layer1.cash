@@ -257,7 +257,11 @@ export async function handleConversion(
 
       if (nameMap.size > 0) {
         const updatedTemplates = applyNameMappingToTemplates(utxoArchitecture.transactionTemplates, nameMap);
-        sse.sendEvent('transactions_ready', { transactions: updatedTemplates });
+        const updatedSpecs = contractSpecs.map(spec => ({
+          ...spec,
+          name: nameMap.get(spec.name) || spec.name
+        }));
+        sse.sendEvent('transactions_ready', { transactions: updatedTemplates, contractSpecs: updatedSpecs });
       }
     }
 
