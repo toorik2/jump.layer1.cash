@@ -104,11 +104,16 @@ export function createConversionStore() {
 
   function addValidatedContract(contract: ContractInfo, guide: DeploymentGuideType | null) {
     setState(s => {
-      // Replace existing contract by name (for updates during retry)
-      const newContracts = [
-        ...s.contracts.filter(c => c.name !== contract.name),
-        contract
-      ];
+      const existingIndex = s.contracts.findIndex(c => c.name === contract.name);
+      let newContracts: ContractInfo[];
+      if (existingIndex >= 0) {
+        // Replace in place to preserve order
+        newContracts = [...s.contracts];
+        newContracts[existingIndex] = contract;
+      } else {
+        // New contract - append
+        newContracts = [...s.contracts, contract];
+      }
       const newPending = s.pendingContracts.filter(c => c.name !== contract.name);
       return {
         ...s,
