@@ -63,7 +63,7 @@ export default function PhaseProgress(props: Props) {
       </div>
       <div class={stepClass(5)}>
         <div class={styles.indicator}>
-          {phase() >= 5 ? '✓' : ''}
+          {phase() >= 5 ? '✓' : '5'}
         </div>
         <span class={styles.label}>Done</span>
       </div>
