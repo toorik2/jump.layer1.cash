@@ -62,7 +62,7 @@ export default function App() {
       }));
 
     const combined: DisplayContract[] = [
-      ...validated.map(c => ({ ...c, validated: true })),
+      ...validated.map(c => ({ ...c, validated: c.validated ?? false })),
       ...pendingStubs
     ];
     const rolePriority: Record<string, number> = { primary: 0, helper: 1, state: 2, unknown: 3 };

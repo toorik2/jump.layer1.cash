@@ -88,6 +88,10 @@ export default function ContractCard(props: Props) {
             {/* Error banner for contracts being fixed */}
             <Show when={props.contract!.validationError}>
               <div class={styles.errorBanner}>
+                <div class={styles.errorHeader}>
+                  <span class={styles.warningIcon}>⚠</span>
+                  <strong>Preliminary code - being fixed</strong>
+                </div>
                 <pre>{props.contract!.validationError}</pre>
               </div>
             </Show>

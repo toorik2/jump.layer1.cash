@@ -80,4 +80,5 @@ export type DisplayContract = {
   dependencies?: string[];
   bytecodeSize?: number;
   artifact?: any;
+  validationError?: string;
 };
