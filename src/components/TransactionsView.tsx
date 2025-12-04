@@ -1,19 +1,33 @@
-import { Show, For } from 'solid-js';
+import { Show, For, createMemo } from 'solid-js';
 import type { Accessor } from 'solid-js';
-import type { Transaction } from '../types';
+import type { Transaction, PendingContract, ContractInfo } from '../types';
 import styles from './TransactionsView.module.css';
 
 type Props = {
   transactions: Accessor<Transaction[]>;
   loading: Accessor<boolean>;
-};
-
-const isContractName = (name?: string): boolean => {
-  if (!name) return false;
-  return name.includes('Contract');
+  pendingContracts: Accessor<PendingContract[]>;
+  validatedContracts: Accessor<ContractInfo[]>;
 };
 
 export default function TransactionsView(props: Props) {
+  // Build set of known contract names from both pending and validated
+  const contractNameSet = createMemo(() => {
+    const names = new Set<string>();
+    for (const c of props.pendingContracts()) {
+      names.add(c.name);
+    }
+    for (const c of props.validatedContracts()) {
+      names.add(c.name);
+    }
+    return names;
+  });
+
+  const isContractName = (name?: string): boolean => {
+    if (!name) return false;
+    return contractNameSet().has(name);
+  };
+
   const getSlotTypeClass = (type: string) => {
     if (type?.includes('NFT') && type?.includes('contract')) return styles.slotTypeContractNft;
     if (type?.includes('NFT')) return styles.slotTypeUserNft;

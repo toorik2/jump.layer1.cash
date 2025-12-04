@@ -425,7 +425,7 @@ export default function App() {
               </div>
 
               <Show when={activeMainTab() === 'transactions'}>
-                <TransactionsView transactions={store.transactions} loading={store.loading} />
+                <TransactionsView transactions={store.transactions} loading={store.loading} pendingContracts={store.pendingContracts} validatedContracts={store.contracts} />
               </Show>
 
               <Show when={activeMainTab() === 'contracts'}>
