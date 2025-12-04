@@ -24,7 +24,6 @@ export interface ConversionState {
   transactions: Transaction[];
   deploymentGuide: DeploymentGuideType | null;
   retryAttempt: number;
-  isMultiContract: boolean;
 }
 
 const initialState: ConversionState = {
@@ -35,8 +34,7 @@ const initialState: ConversionState = {
   pendingContracts: [],
   transactions: [],
   deploymentGuide: null,
-  retryAttempt: 1,
-  isMultiContract: false
+  retryAttempt: 1
 };
 
 export function createConversionStore() {
@@ -56,7 +54,6 @@ export function createConversionStore() {
   const transactions = createMemo(() => state().transactions);
   const deploymentGuide = createMemo(() => state().deploymentGuide);
   const retryAttempt = createMemo(() => state().retryAttempt);
-  const isMultiContract = createMemo(() => state().isMultiContract);
 
   // Actions
   function reset() {
@@ -97,8 +94,7 @@ export function createConversionStore() {
     setState(s => ({
       ...s,
       transactions: txs,
-      pendingContracts: specs,
-      isMultiContract: specs.length > 1
+      pendingContracts: specs
     }));
   }
 
@@ -106,7 +102,7 @@ export function createConversionStore() {
     setState(s => ({ ...s, retryAttempt: attempt }));
   }
 
-  function addValidatedContract(contract: ContractInfo, guide: DeploymentGuideType | null, totalExpected: number) {
+  function addValidatedContract(contract: ContractInfo, guide: DeploymentGuideType | null) {
     setState(s => {
       const newContracts = [...s.contracts, contract];
       const newPending = s.pendingContracts.filter(c => c.name !== contract.name);
@@ -114,8 +110,7 @@ export function createConversionStore() {
         ...s,
         contracts: newContracts,
         pendingContracts: newPending,
-        deploymentGuide: guide || s.deploymentGuide,
-        isMultiContract: totalExpected > 1
+        deploymentGuide: guide || s.deploymentGuide
       };
     });
   }
@@ -138,7 +133,6 @@ export function createConversionStore() {
     transactions,
     deploymentGuide,
     retryAttempt,
-    isMultiContract,
 
     // Actions
     reset,

@@ -239,8 +239,7 @@ export default function App() {
       case 'contract_ready':
         store.addValidatedContract(
           event.data.contract,
-          event.data.deploymentGuide || null,
-          event.data.totalExpected || 1
+          event.data.deploymentGuide || null
         );
         break;
       case 'retrying':
@@ -289,8 +288,6 @@ export default function App() {
   // Derived state for view logic
   const hasIncrementalData = () => store.contracts().length > 0;
   const hasPendingContracts = () => store.pendingContracts().length > 0;
-  const isMulti = () => store.isMultiContract() || (hasPendingContracts() && store.pendingContracts().length > 1);
-
   const contractsToDisplay = createMemo((): DisplayContract[] => {
     if (hasIncrementalData()) return allContracts();
     if (hasPendingContracts()) {
@@ -309,10 +306,8 @@ export default function App() {
   const hasSkeletonTabs = () => store.loading() && contractsToDisplay().length === 0;
 
   const isOriginalTab = createMemo(() => {
-    const multi = isMulti() || hasSkeletonTabs();
-    return multi
-      ? activeContractTab() >= (hasSkeletonTabs() ? 3 : contractsToDisplay().length)
-      : activeContractTab() >= 1;
+    const contractCount = hasSkeletonTabs() ? 3 : contractsToDisplay().length;
+    return activeContractTab() >= contractCount;
   });
 
   const activeContract = createMemo((): DisplayContract | null => {
@@ -449,7 +444,7 @@ export default function App() {
                   onMainCopy={copyToClipboard}
                 />
 
-                <Show when={!isOriginalTab() && isMulti()}>
+                <Show when={!isOriginalTab() && store.deploymentGuide()}>
                   <DeploymentGuide guide={store.deploymentGuide} />
                 </Show>
               </Show>
@@ -459,10 +454,9 @@ export default function App() {
       </div>
 
       <footer class={styles.footer}>
-        contact:{' '}
-        <a href="https://t.me/Toorik_2" target="_blank" rel="noopener noreferrer">
-          https://t.me/Toorik_2
-        </a>
+        <a href="https://forms.gle/tQVieRgHnmx3XGs89" target="_blank" rel="noopener noreferrer">feedback</a>
+        {' · '}
+        <a href="https://t.me/Toorik_2" target="_blank" rel="noopener noreferrer">contact</a>
       </footer>
     </>
   );

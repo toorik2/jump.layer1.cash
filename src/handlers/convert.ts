@@ -190,7 +190,6 @@ export async function handleConversion(
             failedCount: event.failedCount,
             attempt: event.attempt,
             maxAttempts: ANTHROPIC_CONFIG.phase2.maxRetries,
-            isMultiContract: true,
           });
           break;
 
