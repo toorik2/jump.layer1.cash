@@ -194,9 +194,29 @@ export const retryOutputSchema = {
 
 // Validation utilities
 
-function validateContract(code: string): { valid: boolean; error?: string; bytecodeSize?: number; artifact?: any } {
+/**
+ * Strip deployment guide text from contract code
+ * AI sometimes appends deployment guide as a comment block inside the code field
+ * This detects and removes it, logging a warning
+ */
+function stripDeploymentGuide(code: string, contractName: string): string {
+  // Match deployment guide block comment anywhere in code
+  const deploymentGuidePattern = /\/\*\*?\s*\n?\s*\*?\s*DEPLOYMENT GUIDE[\s\S]*$/i;
+
+  if (deploymentGuidePattern.test(code)) {
+    console.warn(`[Sanitize] Stripped deployment guide from contract "${contractName}" code field`);
+    return code.replace(deploymentGuidePattern, '').trim();
+  }
+
+  return code;
+}
+
+function validateContract(code: string, contractName?: string): { valid: boolean; error?: string; bytecodeSize?: number; artifact?: any } {
+  // Strip any deployment guide that AI may have appended to code
+  const cleanCode = contractName ? stripDeploymentGuide(code, contractName) : code;
+
   try {
-    const artifact = compileString(code);
+    const artifact = compileString(cleanCode);
     const bytecodeSize = artifact.bytecode.length / 2;
     return { valid: true, bytecodeSize, artifact };
   } catch (error) {
@@ -307,7 +327,10 @@ export function validateMultiContractResponse(
       continue;
     }
 
-    const validation = validateContract(contract.code);
+    // Strip deployment guide if AI appended it to code field
+    contract.code = stripDeploymentGuide(contract.code, contract.name);
+
+    const validation = validateContract(contract.code, contract.name);
     contract.validated = validation.valid;
     if (validation.valid) {
       contract.bytecodeSize = validation.bytecodeSize;
