@@ -13,10 +13,87 @@ import {
 import {
   executeDomainExtraction,
   executeArchitectureDesign,
-  applyNameMappingToTemplates,
   type ContractInfo,
 } from '../phases/index.js';
 import { ValidationOrchestrator } from '../phases/validation-orchestrator.js';
+import type { TransactionTemplate, ContractSpec } from '../types/utxo-architecture.js';
+
+// Frontend Transaction types (for SSE)
+type FrontendTransaction = {
+  name: string;
+  description: string;
+  inputs: Array<{ index: number; from: string; type?: string; description: string; required: boolean }>;
+  outputs: Array<{ index: number; to: string; type?: string; description: string; changes?: Array<{ field: string; changeType: string; description: string }>; required: boolean }>;
+  participatingContracts?: string[];
+  flowDescription?: string;
+};
+
+type FrontendContractSpec = {
+  name: string;
+  validates?: string;
+};
+
+/**
+ * Transform Phase 2 TransactionTemplate to frontend-compatible format
+ */
+function transformTransaction(template: TransactionTemplate): FrontendTransaction {
+  const inputs = template.participants.map((p, idx) => ({
+    index: p.position,
+    from: p.contract,
+    type: p.role === 'entity' ? 'NFT (contract)' :
+          p.role === 'sidecar' ? 'NFT (contract)' :
+          p.role === 'oracle' ? 'NFT (oracle)' :
+          p.role === 'user' ? 'BCH' : 'NFT',
+    description: p.provides,
+    required: true,
+  }));
+
+  // Derive outputs from participants that replicate
+  const outputs = template.participants
+    .filter(p => p.replicated)
+    .map(p => ({
+      index: p.replicatedToPosition ?? 0,
+      to: p.contract,
+      type: p.role === 'entity' ? 'NFT (contract)' :
+            p.role === 'sidecar' ? 'NFT (contract)' :
+            p.role === 'oracle' ? 'NFT (oracle)' : 'NFT',
+      description: `Replicated ${p.contract}`,
+      changes: template.stateChanges
+        .filter(sc => sc.entity === p.contract)
+        .map(sc => ({
+          field: sc.field,
+          changeType: 'updated',
+          description: `${sc.from} → ${sc.to}`,
+        })),
+      required: true,
+    }));
+
+  // Add any outputs created (not replicated) - e.g., newly minted NFTs
+  // For now, infer from participants that are consumed but not replicated
+  const consumedNotReplicated = template.participants.filter(p => p.consumed && !p.replicated);
+  if (consumedNotReplicated.length > 0 && outputs.length < template.maxOutputs) {
+    // Could add user change outputs here if needed
+  }
+
+  return {
+    name: template.name,
+    description: template.description,
+    inputs,
+    outputs,
+    participatingContracts: template.participants.map(p => p.contract).filter(c => c !== 'P2PKH'),
+    flowDescription: `Triggered by: ${template.triggeredBy}. Validations: ${template.validations.join('; ')}`,
+  };
+}
+
+/**
+ * Transform Phase 2 ContractSpec to frontend-compatible format
+ */
+function transformContractSpec(spec: ContractSpec): FrontendContractSpec {
+  return {
+    name: spec.name,
+    validates: spec.validation?.validates?.join(', '),
+  };
+}
 
 type SSEWriter = {
   sendEvent: (event: string, data: any) => void;
@@ -152,15 +229,12 @@ export async function handleConversion(
     });
 
     const transactionTemplates = utxoArchitecture.transactionTemplates || [];
-    const contractSpecs = utxoArchitecture.contracts?.map(c => ({
-      name: c.name,
-      custodies: c.custodies,
-      validates: c.validates,
-    })) || [];
+    const frontendTransactions = transactionTemplates.map(transformTransaction);
+    const contractSpecs = (utxoArchitecture.contracts || []).map(transformContractSpec);
 
-    if (transactionTemplates.length > 0 || contractSpecs.length > 0) {
+    if (frontendTransactions.length > 0 || contractSpecs.length > 0) {
       sse.sendEvent('transactions_ready', {
-        transactions: transactionTemplates,
+        transactions: frontendTransactions,
         contractSpecs,
       });
     }
@@ -252,12 +326,24 @@ export async function handleConversion(
       }
 
       if (nameMap.size > 0) {
-        const updatedTemplates = applyNameMappingToTemplates(utxoArchitecture.transactionTemplates, nameMap);
+        // Apply name mapping to participants before transforming
+        const updatedTemplates = utxoArchitecture.transactionTemplates.map(t => ({
+          ...t,
+          participants: t.participants.map(p => ({
+            ...p,
+            contract: nameMap.get(p.contract) || p.contract,
+          })),
+          stateChanges: t.stateChanges.map(sc => ({
+            ...sc,
+            entity: nameMap.get(sc.entity) || sc.entity,
+          })),
+        }));
+        const updatedFrontendTransactions = updatedTemplates.map(transformTransaction);
         const updatedSpecs = contractSpecs.map(spec => ({
           ...spec,
           name: nameMap.get(spec.name) || spec.name
         }));
-        sse.sendEvent('transactions_ready', { transactions: updatedTemplates, contractSpecs: updatedSpecs });
+        sse.sendEvent('transactions_ready', { transactions: updatedFrontendTransactions, contractSpecs: updatedSpecs });
       }
     }
 
