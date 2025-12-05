@@ -281,8 +281,9 @@ PROFESSIONAL DOCUMENTATION REQUIREMENTS (for complex contracts only):
 When contract complexity warrants it, include BCHess-style professional documentation:
 
 1. NFT STATE BLOCK (before contract declaration):
-   /*  --- ContractName [Mutable/Immutable/none] NFT State ---
-       type variableName = defaultValue        // optional comment
+   /*  --- VoterContract Mutable NFT State ---
+       bytes20 delegatedTo                     // delegate's public key hash
+       bytes1 hasVoted = 0x00                  // 0x00=no, 0x01=yes
    */
    - Use "Mutable" if contract modifies nftCommitment
    - Use "Immutable" if contract has fixed constructor params only
