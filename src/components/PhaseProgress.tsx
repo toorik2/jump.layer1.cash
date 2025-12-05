@@ -32,7 +32,9 @@ export default function PhaseProgress(props: Props) {
         <span class={styles.label}>Extracting Intent</span>
       </div>
       <div class={styles.connector}>
-        <div class={styles.connectorFill} style={connectorStyle(1)}></div>
+        <div class={styles.connectorLine}>
+          <div class={styles.connectorFill} style={connectorStyle(1)}></div>
+        </div>
       </div>
       <div class={stepClass(2)}>
         <div class={styles.indicator}>
@@ -41,7 +43,9 @@ export default function PhaseProgress(props: Props) {
         <span class={styles.label}>Designing New Architecture</span>
       </div>
       <div class={styles.connector}>
-        <div class={styles.connectorFill} style={connectorStyle(2)}></div>
+        <div class={styles.connectorLine}>
+          <div class={styles.connectorFill} style={connectorStyle(2)}></div>
+        </div>
       </div>
       <div class={stepClass(3)}>
         <div class={styles.indicator}>
@@ -50,7 +54,9 @@ export default function PhaseProgress(props: Props) {
         <span class={styles.label}>Building Contracts</span>
       </div>
       <div class={styles.connector}>
-        <div class={styles.connectorFill} style={connectorStyle(3)}></div>
+        <div class={styles.connectorLine}>
+          <div class={styles.connectorFill} style={connectorStyle(3)}></div>
+        </div>
       </div>
       <div class={stepClass(4)}>
         <div class={styles.indicator}>
@@ -59,7 +65,9 @@ export default function PhaseProgress(props: Props) {
         <span class={styles.label}>Fixing Errors</span>
       </div>
       <div class={styles.connector}>
-        <div class={styles.connectorFill} style={connectorStyle(4)}></div>
+        <div class={styles.connectorLine}>
+          <div class={styles.connectorFill} style={connectorStyle(4)}></div>
+        </div>
       </div>
       <div class={stepClass(5)}>
         <div class={styles.indicator}>
