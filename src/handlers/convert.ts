@@ -74,7 +74,6 @@ function persistContracts(conversionId: number, contracts: ContractInfo[], faile
       purpose: contract.purpose,
       cashscript_code: contract.code,
       code_hash: generateHash(contract.code),
-      deployment_order: contract.deploymentOrder,
       bytecode_size: contract.bytecodeSize,
       line_count: contract.code.split('\n').length,
       is_validated: contract.validated || false,
@@ -173,7 +172,6 @@ export async function handleConversion(
 
     const orchestrator = new ValidationOrchestrator(anthropic, systemPrompt);
     let finalContracts: ContractInfo[] = [];
-    let finalDeploymentGuide: any = null;
 
     for await (const event of orchestrator.run(domainModelJSON, utxoArchitectureJSON)) {
       if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
@@ -206,7 +204,6 @@ export async function handleConversion(
             contract: event.contract,
             totalExpected: event.totalExpected,
             readySoFar: event.readySoFar,
-            ...(event.deploymentGuide ? { deploymentGuide: event.deploymentGuide } : {}),
           });
           break;
 
@@ -217,7 +214,6 @@ export async function handleConversion(
 
         case 'complete':
           finalContracts = event.contracts;
-          finalDeploymentGuide = event.deploymentGuide;
           break;
 
         case 'max_retries_exceeded':
@@ -266,7 +262,7 @@ export async function handleConversion(
     }
 
     logConversionComplete(conversionId, startTime, 'success');
-    sse.sendEvent('done', { contracts: finalContracts, deploymentGuide: finalDeploymentGuide });
+    sse.sendEvent('done', { contracts: finalContracts });
     sse.endResponse();
 
   } catch (error) {

@@ -319,49 +319,26 @@ When contract complexity warrants it, include BCHess-style professional document
 
 Examples in knowledge base: BCHess contracts (8 contracts), CashStarter (6 contracts)
 
-Respond with valid JSON. Use ONE of these structures:
-
-FOR SINGLE CONTRACT (simple translations):
-{
-  "primaryContract": "string - Complete CashScript code with pragma, documentation, and all functions"
-}
-
-FOR MULTI-CONTRACT SYSTEMS (when Solidity pattern requires multiple CashScript contracts):
+Respond with valid JSON using this structure:
 {
   "contracts": [
     {
-      "id": "unique-id",
-      "name": "Human Readable Name",
-      "purpose": "What this contract does in the system",
-      "code": "pragma cashscript ^0.13.0;...",
-      "role": "primary | helper | state",
-      "deploymentOrder": 1,
-      "dependencies": ["other-contract-id"],
-      "constructorParams": [
-        {
-          "name": "paramName",
-          "type": "pubkey | bytes | bytes32 | int",
-          "description": "What this parameter is for",
-          "source": "user-provided | from-contract | computed",
-          "sourceContractId": "null or id of contract that produces this value"
-        }
-      ]
+      "id": "crowdfund-manager",
+      "name": "CrowdfundManager",
+      "purpose": "Validates pledge deposits and enforces funding goal constraints",
+      "code": "pragma cashscript ^0.13.0; contract CrowdfundManager(...) { ... }",
+      "role": "primary"
     }
-  ],
-  "deploymentGuide": {
-    "steps": [
-      {
-        "order": 1,
-        "contractId": "contract-id",
-        "description": "Step description",
-        "prerequisites": ["What must exist before this step"],
-        "outputs": ["What this step produces (e.g., tokenCategory ID)"]
-      }
-    ],
-    "warnings": ["Important deployment considerations"],
-    "testingNotes": ["How to verify the system works"]
-  }
+  ]
 }
+
+CRITICAL - CODE FIELD RULES:
+- The "code" field MUST contain ONLY valid CashScript source code
+- Start with: pragma cashscript ^0.13.0;
+- Follow with: contract declaration and functions
+- NO prose, explanations, or deployment guides inside the code field
+- Comments are allowed ONLY as CashScript-style: // or /* */
+- The code MUST compile with the CashScript compiler
 
 CONTRACT ROLE DEFINITIONS (critical for UI display order):
 - "primary": Main user-facing contracts that handle core logic
@@ -379,13 +356,7 @@ CONTRACT ROLE DEFINITIONS (critical for UI display order):
   * These are displayed LAST in the UI tabs
   * Primarily store and manage state data
 
-IMPORTANT: Assign roles carefully - the UI sorts by role first (primary → helper → state), then by deploymentOrder within each role.
+IMPORTANT: Assign roles carefully - the UI sorts by role (primary → helper → state).
 
-Use multi-contract structure when:
-- Solidity contract has complex state that needs multiple CashScript contracts to manage
-- Pattern requires separate logic contracts (like BCHess piece validators)
-- System needs helper contracts (like CashStarter's cancel/claim/refund)
-- Factory patterns that create child contracts
-
-Use your best judgment. Include deployment order and parameter sources for multi-contract systems.`;
+For simple single-contract conversions, still use the contracts array with one item.`;
 }

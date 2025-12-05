@@ -6,12 +6,9 @@ function makeContract(name: string, validated = false): ContractInfo {
   return {
     id: name.toLowerCase(),
     name,
-    purpose: `${name} contract`,
-    code: `contract ${name} {}`,
+    purpose: `Validates ${name.replace(/([A-Z])/g, ' $1').trim().toLowerCase()} operations`,
+    code: `pragma cashscript ^0.13.0; contract ${name}() {}`,
     role: 'primary',
-    deploymentOrder: 1,
-    dependencies: [],
-    constructorParams: [],
     validated
   };
 }
@@ -26,7 +23,7 @@ describe('ContractRegistry', () => {
   describe('initialize', () => {
     it('tracks original order', () => {
       const contracts = [makeContract('A'), makeContract('B'), makeContract('C')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       expect(registry.getFailedNames()).toEqual(['A', 'B', 'C']);
       expect(registry.getTotalExpected()).toBe(3);
@@ -34,7 +31,7 @@ describe('ContractRegistry', () => {
 
     it('sets initial attempts to 1', () => {
       const contracts = [makeContract('A')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       expect(registry.getAttempt('A')).toBe(1);
     });
@@ -43,7 +40,7 @@ describe('ContractRegistry', () => {
   describe('markValidated', () => {
     it('tracks validated contracts', () => {
       const contracts = [makeContract('A'), makeContract('B')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       registry.markValidated([{ ...contracts[0], validated: true }]);
 
@@ -53,7 +50,7 @@ describe('ContractRegistry', () => {
 
     it('ignores non-validated contracts', () => {
       const contracts = [makeContract('A')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       registry.markValidated([contracts[0]]); // validated = false
 
@@ -65,7 +62,7 @@ describe('ContractRegistry', () => {
   describe('mergeFixed', () => {
     it('preserves original order', () => {
       const contracts = [makeContract('A'), makeContract('B'), makeContract('C')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       registry.markValidated([{ ...contracts[1], validated: true }]); // B validated
 
@@ -77,7 +74,7 @@ describe('ContractRegistry', () => {
 
     it('does not overwrite validated contracts', () => {
       const contracts = [makeContract('A'), makeContract('B')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       const validatedA = { ...contracts[0], validated: true, code: 'original' };
       registry.markValidated([validatedA]);
@@ -92,7 +89,7 @@ describe('ContractRegistry', () => {
 
     it('handles name drift', () => {
       const contracts = [makeContract('TokenVault'), makeContract('TokenHelper')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       registry.markValidated([{ ...contracts[0], validated: true }]);
 
@@ -106,7 +103,7 @@ describe('ContractRegistry', () => {
 
     it('updates attempt count', () => {
       const contracts = [makeContract('A')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       registry.mergeFixed([makeContract('A')], 3);
 
@@ -117,7 +114,7 @@ describe('ContractRegistry', () => {
   describe('isComplete', () => {
     it('returns false when contracts pending', () => {
       const contracts = [makeContract('A'), makeContract('B')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       registry.markValidated([{ ...contracts[0], validated: true }]);
 
@@ -126,7 +123,7 @@ describe('ContractRegistry', () => {
 
     it('returns true when all validated', () => {
       const contracts = [makeContract('A'), makeContract('B')];
-      registry.initialize(contracts, null);
+      registry.initialize(contracts);
 
       registry.markValidated([
         { ...contracts[0], validated: true },
@@ -139,17 +136,16 @@ describe('ContractRegistry', () => {
 
   describe('deep copy', () => {
     it('does not mutate original contracts', () => {
-      const contract = makeContract('A');
-      contract.dependencies = ['B'];
+      const contract = makeContract('VaultManager');
       contract.validated = true;
 
-      registry.initialize([contract], null);
+      registry.initialize([contract]);
       registry.markValidated([contract]);
 
       const validated = registry.getValidated()[0];
-      validated.dependencies.push('C');
+      validated.code = 'modified';
 
-      expect(contract.dependencies).toEqual(['B']);
+      expect(contract.code).toBe('pragma cashscript ^0.13.0; contract VaultManager() {}');
     });
   });
 });

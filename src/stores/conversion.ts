@@ -3,7 +3,7 @@
  * Single source of truth for conversion flow state
  */
 import { createSignal, createMemo } from 'solid-js';
-import type { ContractInfo, Transaction, DeploymentGuide as DeploymentGuideType, PendingContract } from '../types';
+import type { ContractInfo, Transaction, PendingContract } from '../types';
 
 // Discriminated union for conversion state
 export type ConversionStatus =
@@ -22,7 +22,6 @@ export interface ConversionState {
   contracts: ContractInfo[];
   pendingContracts: PendingContract[];
   transactions: Transaction[];
-  deploymentGuide: DeploymentGuideType | null;
   retryAttempt: number;
 }
 
@@ -33,7 +32,6 @@ const initialState: ConversionState = {
   contracts: [],
   pendingContracts: [],
   transactions: [],
-  deploymentGuide: null,
   retryAttempt: 1
 };
 
@@ -52,7 +50,6 @@ export function createConversionStore() {
   const contracts = createMemo(() => state().contracts);
   const pendingContracts = createMemo(() => state().pendingContracts);
   const transactions = createMemo(() => state().transactions);
-  const deploymentGuide = createMemo(() => state().deploymentGuide);
   const retryAttempt = createMemo(() => state().retryAttempt);
 
   // Actions
@@ -102,7 +99,7 @@ export function createConversionStore() {
     setState(s => ({ ...s, retryAttempt: attempt }));
   }
 
-  function addValidatedContract(contract: ContractInfo, guide: DeploymentGuideType | null) {
+  function addValidatedContract(contract: ContractInfo) {
     setState(s => {
       const existingIndex = s.contracts.findIndex(c => c.name === contract.name);
       let newContracts: ContractInfo[];
@@ -118,8 +115,7 @@ export function createConversionStore() {
       return {
         ...s,
         contracts: newContracts,
-        pendingContracts: newPending,
-        deploymentGuide: guide || s.deploymentGuide
+        pendingContracts: newPending
       };
     });
   }
@@ -140,7 +136,6 @@ export function createConversionStore() {
     contracts,
     pendingContracts,
     transactions,
-    deploymentGuide,
     retryAttempt,
 
     // Actions

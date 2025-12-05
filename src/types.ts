@@ -1,38 +1,13 @@
-export type ContractParam = {
-  name: string;
-  type: string;
-  description: string;
-  source: string;
-  sourceContractId: string | null;
-};
-
 export type ContractInfo = {
   id: string;
   name: string;
   purpose: string;
   code: string;
   role: string;
-  deploymentOrder: number;
-  dependencies: string[];
-  constructorParams: ContractParam[];
   validated?: boolean;
   bytecodeSize?: number;
   artifact?: any;
   validationError?: string;
-};
-
-export type DeploymentStep = {
-  order: number;
-  contractId: string;
-  description: string;
-  prerequisites: string[];
-  outputs: string[];
-};
-
-export type DeploymentGuide = {
-  steps: DeploymentStep[];
-  warnings: string[];
-  testingNotes: string[];
 };
 
 export type TransactionInput = {
@@ -75,9 +50,7 @@ export type DisplayContract = {
   validated: boolean;
   code: string;
   role: string;
-  deploymentOrder: number;
   isSkeleton?: boolean;
-  dependencies?: string[];
   bytecodeSize?: number;
   artifact?: any;
   validationError?: string;

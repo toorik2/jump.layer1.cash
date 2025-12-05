@@ -13,7 +13,6 @@ import {
   isMultiContractResponse,
   retryOutputSchema,
   type ContractInfo,
-  type DeploymentGuide,
 } from './code-generation.js';
 
 // Events emitted during validation
@@ -21,14 +20,13 @@ export type OrchestratorEvent =
   | { type: 'generation_complete' }
   | { type: 'validation_start' }
   | { type: 'validation_progress'; validCount: number; failedCount: number; attempt: number }
-  | { type: 'contract_validated'; contract: ContractInfo; readySoFar: number; totalExpected: number; deploymentGuide: DeploymentGuide | null }
+  | { type: 'contract_validated'; contract: ContractInfo; readySoFar: number; totalExpected: number }
   | { type: 'retrying'; attempt: number; failedNames: string[] }
-  | { type: 'complete'; contracts: ContractInfo[]; deploymentGuide: DeploymentGuide | null }
+  | { type: 'complete'; contracts: ContractInfo[] }
   | { type: 'max_retries_exceeded'; lastError: string };
 
 interface GenerationResponse {
   contracts: ContractInfo[];
-  deploymentGuide: DeploymentGuide | null;
 }
 
 /**
@@ -37,10 +35,7 @@ interface GenerationResponse {
  */
 function normalizeToMultiContract(parsed: any): GenerationResponse {
   if (isMultiContractResponse(parsed)) {
-    return {
-      contracts: parsed.contracts,
-      deploymentGuide: parsed.deploymentGuide,
-    };
+    return { contracts: parsed.contracts };
   }
 
   // Single contract response → wrap in array
@@ -54,11 +49,7 @@ function normalizeToMultiContract(parsed: any): GenerationResponse {
       purpose: 'Primary contract',
       code: parsed.primaryContract,
       role: 'primary',
-      deploymentOrder: 1,
-      dependencies: [],
-      constructorParams: [],
     }],
-    deploymentGuide: null,
   };
 }
 
@@ -94,13 +85,13 @@ export class ValidationOrchestrator {
       throw new Error('No valid contracts generated');
     }
 
-    this.registry.initialize(contracts, initial.deploymentGuide);
+    this.registry.initialize(contracts);
     yield { type: 'generation_complete' };
     yield { type: 'validation_start' };
 
     // Validate all contracts
     const validation = validateMultiContractResponse(
-      { contracts, deploymentGuide: initial.deploymentGuide! },
+      { contracts },
       this.sentContracts
     );
 
@@ -146,7 +137,7 @@ export class ValidationOrchestrator {
 
       // Revalidate merged contracts
       const revalidation = validateMultiContractResponse(
-        { contracts: merged, deploymentGuide: initial.deploymentGuide! },
+        { contracts: merged },
         this.sentContracts
       );
 
@@ -181,7 +172,6 @@ export class ValidationOrchestrator {
     yield {
       type: 'complete',
       contracts: this.getOrderedContracts(contracts),
-      deploymentGuide: this.registry.getDeploymentGuide(),
     };
   }
 
@@ -258,7 +248,6 @@ Every contract must validate something. Every function must add constraints. No 
   }
 
   private *emitContracts(contracts: ContractInfo[], isUpdate = false): Generator<OrchestratorEvent> {
-    const guide = this.registry.getDeploymentGuide();
     const total = this.registry.getTotalExpected();
 
     for (const contract of contracts) {
@@ -271,7 +260,6 @@ Every contract must validate something. Every function must add constraints. No 
           contract,
           readySoFar: this.sentContracts.size,
           totalExpected: total,
-          deploymentGuide: this.sentContracts.size === 1 ? guide : null,
         };
       }
     }

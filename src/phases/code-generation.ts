@@ -6,46 +6,20 @@
 import { compileString } from 'cashc';
 
 // Type definitions for multi-contract responses
-export interface ContractParam {
-  name: string;
-  type: string;
-  description: string;
-  source: string;
-  sourceContractId: string | null;
-}
-
 export interface ContractInfo {
   id: string;
   name: string;
   purpose: string;
   code: string;
   role: string;
-  deploymentOrder: number;
-  dependencies: string[];
-  constructorParams: ContractParam[];
   validated?: boolean;
   bytecodeSize?: number;
   artifact?: any;
   validationError?: string;
 }
 
-export interface DeploymentStep {
-  order: number;
-  contractId: string;
-  description: string;
-  prerequisites: string[];
-  outputs: string[];
-}
-
-export interface DeploymentGuide {
-  steps: DeploymentStep[];
-  warnings: string[];
-  testingNotes: string[];
-}
-
 export interface MultiContractResponse {
   contracts: ContractInfo[];
-  deploymentGuide: DeploymentGuide;
 }
 
 export function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
@@ -70,72 +44,14 @@ export const outputSchema = {
             role: {
               type: "string",
               enum: ["primary", "helper", "state"]
-            },
-            deploymentOrder: { type: "integer" },
-            dependencies: {
-              type: "array",
-              items: { type: "string" }
-            },
-            constructorParams: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  type: { type: "string" },
-                  description: { type: "string" },
-                  source: { type: "string" },
-                  sourceContractId: {
-                    type: ["string", "null"]
-                  }
-                },
-                required: ["name", "type", "description", "source", "sourceContractId"],
-                additionalProperties: false
-              }
             }
           },
-          required: ["id", "name", "purpose", "code", "role", "deploymentOrder", "dependencies", "constructorParams"],
+          required: ["id", "name", "purpose", "code", "role"],
           additionalProperties: false
         }
-      },
-      deploymentGuide: {
-        type: "object",
-        properties: {
-          steps: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                order: { type: "integer" },
-                contractId: { type: "string" },
-                description: { type: "string" },
-                prerequisites: {
-                  type: "array",
-                  items: { type: "string" }
-                },
-                outputs: {
-                  type: "array",
-                  items: { type: "string" }
-                }
-              },
-              required: ["order", "contractId", "description", "prerequisites", "outputs"],
-              additionalProperties: false
-            }
-          },
-          warnings: {
-            type: "array",
-            items: { type: "string" }
-          },
-          testingNotes: {
-            type: "array",
-            items: { type: "string" }
-          }
-        },
-        required: ["steps", "warnings", "testingNotes"],
-        additionalProperties: false
       }
     },
-    required: ["contracts", "deploymentGuide"],
+    required: ["contracts"],
     additionalProperties: false
   }
 } as const;
@@ -158,31 +74,9 @@ export const retryOutputSchema = {
             role: {
               type: "string",
               enum: ["primary", "helper", "state"]
-            },
-            deploymentOrder: { type: "integer" },
-            dependencies: {
-              type: "array",
-              items: { type: "string" }
-            },
-            constructorParams: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  type: { type: "string" },
-                  description: { type: "string" },
-                  source: { type: "string" },
-                  sourceContractId: {
-                    type: ["string", "null"]
-                  }
-                },
-                required: ["name", "type", "description", "source", "sourceContractId"],
-                additionalProperties: false
-              }
             }
           },
-          required: ["id", "name", "purpose", "code", "role", "deploymentOrder", "dependencies", "constructorParams"],
+          required: ["id", "name", "purpose", "code", "role"],
           additionalProperties: false
         }
       }

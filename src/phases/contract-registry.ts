@@ -3,22 +3,20 @@
  * Manages contract state during validation retry loop
  * Handles merging validated and fixed contracts
  */
-import type { ContractInfo, DeploymentGuide } from './code-generation.js';
+import type { ContractInfo } from './code-generation.js';
 
 export class ContractRegistry {
   private validatedContracts: Map<string, ContractInfo> = new Map();
   private originalOrder: string[] = [];
   private attempts: Map<string, number> = new Map();
-  private deploymentGuide: DeploymentGuide | null = null;
   private totalExpected = 0;
 
   /**
    * Initialize registry with contracts from first generation
    */
-  initialize(contracts: ContractInfo[], guide: DeploymentGuide | null): void {
+  initialize(contracts: ContractInfo[]): void {
     this.originalOrder = contracts.map(c => c.name);
     this.totalExpected = contracts.length;
-    this.deploymentGuide = guide;
     contracts.forEach(c => this.attempts.set(c.name, 1));
   }
 
@@ -101,13 +99,6 @@ export class ContractRegistry {
   }
 
   /**
-   * Get deployment guide
-   */
-  getDeploymentGuide(): DeploymentGuide | null {
-    return this.deploymentGuide;
-  }
-
-  /**
    * Get total expected contract count
    */
   getTotalExpected(): number {
@@ -125,10 +116,6 @@ export class ContractRegistry {
    * Deep copy contract to prevent mutation
    */
   private deepCopy(contract: ContractInfo): ContractInfo {
-    return {
-      ...contract,
-      dependencies: contract.dependencies ? [...contract.dependencies] : [],
-      constructorParams: contract.constructorParams ? [...contract.constructorParams] : []
-    };
+    return { ...contract };
   }
 }

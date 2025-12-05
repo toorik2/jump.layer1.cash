@@ -5,24 +5,22 @@ describe('isMultiContractResponse', () => {
   it('returns true for valid multi-contract response', () => {
     const response = {
       contracts: [
-        { id: '1', name: 'Test', purpose: 'test', code: '', role: 'primary', deploymentOrder: 1, dependencies: [], constructorParams: [] }
-      ],
-      deploymentGuide: { steps: [], warnings: [], testingNotes: [] }
+        { id: 'vault', name: 'TokenVault', purpose: 'Validates token custody transfers', code: 'pragma cashscript ^0.13.0; contract TokenVault() {}', role: 'primary' }
+      ]
     };
     expect(isMultiContractResponse(response)).toBe(true);
   });
 
   it('returns true for response with empty contracts array', () => {
     const response = {
-      contracts: [],
-      deploymentGuide: { steps: [], warnings: [], testingNotes: [] }
+      contracts: []
     };
     expect(isMultiContractResponse(response)).toBe(true);
   });
 
   it('returns false for single contract response', () => {
     const response = {
-      primaryContract: 'contract Test {}'
+      primaryContract: 'pragma cashscript ^0.13.0; contract TokenVault() {}'
     };
     expect(isMultiContractResponse(response)).toBe(false);
   });

@@ -10,7 +10,6 @@ import PhaseProgress from './components/PhaseProgress';
 import TransactionsView from './components/TransactionsView';
 import ContractTabs from './components/ContractTabs';
 import ContractCard from './components/ContractCard';
-import DeploymentGuide from './components/DeploymentGuide';
 import ErrorDisplay from './components/ErrorDisplay';
 import './styles/global.css';
 import styles from './App.module.css';
@@ -57,7 +56,6 @@ export default function App() {
         validated: false,
         code: '',
         role: 'unknown',
-        deploymentOrder: 999,
         isSkeleton: true
       }));
 
@@ -66,11 +64,7 @@ export default function App() {
       ...pendingStubs
     ];
     const rolePriority: Record<string, number> = { primary: 0, helper: 1, state: 2, unknown: 3 };
-    return combined.sort((a, b) => {
-      const priorityDiff = (rolePriority[a.role] || 999) - (rolePriority[b.role] || 999);
-      if (priorityDiff !== 0) return priorityDiff;
-      return (a.deploymentOrder || 999) - (b.deploymentOrder || 999);
-    });
+    return combined.sort((a, b) => (rolePriority[a.role] || 999) - (rolePriority[b.role] || 999));
   });
 
   const copyToClipboard = async (text: string) => {
@@ -248,10 +242,7 @@ export default function App() {
         store.setPhase(4);
         break;
       case 'contract_ready':
-        store.addValidatedContract(
-          event.data.contract,
-          event.data.deploymentGuide || null
-        );
+        store.addValidatedContract(event.data.contract);
         break;
       case 'retrying':
         store.setRetryAttempt(event.data.attempt);
@@ -307,7 +298,6 @@ export default function App() {
         validated: false,
         code: '',
         role: 'unknown',
-        deploymentOrder: 999,
         isSkeleton: true
       }));
     }
@@ -454,10 +444,6 @@ export default function App() {
                   mainCopyStatus={copyStatus}
                   onMainCopy={copyToClipboard}
                 />
-
-                <Show when={!isOriginalTab() && store.deploymentGuide()}>
-                  <DeploymentGuide guide={store.deploymentGuide} />
-                </Show>
               </Show>
             </Show>
           </div>
