@@ -1,0 +1,83 @@
+{
+  "systemPurpose": "High-level purpose of this system",
+  "domain": "voting|token|crowdfunding|marketplace|game|defi|governance|other",
+
+  "entities": [{
+    "name": "Voter",
+    "description": "A participant who can cast votes",
+    "identity": {
+      "type": "per-address|sequential|singleton|composite",
+      "description": "One voter per registered address"
+    },
+    "properties": [{
+      "name": "weight",
+      "type": "number|boolean|address|bytes|string|reference",
+      "description": "Voting power",
+      "maxBytes": 4,
+      "optional": false,
+      "initialValue": "1"
+    }],
+    "lifecycle": ["nonexistent", "registered", "voted"],
+    "mutable": true,
+    "cardinality": "one|fixed|unbounded",
+    "cardinalityLimit": null
+  }],
+
+  "transitions": [{
+    "name": "CastVote",
+    "description": "Voter casts their vote for a proposal",
+    "participants": [{
+      "entity": "Voter",
+      "role": "subject|target|coordinator|witness|beneficiary",
+      "fromState": "registered",
+      "toState": "voted",
+      "consumed": false,
+      "created": false,
+      "propertyChanges": [{
+        "property": "hasVoted",
+        "changeType": "set|increment|decrement|transfer",
+        "value": "true"
+      }]
+    }],
+    "effects": ["Voter's vote is recorded", "Proposal vote count increases"],
+    "authorization": {
+      "type": "identity|possession|role|none",
+      "authorizer": "Voter owner",
+      "description": "Must own the voter NFT"
+    },
+    "preconditions": ["Voter has not voted", "Voting is open"],
+    "postconditions": ["Voter marked as voted"],
+    "timeConstraints": [{
+      "type": "before|after|within",
+      "reference": "votingDeadline",
+      "description": "Must vote before deadline"
+    }]
+  }],
+
+  "invariants": [{
+    "scope": "global|entity|relationship",
+    "scopeTarget": "Voter",
+    "rule": "A voter can only vote once",
+    "description": "Prevents double voting",
+    "severity": "critical|important|advisory"
+  }],
+
+  "relationships": [{
+    "type": "ownership|reference|containment|delegation",
+    "from": "User",
+    "to": "Voter",
+    "cardinality": "one-to-one|one-to-many|many-to-many",
+    "via": "ownerPkh",
+    "bidirectional": false,
+    "description": "User owns their voter entity"
+  }],
+
+  "roles": [{
+    "name": "Chairperson",
+    "description": "Can register voters and start voting",
+    "assignment": "constructor|entity|dynamic",
+    "canAuthorize": ["RegisterVoter", "StartVoting"]
+  }],
+
+  "unmappedConcepts": ["Any concepts that could not be cleanly mapped"]
+}

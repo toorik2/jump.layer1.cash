@@ -28,3 +28,7 @@ test-*.json
 
 # Reports
 reports/
+
+# Research/working materials
+docs/
+pipe-analysis/

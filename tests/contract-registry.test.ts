@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ContractRegistry } from '../src/phases/contract-registry.js';
-import type { ContractInfo } from '../src/phases/code-generation.js';
+import { ContractRegistry } from '../src/server/phases/contract-registry.js';
+import type { ContractInfo } from '../src/server/phases/code-generation.js';
 
 function makeContract(name: string, validated = false): ContractInfo {
   return {

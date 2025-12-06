@@ -5,7 +5,7 @@ A comprehensive reference for CashScript smart contracts on Bitcoin Cash, includ
 ## 📁 Knowledge Base Structure
 
 ```
-cashscript-knowledge-base/
+BCH_knowledge_base/
 ├── concepts/                 # Core UTXO concepts (NEW)
 │   ├── utxo-vs-account-model.md    # EVM to CashScript translation
 │   └── multi-contract-architecture.md  # Multi-contract patterns

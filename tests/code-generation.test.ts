@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isMultiContractResponse } from '../src/phases/code-generation.js';
+import { isMultiContractResponse } from '../src/server/phases/code-generation.js';
 
 describe('isMultiContractResponse', () => {
   it('returns true for valid multi-contract response', () => {

@@ -35,8 +35,8 @@ async function init() {
 
   console.log('[Server] Loading CashScript knowledge base...');
 
-  const languageRef = await readFile('./cashscript-knowledge-base/language/language-reference.md', 'utf-8');
-  const multiContractPatterns = await readFile('./cashscript-knowledge-base/concepts/multi-contract-architecture.md', 'utf-8');
+  const languageRef = await readFile('./BCH_knowledge_base/language/language-reference.md', 'utf-8');
+  const multiContractPatterns = await readFile('./BCH_knowledge_base/concepts/multi-contract-architecture.md', 'utf-8');
 
   knowledgeBase = `${languageRef}
 

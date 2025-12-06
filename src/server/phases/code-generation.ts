@@ -43,7 +43,7 @@ export const outputSchema = {
             code: { type: "string" },
             role: {
               type: "string",
-              enum: ["entity", "sidecar", "function", "factory", "oracle", "utility"]
+              enum: ["primary", "helper", "state"]
             }
           },
           required: ["id", "name", "purpose", "code", "role"],
@@ -73,7 +73,7 @@ export const retryOutputSchema = {
             code: { type: "string" },
             role: {
               type: "string",
-              enum: ["entity", "sidecar", "function", "factory", "oracle", "utility"]
+              enum: ["primary", "helper", "state"]
             }
           },
           required: ["id", "name", "purpose", "code", "role"],

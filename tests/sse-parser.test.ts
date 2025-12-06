@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseSSEChunk, type SSEParserState } from '../src/hooks/useSSE.js';
+import { parseSSEChunk, type SSEParserState } from '../src/client/hooks/useSSE.js';
 
 function initialState(): SSEParserState {
   return { buffer: '', currentEventType: '' };

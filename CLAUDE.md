@@ -20,19 +20,7 @@ Web application that converts EVM smart contracts to CashScript.
 - **Database**: better-sqlite3
 - **Compiler**: CashC (CashScript compiler)
 
-## Development Commands
-```bash
-npm run dev       # Start dev server (port 3002)
-npm run build     # Build for production
-npm run server    # Run backend server
-```
-
 ## Project Structure
-- `src/` - Source code (frontend + backend)
-- `dist/` - Build output
-- `data/` - Database and data files
-- `conversions.db` - SQLite database for conversions
-
-## Notes
-- Dev server runs on port 3002
-- Uses tsx for TypeScript execution
+- `src/client/` - Frontend (SolidJS)
+- `src/server/` - Backend (Express)
+- `BCH_knowledge_base/` - CashScript reference docs
