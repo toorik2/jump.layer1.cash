@@ -53,11 +53,7 @@
             "id": { "type": "string" },
             "purpose": { "type": "string" },
             "capability": { "type": "string" },
-            "typeDiscriminator": {
-              "type": "object",
-              "description": "First-byte mapping to contract types",
-              "additionalProperties": { "type": "string" }
-            }
+            "typeDiscriminator": { "type": "string", "description": "First-byte mapping to contract types, format: '0x01=TypeA, 0x02=TypeB'" }
           },
           "required": ["id", "purpose", "capability"],
           "additionalProperties": false
@@ -81,37 +77,8 @@
             "indexOffset": { "type": "integer", "description": "For role=sidecar: output index offset from container" },
             "functionId": { "type": "string", "description": "For role=function: byte identifier" },
             "inputIndex": { "type": "integer", "description": "For role=function: expected input index" },
-            "mintingProtection": {
-              "type": "object",
-              "description": "For contracts with minting NFTs",
-              "properties": {
-                "maxOutputs": { "type": "integer" },
-                "validatedOutputs": { "type": "string" },
-                "unknownOutputsRestricted": { "type": "boolean" }
-              },
-              "additionalProperties": false
-            },
-            "stateLayout": {
-              "type": "object",
-              "properties": {
-                "totalBytes": { "type": "integer", "description": "Max 128 bytes" },
-                "fields": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "name": { "type": "string" },
-                      "type": { "type": "string" },
-                      "fixed": { "type": "string", "description": "Fixed value if applicable" }
-                    },
-                    "required": ["name", "type"],
-                    "additionalProperties": false
-                  }
-                }
-              },
-              "required": ["totalBytes", "fields"],
-              "additionalProperties": false
-            }
+            "mintingProtection": { "type": "string", "description": "For contracts with minting NFTs" },
+            "stateLayout": { "type": "string", "description": "State fields layout (max 128 bytes)" }
           },
           "required": ["name", "role", "lifecycle", "validates"],
           "additionalProperties": false
@@ -147,7 +114,7 @@
                   "contract": { "type": "string", "description": "Contract name or omit for P2PKH" },
                   "to": { "type": "string", "description": "Use 'P2PKH' or 'User' for user outputs" },
                   "type": { "type": "string" },
-                  "stateChanges": { "type": "array", "items": { "type": "string" }, "description": "Which state fields change" }
+                  "stateChanges": { "type": "string", "description": "Which state fields change, comma-separated" }
                 },
                 "required": ["index", "type"],
                 "additionalProperties": false
