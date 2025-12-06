@@ -1,83 +1,178 @@
 {
-  "systemPurpose": "High-level purpose of this system",
-  "domain": "voting|token|crowdfunding|marketplace|game|defi|governance|other",
-
-  "entities": [{
-    "name": "Voter",
-    "description": "A participant who can cast votes",
-    "identity": {
-      "type": "per-address|sequential|singleton|composite",
-      "description": "One voter per registered address"
+  "type": "json_schema",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "systemPurpose": {
+        "type": "string",
+        "description": "High-level purpose of this system"
+      },
+      "domain": {
+        "type": "string",
+        "enum": ["voting", "token", "crowdfunding", "marketplace", "game", "defi", "governance", "other"],
+        "description": "Primary domain classification"
+      },
+      "entities": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "description": { "type": "string" },
+            "identity": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "enum": ["per-address", "sequential", "singleton", "composite"] },
+                "description": { "type": "string" }
+              },
+              "required": ["type", "description"],
+              "additionalProperties": false
+            },
+            "properties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string", "enum": ["number", "boolean", "address", "bytes", "string", "reference"] },
+                  "description": { "type": "string" },
+                  "maxBytes": { "type": "integer" },
+                  "optional": { "type": "boolean" },
+                  "initialValue": { "type": "string" }
+                },
+                "required": ["name", "type", "description"],
+                "additionalProperties": false
+              }
+            },
+            "lifecycle": { "type": "array", "items": { "type": "string" } },
+            "mutable": { "type": "boolean" },
+            "cardinality": { "type": "string", "enum": ["one", "fixed", "unbounded"] },
+            "cardinalityLimit": { "type": ["integer", "null"] }
+          },
+          "required": ["name", "description", "identity", "properties", "lifecycle", "mutable", "cardinality"],
+          "additionalProperties": false
+        }
+      },
+      "transitions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "description": { "type": "string" },
+            "participants": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "entity": { "type": "string" },
+                  "role": { "type": "string", "enum": ["subject", "target", "coordinator", "witness", "beneficiary"] },
+                  "fromState": { "type": "string" },
+                  "toState": { "type": "string" },
+                  "consumed": { "type": "boolean" },
+                  "created": { "type": "boolean" },
+                  "propertyChanges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "property": { "type": "string" },
+                        "changeType": { "type": "string", "enum": ["set", "increment", "decrement", "transfer"] },
+                        "value": { "type": "string" }
+                      },
+                      "required": ["property", "changeType"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["entity", "role"],
+                "additionalProperties": false
+              }
+            },
+            "effects": { "type": "array", "items": { "type": "string" } },
+            "authorization": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "enum": ["identity", "possession", "role", "none"] },
+                "authorizer": { "type": "string" },
+                "description": { "type": "string" }
+              },
+              "required": ["type", "description"],
+              "additionalProperties": false
+            },
+            "preconditions": { "type": "array", "items": { "type": "string" } },
+            "postconditions": { "type": "array", "items": { "type": "string" } },
+            "timeConstraints": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string", "enum": ["before", "after", "within"] },
+                  "reference": { "type": "string" },
+                  "description": { "type": "string" }
+                },
+                "required": ["type", "reference", "description"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["name", "description", "participants", "effects", "authorization", "preconditions", "postconditions"],
+          "additionalProperties": false
+        }
+      },
+      "invariants": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "scope": { "type": "string", "enum": ["global", "entity", "relationship"] },
+            "scopeTarget": { "type": "string" },
+            "rule": { "type": "string" },
+            "description": { "type": "string" },
+            "severity": { "type": "string", "enum": ["critical", "important", "advisory"] }
+          },
+          "required": ["scope", "rule", "severity"],
+          "additionalProperties": false
+        }
+      },
+      "relationships": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["ownership", "reference", "containment", "delegation"] },
+            "from": { "type": "string" },
+            "to": { "type": "string" },
+            "cardinality": { "type": "string", "enum": ["one-to-one", "one-to-many", "many-to-many"] },
+            "via": { "type": "string" },
+            "bidirectional": { "type": "boolean" },
+            "description": { "type": "string" }
+          },
+          "required": ["type", "from", "to", "cardinality", "description"],
+          "additionalProperties": false
+        }
+      },
+      "roles": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "description": { "type": "string" },
+            "assignment": { "type": "string", "enum": ["constructor", "entity", "dynamic"] },
+            "canAuthorize": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["name", "description", "assignment", "canAuthorize"],
+          "additionalProperties": false
+        }
+      },
+      "unmappedConcepts": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Any concepts that could not be cleanly mapped"
+      }
     },
-    "properties": [{
-      "name": "weight",
-      "type": "number|boolean|address|bytes|string|reference",
-      "description": "Voting power",
-      "maxBytes": 4,
-      "optional": false,
-      "initialValue": "1"
-    }],
-    "lifecycle": ["nonexistent", "registered", "voted"],
-    "mutable": true,
-    "cardinality": "one|fixed|unbounded",
-    "cardinalityLimit": null
-  }],
-
-  "transitions": [{
-    "name": "CastVote",
-    "description": "Voter casts their vote for a proposal",
-    "participants": [{
-      "entity": "Voter",
-      "role": "subject|target|coordinator|witness|beneficiary",
-      "fromState": "registered",
-      "toState": "voted",
-      "consumed": false,
-      "created": false,
-      "propertyChanges": [{
-        "property": "hasVoted",
-        "changeType": "set|increment|decrement|transfer",
-        "value": "true"
-      }]
-    }],
-    "effects": ["Voter's vote is recorded", "Proposal vote count increases"],
-    "authorization": {
-      "type": "identity|possession|role|none",
-      "authorizer": "Voter owner",
-      "description": "Must own the voter NFT"
-    },
-    "preconditions": ["Voter has not voted", "Voting is open"],
-    "postconditions": ["Voter marked as voted"],
-    "timeConstraints": [{
-      "type": "before|after|within",
-      "reference": "votingDeadline",
-      "description": "Must vote before deadline"
-    }]
-  }],
-
-  "invariants": [{
-    "scope": "global|entity|relationship",
-    "scopeTarget": "Voter",
-    "rule": "A voter can only vote once",
-    "description": "Prevents double voting",
-    "severity": "critical|important|advisory"
-  }],
-
-  "relationships": [{
-    "type": "ownership|reference|containment|delegation",
-    "from": "User",
-    "to": "Voter",
-    "cardinality": "one-to-one|one-to-many|many-to-many",
-    "via": "ownerPkh",
-    "bidirectional": false,
-    "description": "User owns their voter entity"
-  }],
-
-  "roles": [{
-    "name": "Chairperson",
-    "description": "Can register voters and start voting",
-    "assignment": "constructor|entity|dynamic",
-    "canAuthorize": ["RegisterVoter", "StartVoting"]
-  }],
-
-  "unmappedConcepts": ["Any concepts that could not be cleanly mapped"]
+    "required": ["systemPurpose", "domain", "entities", "transitions", "invariants", "relationships", "roles"],
+    "additionalProperties": false
+  }
 }

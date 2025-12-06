@@ -1,100 +1,191 @@
 {
-  "valueFlows": [{
-    "asset": "BCH|tokenName",
-    "path": "User -> LoanContract -> StabilityPool",
-    "trigger": "liquidation"
-  }],
-
-  "patterns": [{
-    "name": "container-function|main-sidecar|strict-position|origin-proof",
-    "appliedTo": "LoanContract",
-    "rationale": "Why this pattern was chosen"
-  }],
-
-  "custodyDecisions": [{
-    "entity": "Voter",
-    "custody": "contract|p2pkh",
-    "contractName": "VoterContract",
-    "rationale": "Must enforce voting rules - can't vote twice",
-    "ownerFieldInCommitment": "ownerPkh (bytes20)"
-  }],
-
-  "tokenCategories": [{
-    "id": "system",
-    "purpose": "Main system tokens",
-    "capability": "minting|mutable|immutable",
-    "typeDiscriminator": {
-      "0x00": "PriceContract",
-      "0x01": "LoanContract",
-      "0x02": "ManageFunction"
-    }
-  }],
-
-  "contracts": [{
-    "name": "LoanContract",
-    "role": "container|function|sidecar|minting|independent",
-    "lifecycle": "exactly-replicating|state-mutating|state-and-balance-mutating|conditionally-replicating",
-    "tokenCategory": "system",
-    "capability": "mutable",
-    "typeIdentifier": "0x01",
-    "validates": "CONCRETE rules - if none, DO NOT include this contract",
-
-    "__comment_container": "Fields below are for role=container only",
-    "sidecar": "LoanSidecarContract",
-    "delegatesTo": ["ManageFunction", "LiquidateFunction"],
-
-    "__comment_sidecar": "Fields below are for role=sidecar only",
-    "attachedTo": "LoanContract",
-    "indexOffset": 1,
-
-    "__comment_function": "Fields below are for role=function only",
-    "functionId": "0x02",
-    "inputIndex": 3,
-
-    "__comment_minting": "Fields below are for contracts with minting NFTs",
-    "mintingProtection": {
-      "maxOutputs": 6,
-      "validatedOutputs": "All outputs 0-5 have tokenCategory checked",
-      "unknownOutputsRestricted": true
+  "type": "json_schema",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "valueFlows": {
+        "type": "array",
+        "description": "How BCH and tokens move through the system",
+        "items": {
+          "type": "object",
+          "properties": {
+            "asset": { "type": "string", "description": "BCH or token name" },
+            "path": { "type": "string", "description": "Flow path like 'User -> LoanContract -> StabilityPool'" },
+            "trigger": { "type": "string", "description": "What triggers this flow" }
+          },
+          "required": ["asset", "path", "trigger"],
+          "additionalProperties": false
+        }
+      },
+      "patterns": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "enum": ["container-function", "main-sidecar", "strict-position", "origin-proof", "type-discriminator"] },
+            "appliedTo": { "type": "string" },
+            "rationale": { "type": "string" }
+          },
+          "required": ["name", "appliedTo", "rationale"],
+          "additionalProperties": false
+        }
+      },
+      "custodyDecisions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "entity": { "type": "string" },
+            "custody": { "type": "string", "enum": ["contract", "p2pkh"] },
+            "contractName": { "type": "string", "description": "Required if custody=contract" },
+            "rationale": { "type": "string" },
+            "ownerFieldInCommitment": { "type": "string", "description": "How owner is tracked if contract custody" }
+          },
+          "required": ["entity", "custody", "rationale"],
+          "additionalProperties": false
+        }
+      },
+      "tokenCategories": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "purpose": { "type": "string" },
+            "capability": { "type": "string", "enum": ["minting", "mutable", "immutable"] },
+            "typeDiscriminator": {
+              "type": "object",
+              "description": "First-byte mapping to contract types",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "required": ["id", "purpose", "capability"],
+          "additionalProperties": false
+        }
+      },
+      "contracts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Must end with 'Contract'" },
+            "role": { "type": "string", "enum": ["container", "function", "sidecar", "minting", "independent"] },
+            "lifecycle": { "type": "string", "enum": ["exactly-replicating", "state-mutating", "state-and-balance-mutating", "conditionally-replicating"] },
+            "tokenCategory": { "type": "string" },
+            "capability": { "type": "string", "enum": ["minting", "mutable", "immutable"] },
+            "typeIdentifier": { "type": "string", "description": "First byte of commitment for type discrimination" },
+            "validates": { "type": "string", "description": "CONCRETE validation rules - if none, DO NOT include this contract" },
+            "sidecar": { "type": "string", "description": "For role=container: name of sidecar contract" },
+            "delegatesTo": { "type": "array", "items": { "type": "string" }, "description": "For role=container: function contracts it delegates to" },
+            "attachedTo": { "type": "string", "description": "For role=sidecar: container it's attached to" },
+            "indexOffset": { "type": "integer", "description": "For role=sidecar: output index offset from container" },
+            "functionId": { "type": "string", "description": "For role=function: byte identifier" },
+            "inputIndex": { "type": "integer", "description": "For role=function: expected input index" },
+            "mintingProtection": {
+              "type": "object",
+              "description": "For contracts with minting NFTs",
+              "properties": {
+                "maxOutputs": { "type": "integer" },
+                "validatedOutputs": { "type": "string" },
+                "unknownOutputsRestricted": { "type": "boolean" }
+              },
+              "additionalProperties": false
+            },
+            "stateLayout": {
+              "type": "object",
+              "properties": {
+                "totalBytes": { "type": "integer", "description": "Max 128 bytes" },
+                "fields": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": { "type": "string" },
+                      "type": { "type": "string" },
+                      "fixed": { "type": "string", "description": "Fixed value if applicable" }
+                    },
+                    "required": ["name", "type"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["totalBytes", "fields"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["name", "role", "lifecycle", "validates"],
+          "additionalProperties": false
+        }
+      },
+      "transactionTemplates": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "purpose": { "type": "string" },
+            "inputs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "index": { "type": "integer" },
+                  "contract": { "type": "string", "description": "Contract name or omit for P2PKH" },
+                  "from": { "type": "string", "description": "Use 'P2PKH' or 'User' for user inputs" },
+                  "type": { "type": "string", "enum": ["state-nft", "function-nft", "sidecar", "auth-bch", "bch"] }
+                },
+                "required": ["index", "type"],
+                "additionalProperties": false
+              }
+            },
+            "outputs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "index": { "type": "integer" },
+                  "contract": { "type": "string", "description": "Contract name or omit for P2PKH" },
+                  "to": { "type": "string", "description": "Use 'P2PKH' or 'User' for user outputs" },
+                  "type": { "type": "string", "enum": ["state-nft", "function-nft", "sidecar", "bch"] },
+                  "stateChanges": { "type": "array", "items": { "type": "string" }, "description": "Which state fields change" }
+                },
+                "required": ["index", "type"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["name", "purpose", "inputs", "outputs"],
+          "additionalProperties": false
+        }
+      },
+      "invariantEnforcement": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "invariant": { "type": "string" },
+            "enforcedBy": { "type": "string" },
+            "mechanism": { "type": "string" }
+          },
+          "required": ["invariant", "enforcedBy", "mechanism"],
+          "additionalProperties": false
+        }
+      },
+      "warnings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "severity": { "type": "string", "enum": ["critical", "high", "medium"] },
+            "issue": { "type": "string" },
+            "mitigation": { "type": "string" }
+          },
+          "required": ["severity", "issue", "mitigation"],
+          "additionalProperties": false
+        }
+      }
     },
-
-    "stateLayout": {
-      "totalBytes": 27,
-      "fields": [
-        { "name": "identifier", "type": "bytes1", "fixed": "0x01" },
-        { "name": "borrowedAmount", "type": "bytes6" },
-        { "name": "ownerPkh", "type": "bytes20" }
-      ]
-    }
-  }],
-
-  "transactionTemplates": [{
-    "name": "manageLoan",
-    "purpose": "Repay debt or adjust collateral",
-    "inputs": [
-      { "index": 0, "contract": "PriceContract", "type": "state-nft" },
-      { "index": 1, "contract": "LoanContract", "type": "state-nft" },
-      { "index": 2, "contract": "LoanSidecarContract", "type": "sidecar" },
-      { "index": 3, "contract": "ManageFunction", "type": "function-nft" },
-      { "index": 4, "from": "P2PKH", "type": "auth-bch" }
-    ],
-    "outputs": [
-      { "index": 0, "contract": "PriceContract", "type": "state-nft" },
-      { "index": 1, "contract": "LoanContract", "type": "state-nft", "stateChanges": ["borrowedAmount"] },
-      { "index": 2, "contract": "LoanSidecarContract", "type": "sidecar" },
-      { "index": 3, "contract": "ManageFunction", "type": "function-nft" }
-    ]
-  }],
-
-  "invariantEnforcement": [{
-    "invariant": "Total supply never exceeds cap",
-    "enforcedBy": "MintingContract",
-    "mechanism": "Validates tokenAmount in outputs"
-  }],
-
-  "warnings": [{
-    "severity": "critical|high|medium",
-    "issue": "Description of potential problem",
-    "mitigation": "How to address it"
-  }]
+    "required": ["valueFlows", "patterns", "custodyDecisions", "tokenCategories", "contracts", "transactionTemplates", "invariantEnforcement", "warnings"],
+    "additionalProperties": false
+  }
 }

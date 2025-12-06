@@ -3,124 +3,21 @@
  * Extracts platform-agnostic domain model from Solidity contracts
  */
 import Anthropic from '@anthropic-ai/sdk';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { DOMAIN_EXTRACTION_PROMPT } from '../prompts/conversion-prompts.js';
 import { ANTHROPIC_CONFIG } from '../config.js';
 import { insertSemanticAnalysis } from '../database.js';
 import type { DomainModel } from '../types/domain-model.js';
 
-// JSON Schema for structured output
-export const phase1OutputSchema = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      domain: {
-        type: "string",
-        enum: ["voting", "token", "crowdfunding", "marketplace", "game", "defi", "governance", "other"]
-      },
-      entities: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            description: { type: "string" },
-            properties: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  type: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["name", "type", "description"],
-                additionalProperties: false
-              }
-            },
-            lifecycle: { type: "array", items: { type: "string" } },
-            identity: { type: "string" },
-            mutable: { type: "boolean" }
-          },
-          required: ["name", "description", "properties", "lifecycle", "identity", "mutable"],
-          additionalProperties: false
-        }
-      },
-      transitions: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            description: { type: "string" },
-            participants: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  role: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["role", "description"],
-                additionalProperties: false
-              }
-            },
-            effects: { type: "array", items: { type: "string" } },
-            authorization: { type: "string" },
-            preconditions: { type: "array", items: { type: "string" } },
-            postconditions: { type: "array", items: { type: "string" } },
-            timeConstraints: { type: "string" }
-          },
-          required: ["name", "description", "participants", "effects", "authorization", "preconditions", "postconditions", "timeConstraints"],
-          additionalProperties: false
-        }
-      },
-      invariants: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            scope: { type: "string" },
-            rule: { type: "string" },
-            severity: { type: "string" }
-          },
-          required: ["scope", "rule", "severity"],
-          additionalProperties: false
-        }
-      },
-      relationships: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            from: { type: "string" },
-            to: { type: "string" },
-            type: { type: "string" },
-            description: { type: "string" }
-          },
-          required: ["from", "to", "type", "description"],
-          additionalProperties: false
-        }
-      },
-      roles: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            description: { type: "string" },
-            assignment: { type: "string" },
-            capabilities: { type: "array", items: { type: "string" } }
-          },
-          required: ["name", "description", "assignment", "capabilities"],
-          additionalProperties: false
-        }
-      }
-    },
-    required: ["domain", "entities", "transitions", "invariants", "relationships", "roles"],
-    additionalProperties: false
-  }
-} as const;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load JSON Schema from file (single source of truth)
+export const phase1OutputSchema = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../prompts/phase1-schema.json'), 'utf-8')
+);
 
 export interface Phase1Result {
   domainModel: DomainModel;

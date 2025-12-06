@@ -3,172 +3,22 @@
  * Transforms platform-agnostic domain model into CashScript-specific architecture
  */
 import Anthropic from '@anthropic-ai/sdk';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { UTXO_ARCHITECTURE_PROMPT } from '../prompts/conversion-prompts.js';
 import { ANTHROPIC_CONFIG } from '../config.js';
 import { insertUtxoArchitecture } from '../database.js';
 import type { DomainModel } from '../types/domain-model.js';
 import type { UTXOArchitecture } from '../types/utxo-architecture.js';
 
-// JSON Schema for structured output
-export const phase2OutputSchema = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      patterns: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            appliedTo: { type: "string" },
-            rationale: { type: "string" }
-          },
-          required: ["name", "appliedTo", "rationale"],
-          additionalProperties: false
-        }
-      },
-      custodyDecisions: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            entity: { type: "string" },
-            custody: { type: "string", description: "Either 'contract' or 'p2pkh'" },
-            contractName: { type: "string", description: "Only for custody='contract'. Omit or set to 'NONE' for P2PKH." },
-            rationale: { type: "string" },
-            ownerFieldInCommitment: { type: "string" }
-          },
-          required: ["entity", "custody", "rationale"],
-          additionalProperties: false
-        }
-      },
-      tokenCategories: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            purpose: { type: "string" },
-            capability: { type: "string" },
-            commitmentLayout: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  field: { type: "string" },
-                  bytes: { type: "integer" },
-                  description: { type: "string" }
-                },
-                required: ["field", "bytes", "description"],
-                additionalProperties: false
-              }
-            },
-            totalBytes: { type: "integer" }
-          },
-          required: ["name", "purpose", "capability", "commitmentLayout", "totalBytes"],
-          additionalProperties: false
-        }
-      },
-      contracts: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            custodies: { type: "string" },
-            validates: { type: "string" },
-            functions: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  name: { type: "string" },
-                  validates: { type: "string" },
-                  maxOutputs: { type: "integer" }
-                },
-                required: ["name", "validates", "maxOutputs"],
-                additionalProperties: false
-              }
-            },
-            stateFields: { type: "array", items: { type: "string" } }
-          },
-          required: ["name", "custodies", "validates", "functions", "stateFields"],
-          additionalProperties: false
-        }
-      },
-      transactionTemplates: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            purpose: { type: "string" },
-            inputs: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  index: { type: "integer" },
-                  from: { type: "string", description: "Contract name (ending with 'Contract') or 'P2PKH'/'User'" },
-                  type: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["index", "from", "type", "description"],
-                additionalProperties: false
-              }
-            },
-            outputs: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  index: { type: "integer" },
-                  to: { type: "string", description: "Contract name (ending with 'Contract') or 'P2PKH'/'User'" },
-                  type: { type: "string" },
-                  description: { type: "string" }
-                },
-                required: ["index", "to", "type", "description"],
-                additionalProperties: false
-              }
-            },
-            maxOutputs: { type: "integer" }
-          },
-          required: ["name", "purpose", "inputs", "outputs", "maxOutputs"],
-          additionalProperties: false
-        }
-      },
-      invariantEnforcement: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            invariant: { type: "string" },
-            enforcedBy: { type: "string" },
-            mechanism: { type: "string" }
-          },
-          required: ["invariant", "enforcedBy", "mechanism"],
-          additionalProperties: false
-        }
-      },
-      warnings: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            severity: { type: "string" },
-            issue: { type: "string" },
-            mitigation: { type: "string" }
-          },
-          required: ["severity", "issue", "mitigation"],
-          additionalProperties: false
-        }
-      }
-    },
-    required: ["patterns", "custodyDecisions", "tokenCategories", "contracts", "transactionTemplates", "invariantEnforcement", "warnings"],
-    additionalProperties: false
-  }
-} as const;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load JSON Schema from file (single source of truth)
+export const phase2OutputSchema = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '../prompts/phase2-schema.json'), 'utf-8')
+);
 
 export interface Phase2Result {
   architecture: UTXOArchitecture;
