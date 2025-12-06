@@ -22,7 +22,7 @@
         "items": {
           "type": "object",
           "properties": {
-            "name": { "type": "string", "enum": ["container-function", "main-sidecar", "strict-position", "origin-proof", "type-discriminator"] },
+            "name": { "type": "string" },
             "appliedTo": { "type": "string" },
             "rationale": { "type": "string" }
           },
@@ -36,7 +36,7 @@
           "type": "object",
           "properties": {
             "entity": { "type": "string" },
-            "custody": { "type": "string", "enum": ["contract", "p2pkh"] },
+            "custody": { "type": "string" },
             "contractName": { "type": "string", "description": "Required if custody=contract" },
             "rationale": { "type": "string" },
             "ownerFieldInCommitment": { "type": "string", "description": "How owner is tracked if contract custody" }
@@ -52,7 +52,7 @@
           "properties": {
             "id": { "type": "string" },
             "purpose": { "type": "string" },
-            "capability": { "type": "string", "enum": ["minting", "mutable", "immutable"] },
+            "capability": { "type": "string" },
             "typeDiscriminator": {
               "type": "object",
               "description": "First-byte mapping to contract types",
@@ -69,10 +69,10 @@
           "type": "object",
           "properties": {
             "name": { "type": "string", "description": "Must end with 'Contract'" },
-            "role": { "type": "string", "enum": ["container", "function", "sidecar", "minting", "independent"] },
-            "lifecycle": { "type": "string", "enum": ["exactly-replicating", "state-mutating", "state-and-balance-mutating", "conditionally-replicating"] },
+            "role": { "type": "string" },
+            "lifecycle": { "type": "string" },
             "tokenCategory": { "type": "string" },
-            "capability": { "type": "string", "enum": ["minting", "mutable", "immutable"] },
+            "capability": { "type": "string" },
             "typeIdentifier": { "type": "string", "description": "First byte of commitment for type discrimination" },
             "validates": { "type": "string", "description": "CONCRETE validation rules - if none, DO NOT include this contract" },
             "sidecar": { "type": "string", "description": "For role=container: name of sidecar contract" },
@@ -132,7 +132,7 @@
                   "index": { "type": "integer" },
                   "contract": { "type": "string", "description": "Contract name or omit for P2PKH" },
                   "from": { "type": "string", "description": "Use 'P2PKH' or 'User' for user inputs" },
-                  "type": { "type": "string", "enum": ["state-nft", "function-nft", "sidecar", "auth-bch", "bch"] }
+                  "type": { "type": "string" }
                 },
                 "required": ["index", "type"],
                 "additionalProperties": false
@@ -146,7 +146,7 @@
                   "index": { "type": "integer" },
                   "contract": { "type": "string", "description": "Contract name or omit for P2PKH" },
                   "to": { "type": "string", "description": "Use 'P2PKH' or 'User' for user outputs" },
-                  "type": { "type": "string", "enum": ["state-nft", "function-nft", "sidecar", "bch"] },
+                  "type": { "type": "string" },
                   "stateChanges": { "type": "array", "items": { "type": "string" }, "description": "Which state fields change" }
                 },
                 "required": ["index", "type"],
@@ -176,7 +176,7 @@
         "items": {
           "type": "object",
           "properties": {
-            "severity": { "type": "string", "enum": ["critical", "high", "medium"] },
+            "severity": { "type": "string" },
             "issue": { "type": "string" },
             "mitigation": { "type": "string" }
           },

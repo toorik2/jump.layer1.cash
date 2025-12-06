@@ -19,22 +19,14 @@
           "properties": {
             "name": { "type": "string" },
             "description": { "type": "string" },
-            "identity": {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string", "enum": ["per-address", "sequential", "singleton", "composite"] },
-                "description": { "type": "string" }
-              },
-              "required": ["type", "description"],
-              "additionalProperties": false
-            },
+            "identity": { "type": "string" },
             "properties": {
               "type": "array",
               "items": {
                 "type": "object",
                 "properties": {
                   "name": { "type": "string" },
-                  "type": { "type": "string", "enum": ["number", "boolean", "address", "bytes", "string", "reference"] },
+                  "type": { "type": "string" },
                   "description": { "type": "string" },
                   "maxBytes": { "type": "integer" },
                   "optional": { "type": "boolean" },
@@ -46,7 +38,7 @@
             },
             "lifecycle": { "type": "array", "items": { "type": "string" } },
             "mutable": { "type": "boolean" },
-            "cardinality": { "type": "string", "enum": ["one", "fixed", "unbounded"] },
+            "cardinality": { "type": "string" },
             "cardinalityLimit": { "type": ["integer", "null"] }
           },
           "required": ["name", "description", "identity", "properties", "lifecycle", "mutable", "cardinality"],
@@ -66,55 +58,22 @@
                 "type": "object",
                 "properties": {
                   "entity": { "type": "string" },
-                  "role": { "type": "string", "enum": ["subject", "target", "coordinator", "witness", "beneficiary"] },
+                  "role": { "type": "string" },
                   "fromState": { "type": "string" },
                   "toState": { "type": "string" },
                   "consumed": { "type": "boolean" },
                   "created": { "type": "boolean" },
-                  "propertyChanges": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "property": { "type": "string" },
-                        "changeType": { "type": "string", "enum": ["set", "increment", "decrement", "transfer"] },
-                        "value": { "type": "string" }
-                      },
-                      "required": ["property", "changeType"],
-                      "additionalProperties": false
-                    }
-                  }
+                  "propertyChanges": { "type": "string" }
                 },
                 "required": ["entity", "role"],
                 "additionalProperties": false
               }
             },
             "effects": { "type": "array", "items": { "type": "string" } },
-            "authorization": {
-              "type": "object",
-              "properties": {
-                "type": { "type": "string", "enum": ["identity", "possession", "role", "none"] },
-                "authorizer": { "type": "string" },
-                "description": { "type": "string" }
-              },
-              "required": ["type", "description"],
-              "additionalProperties": false
-            },
+            "authorization": { "type": "string" },
             "preconditions": { "type": "array", "items": { "type": "string" } },
             "postconditions": { "type": "array", "items": { "type": "string" } },
-            "timeConstraints": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "type": { "type": "string", "enum": ["before", "after", "within"] },
-                  "reference": { "type": "string" },
-                  "description": { "type": "string" }
-                },
-                "required": ["type", "reference", "description"],
-                "additionalProperties": false
-              }
-            }
+            "timeConstraints": { "type": "string" }
           },
           "required": ["name", "description", "participants", "effects", "authorization", "preconditions", "postconditions"],
           "additionalProperties": false
@@ -125,11 +84,11 @@
         "items": {
           "type": "object",
           "properties": {
-            "scope": { "type": "string", "enum": ["global", "entity", "relationship"] },
+            "scope": { "type": "string" },
             "scopeTarget": { "type": "string" },
             "rule": { "type": "string" },
             "description": { "type": "string" },
-            "severity": { "type": "string", "enum": ["critical", "important", "advisory"] }
+            "severity": { "type": "string" }
           },
           "required": ["scope", "rule", "severity"],
           "additionalProperties": false
@@ -140,10 +99,10 @@
         "items": {
           "type": "object",
           "properties": {
-            "type": { "type": "string", "enum": ["ownership", "reference", "containment", "delegation"] },
+            "type": { "type": "string" },
             "from": { "type": "string" },
             "to": { "type": "string" },
-            "cardinality": { "type": "string", "enum": ["one-to-one", "one-to-many", "many-to-many"] },
+            "cardinality": { "type": "string" },
             "via": { "type": "string" },
             "bidirectional": { "type": "boolean" },
             "description": { "type": "string" }
@@ -159,7 +118,7 @@
           "properties": {
             "name": { "type": "string" },
             "description": { "type": "string" },
-            "assignment": { "type": "string", "enum": ["constructor", "entity", "dynamic"] },
+            "assignment": { "type": "string" },
             "canAuthorize": { "type": "array", "items": { "type": "string" } }
           },
           "required": ["name", "description", "assignment", "canAuthorize"],
