@@ -188,7 +188,7 @@ export default function HistoryPage() {
                           <td colspan="5">
                             <div class={styles.detailContent}>
                               {/* Phase 1: Domain Extraction */}
-                              <Section title="Phase 1: Domain Extraction" defaultOpen={true}>
+                              <Section title="Phase 1: Domain Extraction">
                                 <div class={styles.phaseInfo}>
                                   <Show when={detail()?.semantic_analysis}>
                                     <span>{detail()!.semantic_analysis.model_used}</span>
