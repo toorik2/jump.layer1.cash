@@ -170,7 +170,7 @@ export async function handleConversion(
 
     if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
-    const orchestrator = new ValidationOrchestrator(anthropic, systemPrompt);
+    const orchestrator = new ValidationOrchestrator(anthropic, systemPrompt, conversionId);
     let finalContracts: ContractInfo[] = [];
 
     for await (const event of orchestrator.run(domainModelJSON, utxoArchitectureJSON)) {

@@ -87,6 +87,31 @@ function createTables() {
     db.exec(`ALTER TABLE contracts ADD COLUMN validation_error TEXT`);
   } catch { /* column already exists */ }
 
+  // Add user_prompt column to semantic_analyses (migration)
+  try {
+    db.exec(`ALTER TABLE semantic_analyses ADD COLUMN user_prompt TEXT`);
+  } catch { /* column already exists */ }
+
+  // Add user_prompt column to utxo_architectures (migration)
+  try {
+    db.exec(`ALTER TABLE utxo_architectures ADD COLUMN user_prompt TEXT`);
+  } catch { /* column already exists */ }
+
+  // Add system_prompt column to semantic_analyses (migration)
+  try {
+    db.exec(`ALTER TABLE semantic_analyses ADD COLUMN system_prompt TEXT`);
+  } catch { /* column already exists */ }
+
+  // Add system_prompt column to utxo_architectures (migration)
+  try {
+    db.exec(`ALTER TABLE utxo_architectures ADD COLUMN system_prompt TEXT`);
+  } catch { /* column already exists */ }
+
+  // Add system_prompt column to api_attempts (migration)
+  try {
+    db.exec(`ALTER TABLE api_attempts ADD COLUMN system_prompt TEXT`);
+  } catch { /* column already exists */ }
+
   // SEMANTIC_ANALYSES - Phase 1 semantic extraction results
   db.exec(`
     CREATE TABLE IF NOT EXISTS semantic_analyses (
@@ -290,14 +315,16 @@ interface SemanticAnalysisRecord {
   input_tokens?: number;
   output_tokens?: number;
   response_time_ms?: number;
+  user_prompt?: string;
+  system_prompt?: string;
 }
 
 export function insertSemanticAnalysis(record: Omit<SemanticAnalysisRecord, 'id'>): number {
   const stmt = db.prepare(`
     INSERT INTO semantic_analyses (
       conversion_id, analysis_json, created_at, model_used,
-      input_tokens, output_tokens, response_time_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      input_tokens, output_tokens, response_time_ms, user_prompt, system_prompt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -307,7 +334,9 @@ export function insertSemanticAnalysis(record: Omit<SemanticAnalysisRecord, 'id'
     record.model_used,
     record.input_tokens || null,
     record.output_tokens || null,
-    record.response_time_ms || null
+    record.response_time_ms || null,
+    record.user_prompt || null,
+    record.system_prompt || null
   );
 
   return result.lastInsertRowid as number;
@@ -326,14 +355,16 @@ interface UtxoArchitectureRecord {
   input_tokens?: number;
   output_tokens?: number;
   response_time_ms?: number;
+  user_prompt?: string;
+  system_prompt?: string;
 }
 
 export function insertUtxoArchitecture(record: Omit<UtxoArchitectureRecord, 'id'>): number {
   const stmt = db.prepare(`
     INSERT INTO utxo_architectures (
       conversion_id, architecture_json, created_at, model_used,
-      input_tokens, output_tokens, response_time_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      input_tokens, output_tokens, response_time_ms, user_prompt, system_prompt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -343,10 +374,169 @@ export function insertUtxoArchitecture(record: Omit<UtxoArchitectureRecord, 'id'
     record.model_used,
     record.input_tokens || null,
     record.output_tokens || null,
-    record.response_time_ms || null
+    record.response_time_ms || null,
+    record.user_prompt || null,
+    record.system_prompt || null
   );
 
   return result.lastInsertRowid as number;
+}
+
+// ============================================================================
+// API_ATTEMPTS TABLE (Phase 3/4 Code Generation)
+// ============================================================================
+
+export interface ApiAttemptRecord {
+  id?: number;
+  conversion_id: number;
+  attempt_number: number;
+  started_at: string;
+  response_time_ms?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_tokens?: number;
+  cache_write_tokens?: number;
+  cost_usd?: number;
+  success: boolean;
+  response_type?: 'single' | 'multi';
+  user_message: string;
+  response_json?: string;
+  error_message?: string;
+  system_prompt?: string;
+}
+
+export function insertApiAttempt(record: Omit<ApiAttemptRecord, 'id'>): number {
+  const stmt = db.prepare(`
+    INSERT INTO api_attempts (
+      conversion_id, attempt_number, started_at, response_time_ms,
+      input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+      cost_usd, success, response_type, user_message, response_json, error_message, system_prompt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    record.conversion_id,
+    record.attempt_number,
+    record.started_at,
+    record.response_time_ms || null,
+    record.input_tokens || null,
+    record.output_tokens || null,
+    record.cache_read_tokens || null,
+    record.cache_write_tokens || null,
+    record.cost_usd || null,
+    record.success ? 1 : 0,
+    record.response_type || null,
+    record.user_message,
+    record.response_json || null,
+    record.error_message || null,
+    record.system_prompt || null
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+// ============================================================================
+// QUERY FUNCTIONS (Read-only)
+// ============================================================================
+
+export interface ConversionListItem {
+  id: number;
+  session_id: string;
+  created_at: string;
+  completed_at: string | null;
+  final_status: 'success' | 'failed' | 'timeout' | null;
+  duration_ms: number | null;
+  contract_count: number;
+  is_multi_contract: boolean;
+}
+
+export function getConversions(limit = 50, offset = 0): { conversions: ConversionListItem[]; total: number } {
+  const countStmt = db.prepare('SELECT COUNT(*) as count FROM conversions');
+  const total = (countStmt.get() as { count: number }).count;
+
+  const stmt = db.prepare(`
+    SELECT id, session_id, created_at, completed_at, final_status, duration_ms, contract_count, is_multi_contract
+    FROM conversions
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?
+  `);
+
+  const rows = stmt.all(limit, offset) as any[];
+  const conversions = rows.map(row => ({
+    ...row,
+    is_multi_contract: Boolean(row.is_multi_contract)
+  }));
+
+  return { conversions, total };
+}
+
+export function getConversionById(id: number) {
+  const conversionStmt = db.prepare('SELECT * FROM conversions WHERE id = ?');
+  const conversion = conversionStmt.get(id) as any;
+  if (!conversion) return null;
+
+  const contractsStmt = db.prepare('SELECT * FROM contracts WHERE conversion_id = ? ORDER BY id');
+  const contracts = contractsStmt.all(id);
+
+  const analysisStmt = db.prepare('SELECT * FROM semantic_analyses WHERE conversion_id = ? LIMIT 1');
+  const semantic_analysis = analysisStmt.get(id);
+
+  const archStmt = db.prepare('SELECT * FROM utxo_architectures WHERE conversion_id = ? LIMIT 1');
+  const utxo_architecture = archStmt.get(id);
+
+  const attemptsStmt = db.prepare('SELECT * FROM api_attempts WHERE conversion_id = ? ORDER BY attempt_number');
+  const api_attempts = attemptsStmt.all(id);
+
+  return {
+    conversion: { ...conversion, is_multi_contract: Boolean(conversion.is_multi_contract) },
+    contracts,
+    semantic_analysis,
+    utxo_architecture,
+    api_attempts
+  };
+}
+
+export interface ConversionStats {
+  total_conversions: number;
+  success_count: number;
+  failed_count: number;
+  success_rate: number;
+  avg_duration_ms: number | null;
+  total_contracts: number;
+  conversions_today: number;
+}
+
+export function getConversionStats(): ConversionStats {
+  const statsStmt = db.prepare(`
+    SELECT
+      COUNT(*) as total_conversions,
+      SUM(CASE WHEN final_status = 'success' THEN 1 ELSE 0 END) as success_count,
+      SUM(CASE WHEN final_status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+      AVG(CASE WHEN final_status = 'success' THEN duration_ms END) as avg_duration_ms
+    FROM conversions
+  `);
+  const stats = statsStmt.get() as any;
+
+  const contractCountStmt = db.prepare('SELECT COUNT(*) as count FROM contracts');
+  const contractCount = (contractCountStmt.get() as { count: number }).count;
+
+  const todayStmt = db.prepare(`
+    SELECT COUNT(*) as count FROM conversions
+    WHERE date(created_at) = date('now')
+  `);
+  const todayCount = (todayStmt.get() as { count: number }).count;
+
+  return {
+    total_conversions: stats.total_conversions || 0,
+    success_count: stats.success_count || 0,
+    failed_count: stats.failed_count || 0,
+    success_rate: stats.total_conversions > 0
+      ? (stats.success_count || 0) / stats.total_conversions
+      : 0,
+    avg_duration_ms: stats.avg_duration_ms || null,
+    total_contracts: contractCount,
+    conversions_today: todayCount
+  };
 }
 
 // ============================================================================

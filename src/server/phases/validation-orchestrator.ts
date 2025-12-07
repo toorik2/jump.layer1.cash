@@ -6,6 +6,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ANTHROPIC_CONFIG } from '../config.js';
 import { ContractRegistry } from './contract-registry.js';
+import { insertApiAttempt } from '../database.js';
 import {
   validateMultiContractResponse,
   buildRetryMessage,
@@ -64,10 +65,12 @@ function cleanContracts(contracts: ContractInfo[]): ContractInfo[] {
 export class ValidationOrchestrator {
   private registry = new ContractRegistry();
   private sentContracts = new Set<string>();
+  private attemptNumber = 0;
 
   constructor(
     private anthropic: Anthropic,
     private systemPrompt: string,
+    private conversionId: number,
   ) {}
 
   /**
@@ -187,19 +190,9 @@ export class ValidationOrchestrator {
     domainModelJSON: string,
     utxoArchitectureJSON: string,
   ): Promise<GenerationResponse> {
-    const message = await this.anthropic.beta.messages.create({
-      model: ANTHROPIC_CONFIG.phase2.model,
-      max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
-      system: [{
-        type: 'text',
-        text: this.systemPrompt,
-        cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl },
-      }],
-      betas: [...ANTHROPIC_CONFIG.betas],
-      output_format: (await import('./code-generation.js')).outputSchema,
-      messages: [{
-        role: 'user',
-        content: `DOMAIN MODEL (what the system does - platform-agnostic):
+    this.attemptNumber = 1;
+    const startTime = Date.now();
+    const userMessage = `DOMAIN MODEL (what the system does - platform-agnostic):
 ${domainModelJSON}
 
 UTXO ARCHITECTURE (how to implement it):
@@ -211,37 +204,118 @@ Generate CashScript contracts based on the UTXO architecture above. Follow the c
 - Follow the transaction templates for input/output positions
 - Apply the mandatory checklist from the system prompt
 
-Every contract must validate something. Every function must add constraints. No placeholders.`,
-      }],
-    });
+Every contract must validate something. Every function must add constraints. No placeholders.`;
+
+    let message: Anthropic.Beta.Messages.BetaMessage;
+    let errorMessage: string | undefined;
+
+    try {
+      message = await this.anthropic.beta.messages.create({
+        model: ANTHROPIC_CONFIG.phase2.model,
+        max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
+        system: [{
+          type: 'text',
+          text: this.systemPrompt,
+          cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl },
+        }],
+        betas: [...ANTHROPIC_CONFIG.betas],
+        output_format: (await import('./code-generation.js')).outputSchema,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+    } catch (e) {
+      errorMessage = e instanceof Error ? e.message : String(e);
+      insertApiAttempt({
+        conversion_id: this.conversionId,
+        attempt_number: this.attemptNumber,
+        started_at: new Date(startTime).toISOString(),
+        response_time_ms: Date.now() - startTime,
+        success: false,
+        user_message: userMessage,
+        error_message: errorMessage,
+        system_prompt: this.systemPrompt,
+      });
+      throw e;
+    }
 
     const response = message.content[0].type === 'text' ? message.content[0].text : '';
+
+    // Log successful API call
+    insertApiAttempt({
+      conversion_id: this.conversionId,
+      attempt_number: this.attemptNumber,
+      started_at: new Date(startTime).toISOString(),
+      response_time_ms: Date.now() - startTime,
+      input_tokens: message.usage?.input_tokens,
+      output_tokens: message.usage?.output_tokens,
+      cache_read_tokens: (message.usage as any)?.cache_read_input_tokens,
+      cache_write_tokens: (message.usage as any)?.cache_creation_input_tokens,
+      success: true,
+      response_type: 'multi',
+      user_message: userMessage,
+      response_json: response,
+      system_prompt: this.systemPrompt,
+    });
+
     const parsed = JSON.parse(response);
     return normalizeToMultiContract(parsed);
   }
 
   private async retryFix(failed: ContractInfo[]): Promise<ContractInfo[]> {
-    const retryMessage = buildRetryMessage(failed);
+    this.attemptNumber++;
+    const startTime = Date.now();
+    const userMessage = buildRetryMessage(failed);
 
-    const message = await this.anthropic.beta.messages.create({
-      model: ANTHROPIC_CONFIG.phase2.model,
-      max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
-      system: [{
-        type: 'text',
-        text: this.systemPrompt,
-        cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl },
-      }],
-      betas: [...ANTHROPIC_CONFIG.betas],
-      output_format: retryOutputSchema,
-      messages: [{
-        role: 'user',
-        content: retryMessage,
-      }],
-    });
+    let message: Anthropic.Beta.Messages.BetaMessage;
+    let errorMessage: string | undefined;
+
+    try {
+      message = await this.anthropic.beta.messages.create({
+        model: ANTHROPIC_CONFIG.phase2.model,
+        max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
+        system: [{
+          type: 'text',
+          text: this.systemPrompt,
+          cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl },
+        }],
+        betas: [...ANTHROPIC_CONFIG.betas],
+        output_format: retryOutputSchema,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+    } catch (e) {
+      errorMessage = e instanceof Error ? e.message : String(e);
+      insertApiAttempt({
+        conversion_id: this.conversionId,
+        attempt_number: this.attemptNumber,
+        started_at: new Date(startTime).toISOString(),
+        response_time_ms: Date.now() - startTime,
+        success: false,
+        user_message: userMessage,
+        error_message: errorMessage,
+        system_prompt: this.systemPrompt,
+      });
+      throw e;
+    }
 
     const response = message.content[0].type === 'text' ? message.content[0].text : '';
-    const parsed = JSON.parse(response);
 
+    // Log successful retry API call
+    insertApiAttempt({
+      conversion_id: this.conversionId,
+      attempt_number: this.attemptNumber,
+      started_at: new Date(startTime).toISOString(),
+      response_time_ms: Date.now() - startTime,
+      input_tokens: message.usage?.input_tokens,
+      output_tokens: message.usage?.output_tokens,
+      cache_read_tokens: (message.usage as any)?.cache_read_input_tokens,
+      cache_write_tokens: (message.usage as any)?.cache_creation_input_tokens,
+      success: true,
+      response_type: 'multi',
+      user_message: userMessage,
+      response_json: response,
+      system_prompt: this.systemPrompt,
+    });
+
+    const parsed = JSON.parse(response);
     const contracts = parsed.contracts || [];
     normalizeContractNames(contracts);
     return contracts;

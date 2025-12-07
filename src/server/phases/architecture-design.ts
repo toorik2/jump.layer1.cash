@@ -85,7 +85,9 @@ Design the UTXO architecture following the patterns and prime directives in the 
     model_used: ANTHROPIC_CONFIG.phase1.model,
     input_tokens: response.usage.input_tokens,
     output_tokens: response.usage.output_tokens,
-    response_time_ms: duration
+    response_time_ms: duration,
+    user_prompt: userMessage,
+    system_prompt: UTXO_ARCHITECTURE_PROMPT
   });
 
   return {

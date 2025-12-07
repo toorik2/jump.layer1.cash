@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import solid from 'vite-plugin-solid';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [solid()],
@@ -17,6 +18,12 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        history: resolve(__dirname, 'history.html')
+      }
+    }
   }
 });

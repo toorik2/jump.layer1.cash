@@ -8,7 +8,7 @@ import cookieParser from 'cookie-parser';
 import Anthropic from '@anthropic-ai/sdk';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { initializeDatabase, closeDatabase } from './database.js';
+import { initializeDatabase, closeDatabase, getConversions, getConversionById, getConversionStats } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import { ANTHROPIC_CONFIG, SERVER_CONFIG } from './config.js';
@@ -28,6 +28,16 @@ const anthropic = new Anthropic({
 let knowledgeBase = '';
 let systemPrompt = '';
 let activeConversions = 0;
+
+// Middleware to restrict access to localhost only
+function localhostOnly(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const ip = req.ip || req.socket.remoteAddress || '';
+  const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  if (!isLocalhost) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+  next();
+}
 
 async function init() {
   console.log('[Server] Initializing database...');
@@ -69,6 +79,34 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   } finally {
     activeConversions--;
   }
+});
+
+// History API endpoints (localhost only)
+app.get('/api/conversions', localhostOnly, (_req, res) => {
+  const limit = Math.min(parseInt(_req.query.limit as string) || 50, 100);
+  const offset = parseInt(_req.query.offset as string) || 0;
+  res.json(getConversions(limit, offset));
+});
+
+app.get('/api/conversions/:id', localhostOnly, (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ error: 'Invalid conversion ID' });
+  }
+  const result = getConversionById(id);
+  if (!result) {
+    return res.status(404).json({ error: 'Conversion not found' });
+  }
+  res.json(result);
+});
+
+app.get('/api/stats', localhostOnly, (_req, res) => {
+  res.json(getConversionStats());
+});
+
+// History page (localhost only)
+app.get('/history', localhostOnly, (_req, res) => {
+  res.sendFile(join(process.cwd(), 'dist', 'history.html'));
 });
 
 // SPA fallback

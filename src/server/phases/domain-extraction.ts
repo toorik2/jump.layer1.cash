@@ -34,6 +34,8 @@ export async function executeDomainExtraction(
   console.log('[Phase 1] Starting domain extraction (platform-agnostic)...');
   const startTime = Date.now();
 
+  const userPrompt = `Extract the domain model from this smart contract:\n\n${solidityContract}`;
+
   const response = await anthropic.beta.messages.create({
     model: ANTHROPIC_CONFIG.phase1.model,
     max_tokens: ANTHROPIC_CONFIG.phase1.maxTokens,
@@ -42,7 +44,7 @@ export async function executeDomainExtraction(
     system: DOMAIN_EXTRACTION_PROMPT,
     messages: [{
       role: 'user',
-      content: `Extract the domain model from this smart contract:\n\n${solidityContract}`
+      content: userPrompt
     }]
   });
 
@@ -73,7 +75,9 @@ export async function executeDomainExtraction(
     model_used: ANTHROPIC_CONFIG.phase1.model,
     input_tokens: response.usage.input_tokens,
     output_tokens: response.usage.output_tokens,
-    response_time_ms: duration
+    response_time_ms: duration,
+    user_prompt: userPrompt,
+    system_prompt: DOMAIN_EXTRACTION_PROMPT
   });
 
   console.log('[Phase 1] Domain extraction complete:', {
