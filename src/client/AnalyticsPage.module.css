@@ -154,68 +154,6 @@
   margin-bottom: 0.75rem;
 }
 
-.contract {
-  margin-bottom: 1rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.contractHeader {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  background: var(--color-surface-elevated);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.contractName {
-  font-weight: 500;
-  font-family: var(--font-mono);
-  font-size: 0.875rem;
-}
-
-.contractRole {
-  font-size: 0.7rem;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-}
-
-.validated {
-  font-size: 0.7rem;
-  color: var(--color-accent);
-}
-
-.invalid {
-  font-size: 0.7rem;
-  color: var(--color-error);
-}
-
-.code {
-  padding: 0.75rem;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  line-height: 1.5;
-  overflow-x: auto;
-  color: var(--color-text-secondary);
-  margin: 0;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.noContracts {
-  color: var(--color-text-muted);
-  font-style: italic;
-}
-
-.bytecodeSize {
-  font-size: 0.7rem;
-  color: var(--color-text-dim);
-  margin-left: auto;
-}
-
 .validationError {
   padding: 0.5rem 0.75rem;
   background: rgba(255, 107, 107, 0.1);
@@ -288,105 +226,10 @@
   margin-bottom: 0.5rem;
 }
 
-.filePaths {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.filePath {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  background: rgba(88, 166, 255, 0.1);
-  border: 1px solid rgba(88, 166, 255, 0.3);
-  border-radius: var(--radius-sm);
-  font-size: 0.7rem;
-  font-family: var(--font-mono);
-  color: var(--color-info);
-}
-
-.schemaNote {
-  display: inline-block;
-  padding: 0.25rem 0.5rem;
-  background: rgba(255, 165, 0, 0.1);
-  border: 1px solid rgba(255, 165, 0, 0.3);
-  border-radius: var(--radius-sm);
-  font-size: 0.7rem;
-  font-family: var(--font-mono);
-  color: var(--color-warning);
-}
-
 .outputSection {
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--color-border);
-}
-
-/* API Attempts */
-.attempt {
-  margin-bottom: 1rem;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  max-width: 100%;
-}
-
-.attemptHeader {
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  background: var(--color-surface-elevated);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.attemptNumber {
-  font-weight: 500;
-  font-size: 0.8rem;
-}
-
-.attemptSuccess {
-  font-size: 0.7rem;
-  color: var(--color-accent);
-  text-transform: uppercase;
-}
-
-.attemptFailed {
-  font-size: 0.7rem;
-  color: var(--color-error);
-  text-transform: uppercase;
-}
-
-.attemptTime {
-  font-size: 0.7rem;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-}
-
-.attemptTokens {
-  font-size: 0.7rem;
-  color: var(--color-text-dim);
-  font-family: var(--font-mono);
-  margin-left: auto;
-}
-
-.promptSection {
-  border-bottom: 1px solid var(--color-border);
-  overflow: hidden;
-}
-
-.promptSection:last-child {
-  border-bottom: none;
-}
-
-.promptLabel {
-  padding: 0.4rem 0.75rem;
-  font-size: 0.7rem;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  background: rgba(0, 0, 0, 0.2);
 }
 
 .prompt {

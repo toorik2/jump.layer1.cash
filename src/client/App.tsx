@@ -33,12 +33,6 @@ export default function App() {
   const [phaseStartTimes, setPhaseStartTimes] = createSignal<{[key: number]: number}>({});
   const [connectorProgress, setConnectorProgress] = createSignal<{[key: number]: number}>({});
 
-  const escapeHtml = (text: string): string => {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  };
-
   // All contracts (validated + pending) for tab display
   const allContracts = createMemo((): DisplayContract[] => {
     const validated = store.contracts();
@@ -175,17 +169,10 @@ export default function App() {
         contractsToHighlight.forEach(c => highlightingInProgress.add(c.id));
 
         for (const contract of contractsToHighlight) {
-          let html: string;
-          try {
-            html = await codeToHtml(contract.code, {
-              lang: 'javascript',
-              theme: 'dark-plus'
-            });
-          } catch (error) {
-            console.error('[Jump] Shiki highlighting failed:', contract.id, error);
-            html = `<pre class="shiki" style="background-color:#1e1e1e;color:#d4d4d4"><code>${escapeHtml(contract.code)}</code></pre>`;
-          }
-
+          const html = await codeToHtml(contract.code, {
+            lang: 'javascript',
+            theme: 'dark-plus'
+          });
           setContractHighlightedHTML(prev => ({ ...prev, [contract.id]: html }));
           highlightingInProgress.delete(contract.id);
         }
@@ -440,9 +427,6 @@ export default function App() {
                   retryAttempt={store.retryAttempt}
                   loading={store.loading}
                   hasIncrementalData={hasIncrementalData()}
-                  validatedContracts={store.contracts}
-                  mainCopyStatus={copyStatus}
-                  onMainCopy={copyToClipboard}
                 />
               </Show>
             </Show>

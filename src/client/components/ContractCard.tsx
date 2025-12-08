@@ -1,6 +1,6 @@
 import { Show } from 'solid-js';
 import type { Accessor } from 'solid-js';
-import type { DisplayContract, ContractInfo } from '../types';
+import type { DisplayContract } from '../types';
 import CopyButton from './CopyButton';
 import styles from './ContractCard.module.css';
 
@@ -16,9 +16,6 @@ type Props = {
   retryAttempt: Accessor<number>;
   loading: Accessor<boolean>;
   hasIncrementalData: boolean;
-  validatedContracts: Accessor<ContractInfo[]>;
-  mainCopyStatus: Accessor<'idle' | 'copied' | 'error'>;
-  onMainCopy: (code: string) => void;
 };
 
 export default function ContractCard(props: Props) {
@@ -132,19 +129,6 @@ export default function ContractCard(props: Props) {
               <div class={`${styles.skeletonLine} ${styles.w90}`}></div>
               <div class={`${styles.skeletonLine} ${styles.w55}`}></div>
             </div>
-          </div>
-        </div>
-      </Show>
-
-      {/* Single contract fallback */}
-      <Show when={!props.isOriginal() && !props.contract && !(props.loading() && !props.hasIncrementalData) && props.validatedContracts()[0]}>
-        <div class={styles.card}>
-          <div class={styles.codeContainer}>
-            <div class={styles.codeBlock} innerHTML={props.contractHTML()[props.validatedContracts()[0].id]} />
-            <CopyButton
-              status={props.mainCopyStatus()}
-              onClick={() => props.onMainCopy(props.validatedContracts()[0].code)}
-            />
           </div>
         </div>
       </Show>

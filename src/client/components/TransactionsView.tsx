@@ -77,11 +77,24 @@ export default function TransactionsView(props: Props) {
                     <h3 class={styles.name}>{tx.name}</h3>
                     <p class={styles.description}>{tx.description}</p>
                   </div>
-                  <Show when={(tx.participatingContracts || []).length > 0}>
-                    <div class={styles.headerRight}>
-                      <span class={styles.badge}>{(tx.participatingContracts || []).join(' · ')}</span>
-                    </div>
-                  </Show>
+                  {(() => {
+                    // Derive contracts from inputs/outputs instead of relying on AI-provided participatingContracts
+                    const contracts = new Set<string>();
+                    for (const input of tx.inputs || []) {
+                      if (isContractName(input.from)) contracts.add(input.from!);
+                    }
+                    for (const output of tx.outputs || []) {
+                      if (isContractName(output.to)) contracts.add(output.to!);
+                    }
+                    const contractList = [...contracts];
+                    return (
+                      <Show when={contractList.length > 0}>
+                        <div class={styles.headerRight}>
+                          <span class={styles.badge}>{contractList.join(' · ')}</span>
+                        </div>
+                      </Show>
+                    );
+                  })()}
                 </div>
 
                 <div class={styles.flow}>

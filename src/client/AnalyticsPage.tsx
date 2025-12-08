@@ -371,15 +371,7 @@ export default function AnalyticsPage() {
                                       </Section>
                                       <Show when={phase3Attempt!.response_json}>
                                         <Section title="Response">
-                                          <pre class={styles.json}>{
-                                            (() => {
-                                              try {
-                                                return JSON.stringify(JSON.parse(phase3Attempt!.response_json), null, 2);
-                                              } catch {
-                                                return phase3Attempt!.response_json;
-                                              }
-                                            })()
-                                          }</pre>
+                                          <pre class={styles.json}>{JSON.stringify(JSON.parse(phase3Attempt!.response_json), null, 2)}</pre>
                                         </Section>
                                       </Show>
                                     </Show>
@@ -435,15 +427,7 @@ export default function AnalyticsPage() {
                                             </Section>
                                             <Show when={attempt.response_json}>
                                               <Section title="Response">
-                                                <pre class={styles.json}>{
-                                                  (() => {
-                                                    try {
-                                                      return JSON.stringify(JSON.parse(attempt.response_json), null, 2);
-                                                    } catch {
-                                                      return attempt.response_json;
-                                                    }
-                                                  })()
-                                                }</pre>
+                                                <pre class={styles.json}>{JSON.stringify(JSON.parse(attempt.response_json), null, 2)}</pre>
                                               </Section>
                                             </Show>
                                           </Section>

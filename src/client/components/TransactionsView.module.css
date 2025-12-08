@@ -255,38 +255,6 @@
   line-height: 1.4;
 }
 
-.slotChanges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-top: 0.5rem;
-}
-
-.changeBadge {
-  font-size: 0.625rem;
-  padding: 0.125rem 0.375rem;
-  border-radius: 3px;
-  font-weight: 500;
-}
-
-.changeBadgeUnchanged {
-  composes: changeBadge;
-  background: rgba(139, 148, 158, 0.15);
-  color: var(--color-text-dim);
-}
-
-.changeBadgeUpdated {
-  composes: changeBadge;
-  background: rgba(57, 255, 20, 0.15);
-  color: var(--color-accent);
-}
-
-.changeBadgeDerived {
-  composes: changeBadge;
-  background: rgba(88, 166, 255, 0.15);
-  color: var(--color-info);
-}
-
 /* Flow Description */
 .flowDescription {
   border-top: 1px solid var(--color-border);
