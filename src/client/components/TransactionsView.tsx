@@ -36,12 +36,6 @@ export default function TransactionsView(props: Props) {
     return styles.slotType;
   };
 
-  const getChangeBadgeClass = (changeType: string) => {
-    if (changeType === 'updated') return styles.changeBadgeUpdated;
-    if (changeType === 'derived') return styles.changeBadgeDerived;
-    return styles.changeBadgeUnchanged;
-  };
-
   return (
     <div class={styles.view}>
       <Show when={props.transactions().length === 0 && props.loading()}>
@@ -127,15 +121,9 @@ export default function TransactionsView(props: Props) {
                               </Show>
                             </div>
                             <div class={styles.slotDescription}>{output.description}</div>
-                            <Show when={output.changes && output.changes.length > 0}>
+                            <Show when={output.changes}>
                               <div class={styles.slotChanges}>
-                                <For each={output.changes}>
-                                  {(change) => (
-                                    <span class={getChangeBadgeClass(change.changeType)}>
-                                      {change.field}: {change.changeType}
-                                    </span>
-                                  )}
-                                </For>
+                                <span class={styles.changeBadge}>{output.changes}</span>
                               </div>
                             </Show>
                           </div>

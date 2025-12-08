@@ -10,13 +10,11 @@ import {
   logConversionStart,
   logConversionComplete,
 } from '../services/logging.js';
-import {
-  executeDomainExtraction,
-  executeArchitectureDesign,
-  applyNameMappingToTemplates,
-  type ContractInfo,
-} from '../phases/index.js';
-import { ValidationOrchestrator } from '../phases/validation-orchestrator.js';
+import * as phase1 from '../phases/phase1/index.js';
+import * as phase2 from '../phases/phase2/index.js';
+import * as phase3 from '../phases/phase3/index.js';
+import * as phase4 from '../phases/phase4/index.js';
+import { applyNameMappingToTemplates, type ContractInfo } from '../phases/phase4/index.js';
 
 type SSEWriter = {
   sendEvent: (event: string, data: any) => void;
@@ -68,9 +66,8 @@ function persistContracts(conversionId: number, contracts: ContractInfo[], faile
     insertContract({
       conversion_id: conversionId,
       contract_uuid: generateUUID(),
-      produced_by_attempt: 1,
       name: contract.name,
-      role: contract.role,
+      role: contract.role as 'primary' | 'helper' | 'state' | undefined,
       purpose: contract.purpose,
       cashscript_code: contract.code,
       code_hash: generateHash(contract.code),
@@ -90,7 +87,7 @@ export async function handleConversion(
   req: RequestWithMetadata,
   res: Response,
   anthropic: Anthropic,
-  systemPrompt: string
+  knowledgeBase: string
 ): Promise<void> {
   const startTime = Date.now();
   let conversionId: number | undefined;
@@ -121,9 +118,8 @@ export async function handleConversion(
 
     if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
-    const phase1Result = await executeDomainExtraction(anthropic, conversionId, contract);
+    const phase1Result = await phase1.execute(anthropic, conversionId, contract);
     const domainModel = phase1Result.domainModel;
-    const domainModelJSON = JSON.stringify(domainModel, null, 2);
 
     sse.sendEvent('phase1_complete', {
       message: 'Domain extraction complete',
@@ -137,9 +133,8 @@ export async function handleConversion(
 
     if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
-    const phase2Result = await executeArchitectureDesign(anthropic, conversionId, domainModel);
+    const phase2Result = await phase2.execute(anthropic, conversionId, domainModel);
     const utxoArchitecture = phase2Result.architecture;
-    const utxoArchitectureJSON = JSON.stringify(utxoArchitecture, null, 2);
 
     const contractCount = utxoArchitecture.contracts?.length || 0;
     const patternNames = utxoArchitecture.patterns?.map(p => p?.name || 'unnamed') || [];
@@ -165,26 +160,37 @@ export async function handleConversion(
       });
     }
 
-    // PHASE 3 & 4: Code Generation with Validation
+    // PHASE 3: Code Generation
     sse.sendEvent('phase3_start', { message: 'Generating CashScript...' });
 
     if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
-    const orchestrator = new ValidationOrchestrator(anthropic, systemPrompt, conversionId);
+    const phase3Result = await phase3.execute(
+      anthropic,
+      conversionId,
+      domainModel,
+      utxoArchitecture,
+      knowledgeBase
+    );
+    const contracts = phase3Result.contracts;
+
+    sse.sendEvent('phase3_complete', { message: 'Code generation complete' });
+
+    // PHASE 4: Validation + Fix Loop
+    sse.sendEvent('phase4_start', {
+      message: "Validating contracts... You'll be redirected to results as soon as we have something to show.",
+    });
+
+    if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
+
     let finalContracts: ContractInfo[] = [];
 
-    for await (const event of orchestrator.run(domainModelJSON, utxoArchitectureJSON)) {
+    for await (const event of phase4.execute(anthropic, contracts, knowledgeBase, conversionId)) {
       if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
       switch (event.type) {
-        case 'generation_complete':
-          sse.sendEvent('phase3_complete', { message: 'Code generation complete' });
-          break;
-
         case 'validation_start':
-          sse.sendEvent('phase4_start', {
-            message: "Validating contracts... You'll be redirected to results as soon as we have something to show.",
-          });
+          // Already sent phase4_start above
           break;
 
         case 'validation_progress':
@@ -198,7 +204,6 @@ export async function handleConversion(
           break;
 
         case 'contract_validated':
-          // Track all contracts (validated or not) for potential failure persistence
           allContracts.set(event.contract.name, event.contract);
           sse.sendEvent('contract_ready', {
             contract: event.contract,
@@ -208,7 +213,7 @@ export async function handleConversion(
           break;
 
         case 'retrying':
-          console.log(`[Orchestrator] Retry attempt ${event.attempt} for: ${event.failedNames.join(', ')}`);
+          console.log(`[Conversion] Retry attempt ${event.attempt} for: ${event.failedNames.join(', ')}`);
           sse.sendEvent('retrying', { attempt: event.attempt });
           break;
 
@@ -217,7 +222,6 @@ export async function handleConversion(
           break;
 
         case 'max_retries_exceeded':
-          // Persist failed contracts for debugging
           if (conversionId && allContracts.size > 0) {
             persistContracts(conversionId, Array.from(allContracts.values()), true);
             logConversionComplete(conversionId, startTime, 'failed');
@@ -271,7 +275,6 @@ export async function handleConversion(
     const errorMessage = error instanceof Error ? error.message : String(error);
 
     if (conversionId) {
-      // Persist any contracts collected before the error (for debugging)
       if (allContracts.size > 0) {
         persistContracts(conversionId, Array.from(allContracts.values()), true);
       }

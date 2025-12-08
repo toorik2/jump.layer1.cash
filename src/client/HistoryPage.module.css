@@ -288,6 +288,35 @@
   margin-bottom: 0.5rem;
 }
 
+.filePaths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.filePath {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: rgba(88, 166, 255, 0.1);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--color-info);
+}
+
+.schemaNote {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: rgba(255, 165, 0, 0.1);
+  border: 1px solid rgba(255, 165, 0, 0.3);
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  color: var(--color-warning);
+}
+
 .outputSection {
   margin-top: 1rem;
   padding-top: 1rem;

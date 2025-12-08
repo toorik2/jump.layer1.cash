@@ -31,6 +31,19 @@ interface ConversionDetail {
   api_attempts: any[];
 }
 
+interface PhasePromptInfo {
+  systemPromptPath: string;
+  schemaPath: string | null;
+  schema?: any;
+  schemaNote?: string;
+}
+
+interface PromptsMetadata {
+  phase1: PhasePromptInfo;
+  phase2: PhasePromptInfo;
+  phase3: PhasePromptInfo;
+}
+
 async function fetchStats(): Promise<ConversionStats> {
   const res = await fetch('/api/stats');
   if (!res.ok) throw new Error('Failed to fetch stats');
@@ -46,6 +59,12 @@ async function fetchConversions(offset: number): Promise<{ conversions: Conversi
 async function fetchConversionDetail(id: number): Promise<ConversionDetail> {
   const res = await fetch(`/api/conversions/${id}`);
   if (!res.ok) throw new Error('Failed to fetch conversion');
+  return res.json();
+}
+
+async function fetchPromptsMetadata(): Promise<PromptsMetadata> {
+  const res = await fetch('/api/prompts');
+  if (!res.ok) throw new Error('Failed to fetch prompts metadata');
   return res.json();
 }
 
@@ -82,6 +101,7 @@ export default function HistoryPage() {
 
   const [stats] = createResource(fetchStats);
   const [conversions] = createResource(offset, fetchConversions);
+  const [prompts] = createResource(fetchPromptsMetadata);
 
   async function toggleExpand(id: number) {
     if (expandedId() === id) {
@@ -200,11 +220,24 @@ export default function HistoryPage() {
                                     </Show>
                                   </Show>
                                 </div>
+                                <Show when={prompts()?.phase1}>
+                                  <div class={styles.filePaths}>
+                                    <span class={styles.filePath}>{prompts()!.phase1.systemPromptPath}</span>
+                                    <Show when={prompts()!.phase1.schemaPath}>
+                                      <span class={styles.filePath}>{prompts()!.phase1.schemaPath}</span>
+                                    </Show>
+                                  </div>
+                                </Show>
                                 <Show when={detail()?.semantic_analysis?.system_prompt}>
                                   <div class={styles.promptSection}>
                                     <div class={styles.promptLabel}>System Prompt</div>
                                     <pre class={styles.prompt}>{detail()!.semantic_analysis.system_prompt}</pre>
                                   </div>
+                                </Show>
+                                <Show when={prompts()?.phase1?.schema}>
+                                  <Section title="Output Schema (JSON Schema)">
+                                    <pre class={styles.json}>{JSON.stringify(prompts()!.phase1.schema, null, 2)}</pre>
+                                  </Section>
                                 </Show>
                                 <div class={styles.promptSection}>
                                   <div class={styles.promptLabel}>User Message</div>
@@ -236,11 +269,24 @@ export default function HistoryPage() {
                                     </Show>
                                   </Show>
                                 </div>
+                                <Show when={prompts()?.phase2}>
+                                  <div class={styles.filePaths}>
+                                    <span class={styles.filePath}>{prompts()!.phase2.systemPromptPath}</span>
+                                    <Show when={prompts()!.phase2.schemaPath}>
+                                      <span class={styles.filePath}>{prompts()!.phase2.schemaPath}</span>
+                                    </Show>
+                                  </div>
+                                </Show>
                                 <Show when={detail()?.utxo_architecture?.system_prompt}>
                                   <div class={styles.promptSection}>
                                     <div class={styles.promptLabel}>System Prompt</div>
                                     <pre class={styles.prompt}>{detail()!.utxo_architecture.system_prompt}</pre>
                                   </div>
+                                </Show>
+                                <Show when={prompts()?.phase2?.schema}>
+                                  <Section title="Output Schema (JSON Schema)">
+                                    <pre class={styles.json}>{JSON.stringify(prompts()!.phase2.schema, null, 2)}</pre>
+                                  </Section>
                                 </Show>
                                 <div class={styles.promptSection}>
                                   <div class={styles.promptLabel}>User Message</div>
@@ -261,6 +307,14 @@ export default function HistoryPage() {
 
                               {/* Phase 3/4: Code Generation */}
                               <Section title={`Phase 3/4: Code Generation (${detail()?.api_attempts?.length || 0} attempts)`}>
+                                <Show when={prompts()?.phase3}>
+                                  <div class={styles.filePaths}>
+                                    <span class={styles.filePath}>{prompts()!.phase3.systemPromptPath}</span>
+                                    <Show when={prompts()!.phase3.schemaNote}>
+                                      <span class={styles.schemaNote}>{prompts()!.phase3.schemaNote}</span>
+                                    </Show>
+                                  </div>
+                                </Show>
                                 {/* Show system prompt once at top (same for all attempts) */}
                                 <Show when={detail()?.api_attempts?.[0]?.system_prompt}>
                                   <div class={styles.promptSection}>

@@ -1,0 +1,28 @@
+{
+  "type": "json_schema",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "contracts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "purpose": { "type": "string" },
+            "code": { "type": "string" },
+            "role": {
+              "type": "string",
+              "enum": ["primary", "helper", "state"]
+            }
+          },
+          "required": ["id", "name", "purpose", "code", "role"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["contracts"],
+    "additionalProperties": false
+  }
+}

@@ -116,8 +116,4 @@ Classify the contract into one of these domains based on its PRIMARY purpose:
 IMPORTANT: Choose the MOST SPECIFIC domain that applies.
 For example, a contract with "vote", "delegate", "ballot", "proposal" → domain: "voting"
 
-Output JSON matching this schema:
-
-```json
-{{SCHEMA}}
-```
+Output valid JSON following the structured output schema.

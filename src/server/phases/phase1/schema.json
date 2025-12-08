@@ -1,0 +1,180 @@
+{
+  "type": "json_schema",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "systemPurpose": {
+        "type": "string",
+        "description": "One-sentence summary of what this system does in business terms"
+      },
+      "domain": {
+        "type": "string",
+        "enum": ["voting", "token", "crowdfunding", "marketplace", "game", "defi", "governance", "other"],
+        "description": "Primary domain classification - choose the MOST SPECIFIC that applies"
+      },
+      "entities": {
+        "type": "array",
+        "description": "Things with identity and state that the contract manages",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Clear business name (e.g., 'Voter', 'Token', 'Proposal')"
+            },
+            "identity": {
+              "type": "string",
+              "description": "How this entity is uniquely identified (e.g., 'per-address', 'sequential', 'singleton')"
+            },
+            "mutable": {
+              "type": "boolean",
+              "description": "Can this entity's state change after creation?"
+            },
+            "lifecycle": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "States this entity can be in (e.g., ['created', 'active', 'closed'])"
+            },
+            "properties": {
+              "type": "array",
+              "description": "Data stored on this entity",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "type": { "type": "string", "description": "Business type (e.g., 'number', 'address', 'boolean', 'bytes')" },
+                  "description": { "type": "string" }
+                },
+                "required": ["name", "type", "description"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["name", "identity", "mutable", "lifecycle", "properties"],
+          "additionalProperties": false
+        }
+      },
+      "transitions": {
+        "type": "array",
+        "description": "Operations that MODIFY state (exclude view/query functions)",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Action name in verb-noun format (e.g., 'CastVote', 'TransferFunds')"
+            },
+            "description": {
+              "type": "string",
+              "description": "What happens in business terms"
+            },
+            "authorization": {
+              "type": "string",
+              "enum": ["identity", "possession", "role", "none"],
+              "description": "Who can trigger: identity=must BE someone, possession=must HAVE something, role=special capability, none=anyone"
+            },
+            "participants": {
+              "type": "array",
+              "description": "Entities involved in this transition",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "entity": { "type": "string", "description": "Name of the entity" },
+                  "role": { "type": "string", "description": "Role in this transition (e.g., 'sender', 'recipient', 'target')" },
+                  "changes": { "type": "string", "description": "What changes on this entity (optional)" }
+                },
+                "required": ["entity", "role"],
+                "additionalProperties": false
+              }
+            },
+            "effects": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "What changes when this transition executes"
+            },
+            "preconditions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "What must be true BEFORE this can execute"
+            },
+            "postconditions": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "What must be true AFTER this executes"
+            },
+            "timeConstraints": {
+              "type": "string",
+              "description": "Any deadlines or delays (use 'none' if not applicable)"
+            }
+          },
+          "required": ["name", "description", "authorization", "participants", "effects", "preconditions", "postconditions", "timeConstraints"],
+          "additionalProperties": false
+        }
+      },
+      "invariants": {
+        "type": "array",
+        "description": "Rules that must ALWAYS be true in this system",
+        "items": {
+          "type": "object",
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": ["global", "per-entity", "relationship"],
+              "description": "What this rule applies to"
+            },
+            "rule": {
+              "type": "string",
+              "description": "The constraint in plain language"
+            },
+            "severity": {
+              "type": "string",
+              "enum": ["critical", "important", "advisory"],
+              "description": "critical=security, important=logic, advisory=nice-to-have"
+            }
+          },
+          "required": ["scope", "rule", "severity"],
+          "additionalProperties": false
+        }
+      },
+      "relationships": {
+        "type": "array",
+        "description": "How entities relate to each other",
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["owns", "references", "contains"],
+              "description": "Kind of relationship"
+            },
+            "from": { "type": "string", "description": "Source entity name" },
+            "to": { "type": "string", "description": "Target entity name" },
+            "description": { "type": "string", "description": "What this relationship means" }
+          },
+          "required": ["type", "from", "to", "description"],
+          "additionalProperties": false
+        }
+      },
+      "roles": {
+        "type": "array",
+        "description": "Special actors in the system (admins, oracles, etc.) - empty array if none",
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "description": "Role name (e.g., 'Chairperson', 'Admin')" },
+            "assignment": { "type": "string", "description": "How this role is assigned (e.g., 'set at creation', 'elected')" },
+            "capabilities": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "What this role can do (transition names)"
+            }
+          },
+          "required": ["name", "assignment", "capabilities"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["systemPurpose", "domain", "entities", "transitions", "invariants", "relationships", "roles"],
+    "additionalProperties": false
+  }
+}

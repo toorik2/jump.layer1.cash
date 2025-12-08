@@ -67,13 +67,11 @@ function createTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       conversion_id INTEGER NOT NULL,
       contract_uuid TEXT NOT NULL UNIQUE,
-      produced_by_attempt INTEGER NOT NULL,
       name TEXT NOT NULL,
       role TEXT CHECK(role IN ('primary', 'helper', 'state')),
       purpose TEXT,
       cashscript_code TEXT NOT NULL,
       code_hash TEXT NOT NULL,
-      deployment_order INTEGER,
       bytecode_size INTEGER,
       line_count INTEGER,
       is_validated INTEGER NOT NULL DEFAULT 0,
@@ -82,35 +80,23 @@ function createTables() {
     )
   `);
 
-  // Add validation_error column if missing (migration)
-  try {
-    db.exec(`ALTER TABLE contracts ADD COLUMN validation_error TEXT`);
-  } catch { /* column already exists */ }
+  // Migrations - add columns if missing, fail loud on unexpected errors
+  const migrations = [
+    { table: 'contracts', column: 'validation_error', type: 'TEXT' },
+    { table: 'semantic_analyses', column: 'user_prompt', type: 'TEXT' },
+    { table: 'utxo_architectures', column: 'user_prompt', type: 'TEXT' },
+    { table: 'semantic_analyses', column: 'system_prompt', type: 'TEXT' },
+    { table: 'utxo_architectures', column: 'system_prompt', type: 'TEXT' },
+    { table: 'api_attempts', column: 'system_prompt', type: 'TEXT' },
+  ];
 
-  // Add user_prompt column to semantic_analyses (migration)
-  try {
-    db.exec(`ALTER TABLE semantic_analyses ADD COLUMN user_prompt TEXT`);
-  } catch { /* column already exists */ }
-
-  // Add user_prompt column to utxo_architectures (migration)
-  try {
-    db.exec(`ALTER TABLE utxo_architectures ADD COLUMN user_prompt TEXT`);
-  } catch { /* column already exists */ }
-
-  // Add system_prompt column to semantic_analyses (migration)
-  try {
-    db.exec(`ALTER TABLE semantic_analyses ADD COLUMN system_prompt TEXT`);
-  } catch { /* column already exists */ }
-
-  // Add system_prompt column to utxo_architectures (migration)
-  try {
-    db.exec(`ALTER TABLE utxo_architectures ADD COLUMN system_prompt TEXT`);
-  } catch { /* column already exists */ }
-
-  // Add system_prompt column to api_attempts (migration)
-  try {
-    db.exec(`ALTER TABLE api_attempts ADD COLUMN system_prompt TEXT`);
-  } catch { /* column already exists */ }
+  for (const { table, column, type } of migrations) {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    } catch (e: any) {
+      if (!e.message?.includes('duplicate column')) throw e;
+    }
+  }
 
   // SEMANTIC_ANALYSES - Phase 1 semantic extraction results
   db.exec(`
@@ -262,13 +248,11 @@ interface ContractRecord {
   id?: number;
   conversion_id: number;
   contract_uuid: string;
-  produced_by_attempt: number;
   name: string;
   role?: 'primary' | 'helper' | 'state';
   purpose?: string;
   cashscript_code: string;
   code_hash: string;
-  deployment_order?: number;
   bytecode_size?: number;
   line_count?: number;
   is_validated: boolean;
@@ -278,21 +262,19 @@ interface ContractRecord {
 export function insertContract(record: Omit<ContractRecord, 'id'>): number {
   const stmt = db.prepare(`
     INSERT INTO contracts (
-      conversion_id, contract_uuid, produced_by_attempt, name, role, purpose,
-      cashscript_code, code_hash, deployment_order, bytecode_size, line_count, is_validated, validation_error
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      conversion_id, contract_uuid, name, role, purpose,
+      cashscript_code, code_hash, bytecode_size, line_count, is_validated, validation_error
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
     record.conversion_id,
     record.contract_uuid,
-    record.produced_by_attempt,
     record.name,
     record.role || null,
     record.purpose || null,
     record.cashscript_code,
     record.code_hash,
-    record.deployment_order || null,
     record.bytecode_size || null,
     record.line_count || null,
     record.is_validated ? 1 : 0,

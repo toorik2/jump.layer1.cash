@@ -6,19 +6,19 @@ import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { UTXO_ARCHITECTURE_PROMPT } from '../prompts/conversion-prompts.js';
-import { ANTHROPIC_CONFIG } from '../config.js';
-import { insertUtxoArchitecture } from '../database.js';
-import type { DomainModel } from '../types/domain-model.js';
-import type { UTXOArchitecture } from '../types/utxo-architecture.js';
+import { ANTHROPIC_CONFIG } from '../../config.js';
+import { insertUtxoArchitecture } from '../../database.js';
+import type { DomainModel } from '../../types/domain-model.js';
+import type { UTXOArchitecture } from '../../types/utxo-architecture.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load JSON Schema from file (single source of truth)
-export const phase2OutputSchema = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../prompts/phase2-schema.json'), 'utf-8')
-);
+// Load and process prompt with schema embedded
+const promptTemplate = fs.readFileSync(path.join(__dirname, 'prompt.md'), 'utf-8');
+const outputSchema = JSON.parse(fs.readFileSync(path.join(__dirname, 'schema.json'), 'utf-8'));
+const schemaForPrompt = JSON.stringify(outputSchema.schema, null, 2);
+const systemPrompt = promptTemplate.replace('{{SCHEMA}}', schemaForPrompt);
 
 export interface Phase2Result {
   architecture: UTXOArchitecture;
@@ -27,7 +27,7 @@ export interface Phase2Result {
   outputTokens: number;
 }
 
-export async function executeArchitectureDesign(
+export async function execute(
   anthropic: Anthropic,
   conversionId: number,
   domainModel: DomainModel
@@ -43,11 +43,11 @@ ${JSON.stringify(domainModel, null, 2)}
 Design the UTXO architecture following the patterns and prime directives in the system prompt.`;
 
   const response = await anthropic.beta.messages.create({
-    model: ANTHROPIC_CONFIG.phase1.model, // Use same model as phase 1
-    max_tokens: 16384, // Architecture design needs more tokens
+    model: ANTHROPIC_CONFIG.phase2.model,
+    max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
     betas: [...ANTHROPIC_CONFIG.betas],
-    output_format: phase2OutputSchema,
-    system: UTXO_ARCHITECTURE_PROMPT,
+    output_format: outputSchema,
+    system: systemPrompt,
     messages: [{
       role: 'user',
       content: userMessage
@@ -82,12 +82,12 @@ Design the UTXO architecture following the patterns and prime directives in the 
     conversion_id: conversionId,
     architecture_json: responseText,
     created_at: new Date().toISOString(),
-    model_used: ANTHROPIC_CONFIG.phase1.model,
+    model_used: ANTHROPIC_CONFIG.phase2.model,
     input_tokens: response.usage.input_tokens,
     output_tokens: response.usage.output_tokens,
     response_time_ms: duration,
     user_prompt: userMessage,
-    system_prompt: UTXO_ARCHITECTURE_PROMPT
+    system_prompt: systemPrompt
   });
 
   return {

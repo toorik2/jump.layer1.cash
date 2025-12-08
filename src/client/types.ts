@@ -23,13 +23,14 @@ export type TransactionOutput = {
   to: string;
   type?: string;
   description: string;
-  changes?: Array<{ field: string; changeType: string; description: string }>;
+  changes?: string;
   required: boolean;
 };
 
 export type Transaction = {
   name: string;
   description: string;
+  purpose?: string;
   inputs: TransactionInput[];
   outputs: TransactionOutput[];
   participatingContracts?: string[];

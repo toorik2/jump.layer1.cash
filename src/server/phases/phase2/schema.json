@@ -5,13 +5,12 @@
     "properties": {
       "valueFlows": {
         "type": "array",
-        "description": "How BCH and tokens move through the system",
         "items": {
           "type": "object",
           "properties": {
-            "asset": { "type": "string", "description": "BCH or token name" },
-            "path": { "type": "string", "description": "Flow path like 'User -> LoanContract -> StabilityPool'" },
-            "trigger": { "type": "string", "description": "What triggers this flow" }
+            "asset": { "type": "string" },
+            "path": { "type": "string" },
+            "trigger": { "type": "string" }
           },
           "required": ["asset", "path", "trigger"],
           "additionalProperties": false
@@ -37,9 +36,8 @@
           "properties": {
             "entity": { "type": "string" },
             "custody": { "type": "string" },
-            "contractName": { "type": "string", "description": "Required if custody=contract" },
-            "rationale": { "type": "string" },
-            "ownerFieldInCommitment": { "type": "string", "description": "How owner is tracked if contract custody" }
+            "contractName": { "type": "string" },
+            "rationale": { "type": "string" }
           },
           "required": ["entity", "custody", "rationale"],
           "additionalProperties": false
@@ -52,8 +50,7 @@
           "properties": {
             "id": { "type": "string" },
             "purpose": { "type": "string" },
-            "capability": { "type": "string" },
-            "typeDiscriminator": { "type": "string", "description": "First-byte mapping to contract types, format: '0x01=TypeA, 0x02=TypeB'" }
+            "capability": { "type": "string" }
           },
           "required": ["id", "purpose", "capability"],
           "additionalProperties": false
@@ -64,21 +61,11 @@
         "items": {
           "type": "object",
           "properties": {
-            "name": { "type": "string", "description": "Must end with 'Contract'" },
+            "name": { "type": "string" },
             "role": { "type": "string" },
             "lifecycle": { "type": "string" },
-            "tokenCategory": { "type": "string" },
-            "capability": { "type": "string" },
-            "typeIdentifier": { "type": "string", "description": "First byte of commitment for type discrimination" },
-            "validates": { "type": "string", "description": "CONCRETE validation rules - if none, DO NOT include this contract" },
-            "sidecar": { "type": "string", "description": "For role=container: name of sidecar contract" },
-            "delegatesTo": { "type": "array", "items": { "type": "string" }, "description": "For role=container: function contracts it delegates to" },
-            "attachedTo": { "type": "string", "description": "For role=sidecar: container it's attached to" },
-            "indexOffset": { "type": "integer", "description": "For role=sidecar: output index offset from container" },
-            "functionId": { "type": "string", "description": "For role=function: byte identifier" },
-            "inputIndex": { "type": "integer", "description": "For role=function: expected input index" },
-            "mintingProtection": { "type": "string", "description": "For contracts with minting NFTs" },
-            "stateLayout": { "type": "string", "description": "State fields layout (max 128 bytes)" }
+            "validates": { "type": "string" },
+            "stateLayout": { "type": "string" }
           },
           "required": ["name", "role", "lifecycle", "validates"],
           "additionalProperties": false
@@ -97,11 +84,12 @@
                 "type": "object",
                 "properties": {
                   "index": { "type": "integer" },
-                  "contract": { "type": "string", "description": "Contract name or omit for P2PKH" },
-                  "from": { "type": "string", "description": "Use 'P2PKH' or 'User' for user inputs" },
-                  "type": { "type": "string" }
+                  "from": { "type": "string" },
+                  "type": { "type": "string" },
+                  "description": { "type": "string" },
+                  "required": { "type": "boolean" }
                 },
-                "required": ["index", "type"],
+                "required": ["index", "from", "type", "description", "required"],
                 "additionalProperties": false
               }
             },
@@ -111,12 +99,13 @@
                 "type": "object",
                 "properties": {
                   "index": { "type": "integer" },
-                  "contract": { "type": "string", "description": "Contract name or omit for P2PKH" },
-                  "to": { "type": "string", "description": "Use 'P2PKH' or 'User' for user outputs" },
+                  "to": { "type": "string" },
                   "type": { "type": "string" },
-                  "stateChanges": { "type": "string", "description": "Which state fields change, comma-separated" }
+                  "description": { "type": "string" },
+                  "changes": { "type": "string" },
+                  "required": { "type": "boolean" }
                 },
-                "required": ["index", "type"],
+                "required": ["index", "to", "type", "description", "required"],
                 "additionalProperties": false
               }
             }

@@ -6,18 +6,16 @@ import Anthropic from '@anthropic-ai/sdk';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { DOMAIN_EXTRACTION_PROMPT } from '../prompts/conversion-prompts.js';
-import { ANTHROPIC_CONFIG } from '../config.js';
-import { insertSemanticAnalysis } from '../database.js';
-import type { DomainModel } from '../types/domain-model.js';
+import { ANTHROPIC_CONFIG } from '../../config.js';
+import { insertSemanticAnalysis } from '../../database.js';
+import type { DomainModel } from '../../types/domain-model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load JSON Schema from file (single source of truth)
-export const phase1OutputSchema = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '../prompts/phase1-schema.json'), 'utf-8')
-);
+// Load prompt and schema from co-located files
+const systemPrompt = fs.readFileSync(path.join(__dirname, 'prompt.md'), 'utf-8');
+const outputSchema = JSON.parse(fs.readFileSync(path.join(__dirname, 'schema.json'), 'utf-8'));
 
 export interface Phase1Result {
   domainModel: DomainModel;
@@ -26,7 +24,7 @@ export interface Phase1Result {
   outputTokens: number;
 }
 
-export async function executeDomainExtraction(
+export async function execute(
   anthropic: Anthropic,
   conversionId: number,
   solidityContract: string
@@ -40,8 +38,8 @@ export async function executeDomainExtraction(
     model: ANTHROPIC_CONFIG.phase1.model,
     max_tokens: ANTHROPIC_CONFIG.phase1.maxTokens,
     betas: [...ANTHROPIC_CONFIG.betas],
-    output_format: phase1OutputSchema,
-    system: DOMAIN_EXTRACTION_PROMPT,
+    output_format: outputSchema,
+    system: systemPrompt,
     messages: [{
       role: 'user',
       content: userPrompt
@@ -77,7 +75,7 @@ export async function executeDomainExtraction(
     output_tokens: response.usage.output_tokens,
     response_time_ms: duration,
     user_prompt: userPrompt,
-    system_prompt: DOMAIN_EXTRACTION_PROMPT
+    system_prompt: systemPrompt
   });
 
   console.log('[Phase 1] Domain extraction complete:', {

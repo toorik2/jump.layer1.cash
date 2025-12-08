@@ -7,13 +7,16 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import Anthropic from '@anthropic-ai/sdk';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 import { initializeDatabase, closeDatabase, getConversions, getConversionById, getConversionStats } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import { ANTHROPIC_CONFIG, SERVER_CONFIG } from './config.js';
 import { handleConversion } from './handlers/convert.js';
-import { buildCodeGenerationPrompt } from './prompts/code-generation-prompt.js';
 
 const app = express();
 app.use(express.json({ limit: '50kb' }));
@@ -26,7 +29,6 @@ const anthropic = new Anthropic({
 });
 
 let knowledgeBase = '';
-let systemPrompt = '';
 let activeConversions = 0;
 
 // Middleware to restrict access to localhost only
@@ -60,8 +62,6 @@ When multiple contracts participate in the SAME transaction, EACH contract's scr
 ${multiContractPatterns}`;
 
   console.log(`[Server] Knowledge base loaded: ${knowledgeBase.length} characters`);
-
-  systemPrompt = buildCodeGenerationPrompt(knowledgeBase);
 }
 
 // Conversion endpoint
@@ -75,7 +75,7 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
 
   activeConversions++;
   try {
-    await handleConversion(req, res, anthropic, systemPrompt);
+    await handleConversion(req, res, anthropic, knowledgeBase);
   } finally {
     activeConversions--;
   }
@@ -104,6 +104,32 @@ app.get('/api/stats', localhostOnly, (_req, res) => {
   res.json(getConversionStats());
 });
 
+// Prompts metadata endpoint
+app.get('/api/prompts', localhostOnly, async (_req, res) => {
+  const promptsDir = join(__dirname, 'prompts');
+  const [phase1Schema, phase2Schema] = await Promise.all([
+    readFile(join(promptsDir, 'phase1-schema.json'), 'utf-8'),
+    readFile(join(promptsDir, 'phase2-schema.json'), 'utf-8')
+  ]);
+  res.json({
+    phase1: {
+      systemPromptPath: 'src/server/prompts/phase1-domain-extraction.md',
+      schemaPath: 'src/server/prompts/phase1-schema.json',
+      schema: JSON.parse(phase1Schema)
+    },
+    phase2: {
+      systemPromptPath: 'src/server/prompts/phase2-utxo-architecture.md',
+      schemaPath: 'src/server/prompts/phase2-schema.json',
+      schema: JSON.parse(phase2Schema)
+    },
+    phase3: {
+      systemPromptPath: 'src/server/prompts/code-generation-prompt.ts',
+      schemaPath: null,
+      schemaNote: 'Phase 3 uses inline JSON schema in prompt (contracts array)'
+    }
+  });
+});
+
 // History page (localhost only)
 app.get('/history', localhostOnly, (_req, res) => {
   res.sendFile(join(process.cwd(), 'dist', 'history.html'));
@@ -124,23 +150,17 @@ init().then(() => {
   server.keepAliveTimeout = SERVER_CONFIG.keepAliveTimeout;
   server.headersTimeout = SERVER_CONFIG.headersTimeout;
 
-  process.on('SIGTERM', () => {
-    console.log('[Server] SIGTERM received, shutting down gracefully...');
+  const shutdown = (signal: string) => {
+    console.log(`[Server] ${signal} received, shutting down gracefully...`);
     server.close(() => {
       console.log('[Server] HTTP server closed');
       closeDatabase();
       process.exit(0);
     });
-  });
+  };
 
-  process.on('SIGINT', () => {
-    console.log('[Server] SIGINT received, shutting down gracefully...');
-    server.close(() => {
-      console.log('[Server] HTTP server closed');
-      closeDatabase();
-      process.exit(0);
-    });
-  });
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }).catch((error) => {
   console.error('[FATAL] Server initialization failed:', error);
   process.exit(1);
