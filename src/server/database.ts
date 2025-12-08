@@ -80,24 +80,6 @@ function createTables() {
     )
   `);
 
-  // Migrations - add columns if missing, fail loud on unexpected errors
-  const migrations = [
-    { table: 'contracts', column: 'validation_error', type: 'TEXT' },
-    { table: 'semantic_analyses', column: 'user_prompt', type: 'TEXT' },
-    { table: 'utxo_architectures', column: 'user_prompt', type: 'TEXT' },
-    { table: 'semantic_analyses', column: 'system_prompt', type: 'TEXT' },
-    { table: 'utxo_architectures', column: 'system_prompt', type: 'TEXT' },
-    { table: 'api_attempts', column: 'system_prompt', type: 'TEXT' },
-  ];
-
-  for (const { table, column, type } of migrations) {
-    try {
-      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-    } catch (e: any) {
-      if (!e.message?.includes('duplicate column')) throw e;
-    }
-  }
-
   // SEMANTIC_ANALYSES - Phase 1 semantic extraction results
   db.exec(`
     CREATE TABLE IF NOT EXISTS semantic_analyses (
@@ -142,6 +124,24 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_semantic_conversion ON semantic_analyses(conversion_id);
     CREATE INDEX IF NOT EXISTS idx_architecture_conversion ON utxo_architectures(conversion_id);
   `);
+
+  // Migrations - add columns if missing, fail loud on unexpected errors
+  const migrations = [
+    { table: 'contracts', column: 'validation_error', type: 'TEXT' },
+    { table: 'semantic_analyses', column: 'user_prompt', type: 'TEXT' },
+    { table: 'utxo_architectures', column: 'user_prompt', type: 'TEXT' },
+    { table: 'semantic_analyses', column: 'system_prompt', type: 'TEXT' },
+    { table: 'utxo_architectures', column: 'system_prompt', type: 'TEXT' },
+    { table: 'api_attempts', column: 'system_prompt', type: 'TEXT' },
+  ];
+
+  for (const { table, column, type } of migrations) {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    } catch (e: any) {
+      if (!e.message?.includes('duplicate column')) throw e;
+    }
+  }
 }
 
 // ============================================================================
