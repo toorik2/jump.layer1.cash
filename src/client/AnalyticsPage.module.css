@@ -35,8 +35,8 @@
 /* Stats Grid */
 .statsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.75rem;
   margin-bottom: 2rem;
 }
 
@@ -44,12 +44,12 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  padding: 1rem;
+  padding: 0.75rem 0.5rem;
   text-align: center;
 }
 
 .statValue {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 600;
   color: var(--color-text);
   font-family: var(--font-mono);
@@ -436,4 +436,37 @@
 .pagination span {
   font-size: 0.875rem;
   color: var(--color-text-muted);
+}
+
+/* Visitor Analytics */
+.topVisitors,
+.dailyStats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.visitorRow,
+.dailyRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.visitorRow:last-child,
+.dailyRow:last-child {
+  border-bottom: none;
+}
+
+.visitorIp,
+.dailyDate {
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+.visitorCount,
+.dailyCount {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
 }

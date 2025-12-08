@@ -24,3 +24,6 @@ Web application that converts EVM smart contracts to CashScript.
 - `src/client/` - Frontend (SolidJS)
 - `src/server/` - Backend (Express)
 - `BCH_knowledge_base/` - CashScript reference docs
+
+## Development
+6. **Use production server only.** Run `npm run server` (port 3001). Never use `npm run dev` (port 3002).

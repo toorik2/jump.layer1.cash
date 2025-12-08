@@ -22,7 +22,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        history: resolve(__dirname, 'history.html')
+        analytics: resolve(__dirname, 'analytics.html')
       }
     }
   }

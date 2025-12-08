@@ -144,7 +144,7 @@ function getCodeContext(code: string, errorLine: number): string {
     context += `${prefix}Line ${i}: ${lineContent}\n`;
   }
 
-  return context.trim();
+  return context.trimEnd();
 }
 
 function enhanceErrorMessage(error: string, code: string): string {

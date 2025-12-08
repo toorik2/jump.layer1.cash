@@ -4,7 +4,7 @@
  */
 
 export function buildCodeGenerationPrompt(knowledgeBase: string): string {
-  return `You are a CashScript expert. Convert EVM (Solidity) smart contracts to CashScript.
+  return `You are a CashScript expert. Create CashScript contracts based on the provided UTXO architecture.
 
 CashScript Language Reference:
 ${knowledgeBase}

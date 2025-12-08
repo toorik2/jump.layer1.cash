@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { initializeDatabase, closeDatabase, getConversions, getConversionById, getConversionStats } from './database.js';
+import { initializeDatabase, closeDatabase, getConversions, getConversionById, getConversionStats, getVisitorAnalytics } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import { ANTHROPIC_CONFIG, SERVER_CONFIG } from './config.js';
@@ -104,35 +104,49 @@ app.get('/api/stats', localhostOnly, (_req, res) => {
   res.json(getConversionStats());
 });
 
+app.get('/api/analytics', localhostOnly, (_req, res) => {
+  res.json({
+    stats: getConversionStats(),
+    visitors: getVisitorAnalytics()
+  });
+});
+
 // Prompts metadata endpoint
 app.get('/api/prompts', localhostOnly, async (_req, res) => {
-  const promptsDir = join(__dirname, 'prompts');
-  const [phase1Schema, phase2Schema] = await Promise.all([
-    readFile(join(promptsDir, 'phase1-schema.json'), 'utf-8'),
-    readFile(join(promptsDir, 'phase2-schema.json'), 'utf-8')
+  const phasesDir = join(__dirname, 'phases');
+  const [phase1Schema, phase2Schema, phase3Schema, phase4Schema] = await Promise.all([
+    readFile(join(phasesDir, 'phase1', 'schema.json'), 'utf-8'),
+    readFile(join(phasesDir, 'phase2', 'schema.json'), 'utf-8'),
+    readFile(join(phasesDir, 'phase3', 'schema.json'), 'utf-8'),
+    readFile(join(phasesDir, 'phase4', 'schema.json'), 'utf-8')
   ]);
   res.json({
     phase1: {
-      systemPromptPath: 'src/server/prompts/phase1-domain-extraction.md',
-      schemaPath: 'src/server/prompts/phase1-schema.json',
+      systemPromptPath: 'src/server/phases/phase1/prompt.ts',
+      schemaPath: 'src/server/phases/phase1/schema.json',
       schema: JSON.parse(phase1Schema)
     },
     phase2: {
-      systemPromptPath: 'src/server/prompts/phase2-utxo-architecture.md',
-      schemaPath: 'src/server/prompts/phase2-schema.json',
+      systemPromptPath: 'src/server/phases/phase2/prompt.ts',
+      schemaPath: 'src/server/phases/phase2/schema.json',
       schema: JSON.parse(phase2Schema)
     },
     phase3: {
-      systemPromptPath: 'src/server/prompts/code-generation-prompt.ts',
-      schemaPath: null,
-      schemaNote: 'Phase 3 uses inline JSON schema in prompt (contracts array)'
+      systemPromptPath: 'src/server/phases/phase3/prompt.ts',
+      schemaPath: 'src/server/phases/phase3/schema.json',
+      schema: JSON.parse(phase3Schema)
+    },
+    phase4: {
+      systemPromptPath: 'src/server/phases/phase4/prompt.ts',
+      schemaPath: 'src/server/phases/phase4/schema.json',
+      schema: JSON.parse(phase4Schema)
     }
   });
 });
 
-// History page (localhost only)
-app.get('/history', localhostOnly, (_req, res) => {
-  res.sendFile(join(process.cwd(), 'dist', 'history.html'));
+// Analytics page (localhost only)
+app.get('/analytics', localhostOnly, (_req, res) => {
+  res.sendFile(join(process.cwd(), 'dist', 'analytics.html'));
 });
 
 // SPA fallback

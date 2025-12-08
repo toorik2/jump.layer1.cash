@@ -27,6 +27,7 @@ function createTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id TEXT NOT NULL,
       ip_address TEXT,
+      user_agent TEXT,
       created_at TEXT NOT NULL,
       completed_at TEXT,
       duration_ms INTEGER,
@@ -133,6 +134,7 @@ function createTables() {
     { table: 'semantic_analyses', column: 'system_prompt', type: 'TEXT' },
     { table: 'utxo_architectures', column: 'system_prompt', type: 'TEXT' },
     { table: 'api_attempts', column: 'system_prompt', type: 'TEXT' },
+    { table: 'conversions', column: 'user_agent', type: 'TEXT' },
   ];
 
   for (const { table, column, type } of migrations) {
@@ -167,6 +169,7 @@ export interface ConversionRecord {
   id?: number;
   session_id: string;
   ip_address?: string;
+  user_agent?: string;
   created_at: string;
   completed_at?: string;
   duration_ms?: number;
@@ -181,15 +184,16 @@ export interface ConversionRecord {
 export function insertConversion(record: Omit<ConversionRecord, 'id'>): number {
   const stmt = db.prepare(`
     INSERT INTO conversions (
-      session_id, ip_address, created_at, completed_at, duration_ms,
+      session_id, ip_address, user_agent, created_at, completed_at, duration_ms,
       final_status, total_attempts, solidity_code, solidity_hash,
       is_multi_contract, contract_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
     record.session_id,
     record.ip_address || null,
+    record.user_agent || null,
     record.created_at,
     record.completed_at || null,
     record.duration_ms || null,
@@ -518,6 +522,51 @@ export function getConversionStats(): ConversionStats {
     avg_duration_ms: stats.avg_duration_ms || null,
     total_contracts: contractCount,
     conversions_today: todayCount
+  };
+}
+
+export interface VisitorAnalytics {
+  unique_ips: number;
+  unique_sessions: number;
+  top_visitors: { ip: string; count: number }[];
+  daily_conversions: { date: string; count: number }[];
+}
+
+export function getVisitorAnalytics(): VisitorAnalytics {
+  const uniqueIpsStmt = db.prepare(`
+    SELECT COUNT(DISTINCT ip_address) as count FROM conversions WHERE ip_address IS NOT NULL
+  `);
+  const uniqueIps = (uniqueIpsStmt.get() as { count: number }).count;
+
+  const uniqueSessionsStmt = db.prepare(`
+    SELECT COUNT(DISTINCT session_id) as count FROM conversions
+  `);
+  const uniqueSessions = (uniqueSessionsStmt.get() as { count: number }).count;
+
+  const topVisitorsStmt = db.prepare(`
+    SELECT ip_address as ip, COUNT(*) as count
+    FROM conversions
+    WHERE ip_address IS NOT NULL
+    GROUP BY ip_address
+    ORDER BY count DESC
+    LIMIT 10
+  `);
+  const topVisitors = topVisitorsStmt.all() as { ip: string; count: number }[];
+
+  const dailyStmt = db.prepare(`
+    SELECT date(created_at) as date, COUNT(*) as count
+    FROM conversions
+    WHERE created_at >= date('now', '-30 days')
+    GROUP BY date(created_at)
+    ORDER BY date DESC
+  `);
+  const dailyConversions = dailyStmt.all() as { date: string; count: number }[];
+
+  return {
+    unique_ips: uniqueIps,
+    unique_sessions: uniqueSessions,
+    top_visitors: topVisitors,
+    daily_conversions: dailyConversions
   };
 }
 

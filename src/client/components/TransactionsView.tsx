@@ -121,11 +121,6 @@ export default function TransactionsView(props: Props) {
                               </Show>
                             </div>
                             <div class={styles.slotDescription}>{output.description}</div>
-                            <Show when={output.changes}>
-                              <div class={styles.slotChanges}>
-                                <span class={styles.changeBadge}>{output.changes}</span>
-                              </div>
-                            </Show>
                           </div>
                         </div>
                       )}

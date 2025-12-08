@@ -18,6 +18,7 @@ export function logConversionStart(
   const record: Omit<ConversionRecord, 'id'> = {
     session_id: metadata.session_id,
     ip_address: metadata.ip_address,
+    user_agent: metadata.user_agent,
     created_at: new Date().toISOString(),
     total_attempts: 0,
     solidity_code: inputContract,
