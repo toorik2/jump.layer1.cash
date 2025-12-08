@@ -38,13 +38,11 @@ export type ValidationEvent =
 class ContractRegistry {
   private validatedContracts: Map<string, ContractInfo> = new Map();
   private originalOrder: string[] = [];
-  private attempts: Map<string, number> = new Map();
   private totalExpected = 0;
 
   initialize(contracts: ContractInfo[]): void {
     this.originalOrder = contracts.map(c => c.name);
     this.totalExpected = contracts.length;
-    contracts.forEach(c => this.attempts.set(c.name, 1));
   }
 
   markValidated(contracts: ContractInfo[]): void {
@@ -71,7 +69,6 @@ class ContractRegistry {
           throw new Error(`[Phase 4] Unknown contract returned by AI: "${fixed.name}"`);
         }
       }
-      this.attempts.set(fixed.name, attemptNumber);
     }
 
     // Build merged result preserving original order
@@ -214,7 +211,6 @@ function validateContracts(
     contract.validated = validation.valid;
     if (validation.valid) {
       contract.bytecodeSize = validation.bytecodeSize;
-      contract.artifact = validation.artifact;
       validCount++;
     } else {
       contract.validationError = validation.error ? enhanceErrorMessage(validation.error, contract.code) : validation.error;
@@ -286,19 +282,12 @@ export async function* execute(
     attempt: 1,
   };
 
-  // Log initial validation errors
-  for (const c of contracts) {
-    if (c.validationError) {
-      console.log(`[Phase 4] Initial ${c.name} error: ${c.validationError.split('\n')[0]}`);
-    }
-  }
-
   // Emit all contracts
   yield* emitContracts(contracts, registry, sentContracts, false);
   registry.markValidated(contracts.filter(c => c.validated));
 
   // Fix loop
-  for (let attempt = 2; attempt <= ANTHROPIC_CONFIG.phase2.maxRetries; attempt++) {
+  for (let attempt = 2; attempt <= ANTHROPIC_CONFIG.phase4.maxRetries; attempt++) {
     if (registry.isComplete()) break;
 
     const failedNames = registry.getFailedNames();
@@ -347,7 +336,7 @@ export async function* execute(
     const failed = contracts.filter(c => failedNames.includes(c.name));
     const lastError = failed[0]?.validationError || 'Unknown error';
     yield { type: 'max_retries_exceeded', lastError };
-    throw new Error(`Validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts: ${lastError}`);
+    throw new Error(`Validation failed after ${ANTHROPIC_CONFIG.phase4.maxRetries} attempts: ${lastError}`);
   }
 
   yield {
@@ -404,8 +393,8 @@ async function fixContracts(
 
   try {
     message = await anthropic.beta.messages.create({
-      model: ANTHROPIC_CONFIG.phase2.model,
-      max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
+      model: ANTHROPIC_CONFIG.phase4.model,
+      max_tokens: ANTHROPIC_CONFIG.phase4.maxTokens,
       system: [{
         type: 'text',
         text: systemPrompt,

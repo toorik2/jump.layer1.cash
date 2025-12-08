@@ -9,6 +9,5 @@ export interface ContractInfo {
   role: string;
   validated?: boolean;
   bytecodeSize?: number;
-  artifact?: any;
   validationError?: string;
 }

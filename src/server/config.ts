@@ -18,11 +18,23 @@ export const ANTHROPIC_CONFIG = {
     maxTokens: parseInt(process.env.PHASE1_MAX_TOKENS || '21000', 10),
   },
 
-  // Phase 2: Code Generation
+  // Phase 2: UTXO Architecture Design
   phase2: {
     model: process.env.PHASE2_MODEL || 'claude-sonnet-4-5-20250929',
     maxTokens: parseInt(process.env.PHASE2_MAX_TOKENS || '21000', 10),
-    maxRetries: parseInt(process.env.PHASE2_MAX_RETRIES || '10', 10),
+  },
+
+  // Phase 3: Code Generation
+  phase3: {
+    model: process.env.PHASE3_MODEL || 'claude-sonnet-4-5-20250929',
+    maxTokens: parseInt(process.env.PHASE3_MAX_TOKENS || '21000', 10),
+  },
+
+  // Phase 4: Validation + Fix Loop
+  phase4: {
+    model: process.env.PHASE4_MODEL || 'claude-sonnet-4-5-20250929',
+    maxTokens: parseInt(process.env.PHASE4_MAX_TOKENS || '21000', 10),
+    maxRetries: parseInt(process.env.PHASE4_MAX_RETRIES || '10', 10),
   },
 
   // Prompt Caching
@@ -62,39 +74,3 @@ export const RATE_LIMIT_CONFIG = {
   cleanupIntervalMs: parseInt(process.env.RATE_LIMIT_CLEANUP_MS || '600000', 10), // 10 minutes
 } as const;
 
-// ============================================================================
-// VALIDATION
-// ============================================================================
-
-function validateConfig() {
-  const errors: string[] = [];
-
-  if (!ANTHROPIC_CONFIG.apiKey) {
-    errors.push('ANTHROPIC_API_KEY environment variable is required');
-  }
-
-  if (ANTHROPIC_CONFIG.phase1.maxTokens < 1000 || ANTHROPIC_CONFIG.phase1.maxTokens > 64000) {
-    errors.push('PHASE1_MAX_TOKENS must be between 1000 and 64000');
-  }
-
-  if (ANTHROPIC_CONFIG.phase2.maxTokens < 1000 || ANTHROPIC_CONFIG.phase2.maxTokens > 64000) {
-    errors.push('PHASE2_MAX_TOKENS must be between 1000 and 64000');
-  }
-
-  if (ANTHROPIC_CONFIG.phase2.maxRetries < 1 || ANTHROPIC_CONFIG.phase2.maxRetries > 20) {
-    errors.push('PHASE2_MAX_RETRIES must be between 1 and 20');
-  }
-
-  if (SERVER_CONFIG.port < 1 || SERVER_CONFIG.port > 65535) {
-    errors.push('PORT must be between 1 and 65535');
-  }
-
-  if (errors.length > 0) {
-    console.error('[Config] Validation errors:');
-    errors.forEach(err => console.error(`  - ${err}`));
-    throw new Error('Configuration validation failed');
-  }
-}
-
-// Validate on module load
-validateConfig();

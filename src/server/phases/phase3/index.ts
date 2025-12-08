@@ -95,8 +95,8 @@ Every contract must validate something. Every function must add constraints. No 
 
   try {
     message = await anthropic.beta.messages.create({
-      model: ANTHROPIC_CONFIG.phase2.model,
-      max_tokens: ANTHROPIC_CONFIG.phase2.maxTokens,
+      model: ANTHROPIC_CONFIG.phase3.model,
+      max_tokens: ANTHROPIC_CONFIG.phase3.maxTokens,
       system: [{
         type: 'text',
         text: systemPrompt,

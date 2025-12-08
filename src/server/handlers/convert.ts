@@ -199,7 +199,7 @@ export async function handleConversion(
             validCount: event.validCount,
             failedCount: event.failedCount,
             attempt: event.attempt,
-            maxAttempts: ANTHROPIC_CONFIG.phase2.maxRetries,
+            maxAttempts: ANTHROPIC_CONFIG.phase4.maxRetries,
           });
           break;
 
@@ -228,7 +228,7 @@ export async function handleConversion(
           }
           sse.sendEvent('error', {
             phase: 4,
-            message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase2.maxRetries} attempts. This is not a deterministic system, so just try again - it's likely to work!`,
+            message: `Contract validation failed after ${ANTHROPIC_CONFIG.phase4.maxRetries} attempts. This is not a deterministic system, so just try again - it's likely to work!`,
             details: event.lastError,
           });
           sse.endResponse();
