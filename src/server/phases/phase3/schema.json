@@ -5,16 +5,30 @@
     "properties": {
       "contracts": {
         "type": "array",
+        "description": "One entry per contract in architecture.contracts[] - use exact names",
         "items": {
           "type": "object",
           "properties": {
-            "id": { "type": "string" },
-            "name": { "type": "string" },
-            "purpose": { "type": "string" },
-            "code": { "type": "string" },
+            "id": {
+              "type": "string",
+              "description": "Kebab-case identifier derived from name, e.g., 'voter-contract'"
+            },
+            "name": {
+              "type": "string",
+              "description": "PascalCase contract name - MUST match architecture.contracts[].name exactly"
+            },
+            "purpose": {
+              "type": "string",
+              "description": "One-sentence description of what this contract validates"
+            },
+            "code": {
+              "type": "string",
+              "description": "Complete valid CashScript starting with 'pragma cashscript ^0.13.0;'"
+            },
             "role": {
               "type": "string",
-              "enum": ["primary", "helper", "state"]
+              "enum": ["primary", "helper", "state"],
+              "description": "Map Phase 2 role: container/minting/independent→primary, sidecar/function→helper"
             }
           },
           "required": ["id", "name", "purpose", "code", "role"],

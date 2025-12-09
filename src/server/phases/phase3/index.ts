@@ -1,6 +1,6 @@
 /**
  * Phase 3: Code Generation
- * Generates CashScript contracts from domain model and UTXO architecture
+ * Translates UTXO Architecture into CashScript contracts
  * Returns unvalidated contracts - Phase 4 handles validation
  */
 import Anthropic from '@anthropic-ai/sdk';
@@ -13,7 +13,6 @@ import type { DomainModel } from '../../types/domain-model.js';
 import type { UTXOArchitecture } from '../../types/utxo-architecture.js';
 import type { ContractInfo } from '../../types/contract-info.js';
 import { buildCodeGenerationPrompt } from './prompt.js';
-import { normalizeContractNames } from '../phase4/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,37 +22,6 @@ const outputSchema = JSON.parse(fs.readFileSync(path.join(__dirname, 'schema.jso
 
 // Re-export ContractInfo for consumers
 export type { ContractInfo } from '../../types/contract-info.js';
-
-interface MultiContractResponse {
-  contracts: ContractInfo[];
-}
-
-function isMultiContractResponse(parsed: any): parsed is MultiContractResponse {
-  return parsed != null && Array.isArray(parsed.contracts);
-}
-
-/**
- * Normalize any AI response to multi-contract format
- */
-function normalizeToMultiContract(parsed: any): { contracts: ContractInfo[] } {
-  if (isMultiContractResponse(parsed)) {
-    return { contracts: parsed.contracts };
-  }
-
-  // Single contract response → wrap in array
-  const contractNameMatch = parsed.primaryContract?.match(/contract\s+(\w+)/);
-  const name = contractNameMatch ? contractNameMatch[1] : 'PrimaryContract';
-
-  return {
-    contracts: [{
-      id: 'primary',
-      name,
-      purpose: 'Primary contract',
-      code: parsed.primaryContract,
-      role: 'primary',
-    }],
-  };
-}
 
 export interface Phase3Result {
   contracts: ContractInfo[];
@@ -65,7 +33,7 @@ export interface Phase3Result {
 export async function execute(
   anthropic: Anthropic,
   conversionId: number,
-  domainModel: DomainModel,
+  _domainModel: DomainModel, // Kept for backward compatibility, not used
   architecture: UTXOArchitecture,
   knowledgeBase: string
 ): Promise<Phase3Result> {
@@ -73,22 +41,15 @@ export async function execute(
   const startTime = Date.now();
 
   const systemPrompt = buildCodeGenerationPrompt(knowledgeBase);
-  const domainModelJSON = JSON.stringify(domainModel, null, 2);
   const utxoArchitectureJSON = JSON.stringify(architecture, null, 2);
 
-  const userMessage = `DOMAIN MODEL (what the system does - platform-agnostic):
-${domainModelJSON}
-
-UTXO ARCHITECTURE (how to implement it):
+  // Architecture-only user message - no domain model
+  const userMessage = `UTXO ARCHITECTURE (AUTHORITATIVE - follow exactly):
 ${utxoArchitectureJSON}
 
-Generate CashScript contracts based on the UTXO architecture above. Follow the contract specifications exactly:
-- Use the contract names, roles, and validation purposes from the architecture
-- Implement the functions as specified with their validation requirements
-- Follow the transaction templates for input/output positions
-- Apply the mandatory checklist from the system prompt
-
-Every contract must validate something. Every function must add constraints. No placeholders.`;
+GENERATE CashScript code for each contract in architecture.contracts[].
+For each function, parse the validation list (after the colon) and implement them.
+Use transactionTemplates[] to understand the transaction context.`;
 
   let message: Anthropic.Beta.Messages.BetaMessage;
   let errorMessage: string | undefined;
@@ -141,11 +102,11 @@ Every contract must validate something. Every function must add constraints. No 
     system_prompt: systemPrompt,
   });
 
+  // Direct pass-through - structured output schema guarantees correct shape
   const parsed = JSON.parse(response);
-  const { contracts } = normalizeToMultiContract(parsed);
-  normalizeContractNames(contracts, '[Phase 3]');
+  const contracts: ContractInfo[] = parsed.contracts;
 
-  if (contracts.length === 0) {
+  if (!contracts || contracts.length === 0) {
     throw new Error('No valid contracts generated');
   }
 
