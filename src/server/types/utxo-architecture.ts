@@ -92,6 +92,17 @@ export interface TokenTopology {
 }
 
 /**
+ * Custody decision for an entity
+ * custody: "contract" = NFT locked in contract, "p2pkh" = user wallet
+ */
+export interface CustodyDecision {
+  entity: string;
+  custody: 'contract' | 'p2pkh';
+  contractName?: string; // Required when custody = "contract"
+  rationale: string;
+}
+
+/**
  * Contract count rationale
  * breakdown format: "N containers, N sidecars, N functions, N children"
  * decisions format: "Entity: N - reason"
@@ -104,7 +115,6 @@ export interface ContractCountRationale {
 
 /**
  * The complete UTXO architecture v2
- * custodyDecisions format: "Entity: contract(ContractName) - rationale" or "Entity: p2pkh - rationale"
  * warnings format: "SEVERITY: issue description - mitigation strategy"
  */
 export interface UTXOArchitecture {
@@ -112,7 +122,7 @@ export interface UTXOArchitecture {
   transactionTemplates: TransactionTemplate[];
   contracts: UTXOContract[];
   tokenTopology: TokenTopology;
-  custodyDecisions: string[]; // Each: "Voter: contract(VoterContract) - must enforce one-vote"
+  custodyDecisions: CustodyDecision[];
   contractCountRationale: ContractCountRationale;
   warnings: string[];
 }

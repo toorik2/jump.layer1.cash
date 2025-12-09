@@ -102,10 +102,15 @@ Format for capabilities: `ContractName:capability`
 
 For each entity: where is its NFT locked?
 
-| Entity | Custody | Rationale |
-|--------|---------|-----------|
-| Voter | contract | Must enforce one-vote rule |
-| Badge | p2pkh | No rules, user owns freely |
+```json
+"custodyDecisions": [
+  { "entity": "Voter", "custody": "contract", "contractName": "VoterContract", "rationale": "Must enforce one-vote rule" },
+  { "entity": "Badge", "custody": "p2pkh", "rationale": "No rules, user owns freely" }
+]
+```
+
+- `custody: "contract"` = NFT locked in a contract (include `contractName`)
+- `custody: "p2pkh"` = NFT held in user wallet (omit `contractName`)
 
 ---
 

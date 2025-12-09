@@ -125,8 +125,18 @@
       },
       "custodyDecisions": {
         "type": "array",
-        "items": { "type": "string" },
-        "description": "Custody decisions as strings: 'Entity: contract(ContractName) - rationale' or 'Entity: p2pkh - rationale'"
+        "description": "Where each entity's NFT is locked",
+        "items": {
+          "type": "object",
+          "properties": {
+            "entity": { "type": "string", "description": "Entity name from Phase 1" },
+            "custody": { "type": "string", "enum": ["contract", "p2pkh"], "description": "contract = locked in contract, p2pkh = user wallet" },
+            "contractName": { "type": "string", "description": "Contract name if custody=contract, omit for p2pkh" },
+            "rationale": { "type": "string", "description": "Why this custody was chosen" }
+          },
+          "required": ["entity", "custody", "rationale"],
+          "additionalProperties": false
+        }
       },
       "contractCountRationale": {
         "type": "object",
