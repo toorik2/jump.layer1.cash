@@ -28,35 +28,38 @@ export interface NFTStateType {
 /**
  * 5-point covenant checklist for self-replicating outputs
  * Missing ANY = critical vulnerability
+ * Use empty object {} for non-replicating outputs
  */
 export interface CovenantChecklist {
-  lockingBytecode: string;
-  tokenCategory: string;
-  value: string;
-  tokenAmount: number | string;
-  nftCommitment: string;
+  lockingBytecode?: string;
+  tokenCategory?: string;
+  value?: string;
+  tokenAmount?: string;
+  nftCommitment?: string;
 }
 
 /**
  * Transaction input specification
+ * Sentinel values: stateRequired="" for no state, validates=[] for P2PKH
  */
 export interface TransactionInput {
   index: number;
   from: string;
   utxoType: string;
-  stateRequired?: string | null;
-  validates?: string[] | null;
+  stateRequired?: string;
+  validates?: string[];
 }
 
 /**
  * Transaction output specification
+ * Sentinel values: stateProduced="" for no state, covenantChecklist={} for non-replicating
  */
 export interface TransactionOutput {
   index: number;
   to: string;
   utxoType: string;
-  stateProduced?: string | null;
-  covenantChecklist?: CovenantChecklist | null;
+  stateProduced?: string;
+  covenantChecklist?: CovenantChecklist;
 }
 
 /**
@@ -72,12 +75,13 @@ export interface TransactionTemplate {
 
 /**
  * Contract function - validates one transaction at one position
+ * Sentinel: outputPosition=-1 means consumed (no output)
  */
 export interface ContractFunction {
   name: string;
   transaction: string;
   inputPosition: number;
-  outputPosition?: number | null;
+  outputPosition?: number;
   validates: string[];
 }
 
@@ -96,18 +100,35 @@ export interface ContractRelationships {
 
 /**
  * Contract definition - DERIVED from transaction templates
+ * Sentinels: nftStateType="" for no state, relationships={} for none, stateLayout="" for none
  */
 export interface UTXOContract {
   name: string;
   role: 'container' | 'sidecar' | 'function' | 'minting' | 'independent';
   lifecycle: 'exactly-replicating' | 'state-mutating' | 'state-and-balance-mutating' | 'conditionally-replicating';
-  nftStateType?: string | null;
+  nftStateType?: string;
   holdsBch: boolean;
   holdsNft: boolean;
   holdsFungible: boolean;
   functions: ContractFunction[];
-  relationships?: ContractRelationships | null;
-  stateLayout?: string | null;
+  relationships?: ContractRelationships;
+  stateLayout?: string;
+}
+
+/**
+ * Type discriminator mapping
+ */
+export interface TypeDiscriminator {
+  discriminator: string;
+  contract: string;
+}
+
+/**
+ * Capability mapping
+ */
+export interface CapabilityMapping {
+  contract: string;
+  capability: 'none' | 'mutable' | 'minting';
 }
 
 /**
@@ -115,8 +136,8 @@ export interface UTXOContract {
  */
 export interface TokenTopology {
   baseCategory: string;
-  typeDiscriminators: Record<string, string>;
-  capabilities: Record<string, 'none' | 'mutable' | 'minting'>;
+  typeDiscriminators: TypeDiscriminator[];
+  capabilities: CapabilityMapping[];
   authentication: {
     from: string;
     recognizes: string;
@@ -126,11 +147,12 @@ export interface TokenTopology {
 
 /**
  * Custody decision - where each entity's NFT is locked
+ * Sentinel: contractName="" for p2pkh custody
  */
 export interface CustodyDecision {
   entity: string;
   custody: 'contract' | 'p2pkh';
-  contractName?: string | null;
+  contractName?: string;
   rationale: string;
 }
 

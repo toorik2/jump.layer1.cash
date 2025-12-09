@@ -11,28 +11,29 @@ export type ContractInfo = {
 };
 
 // v2 schema types for transactions
+// Sentinel values: empty strings/arrays/objects instead of null
 export type CovenantChecklist = {
-  lockingBytecode: string;
-  tokenCategory: string;
-  value: string;
-  tokenAmount: number | string;
-  nftCommitment: string;
+  lockingBytecode?: string;
+  tokenCategory?: string;
+  value?: string;
+  tokenAmount?: string;
+  nftCommitment?: string;
 };
 
 export type TransactionInput = {
   index: number;
   from: string;
   utxoType: string;
-  stateRequired?: string | null;
-  validates?: string[] | null;
+  stateRequired?: string;
+  validates?: string[];
 };
 
 export type TransactionOutput = {
   index: number;
   to: string;
   utxoType: string;
-  stateProduced?: string | null;
-  covenantChecklist?: CovenantChecklist | null;
+  stateProduced?: string;
+  covenantChecklist?: CovenantChecklist;
 };
 
 export type Transaction = {

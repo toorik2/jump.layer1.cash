@@ -87,14 +87,17 @@ Define how contracts authenticate each other:
 ```json
 {
   "baseCategory": "systemCategory",
-  "typeDiscriminators": {
-    "0x00": "BallotContract",
-    "0x01": "VoterContract"
-  },
-  "capabilities": {
-    "BallotContract": "mutable",
-    "VoterContract": "mutable"
-  }
+  "typeDiscriminators": [
+    { "discriminator": "0x00", "contract": "BallotContract" },
+    { "discriminator": "0x01", "contract": "VoterContract" }
+  ],
+  "capabilities": [
+    { "contract": "BallotContract", "capability": "mutable" },
+    { "contract": "VoterContract", "capability": "mutable" }
+  ],
+  "authentication": [
+    { "from": "BallotContract", "recognizes": "VoterContract", "via": "commitment[0] == 0x01" }
+  ]
 }
 ```
 

@@ -51,11 +51,11 @@
                   "index": { "type": "integer" },
                   "from": { "type": "string", "description": "Contract name or 'P2PKH'" },
                   "utxoType": { "type": "string", "description": "What the UTXO holds: 'BallotState NFT', 'BCH only', etc." },
-                  "stateRequired": { "type": ["string", "null"], "description": "Required state condition or null" },
+                  "stateRequired": { "type": "string", "description": "Required state condition, or empty string if none" },
                   "validates": {
-                    "type": ["array", "null"],
+                    "type": "array",
                     "items": { "type": "string" },
-                    "description": "What this input validates about the transaction, or null for P2PKH"
+                    "description": "What this input validates about the transaction, or empty array for P2PKH"
                   }
                 },
                 "required": ["index", "from", "utxoType"],
@@ -70,19 +70,18 @@
                   "index": { "type": "integer" },
                   "to": { "type": "string", "description": "Contract name, 'P2PKH', or 'burned'" },
                   "utxoType": { "type": "string" },
-                  "stateProduced": { "type": ["string", "null"], "description": "New state after transition" },
+                  "stateProduced": { "type": "string", "description": "New state after transition, or empty string if none" },
                   "covenantChecklist": {
-                    "type": ["object", "null"],
+                    "type": "object",
                     "properties": {
                       "lockingBytecode": { "type": "string" },
                       "tokenCategory": { "type": "string" },
                       "value": { "type": "string" },
-                      "tokenAmount": { "type": ["integer", "string"] },
+                      "tokenAmount": { "type": "string" },
                       "nftCommitment": { "type": "string" }
                     },
-                    "required": ["lockingBytecode", "tokenCategory", "value", "tokenAmount", "nftCommitment"],
                     "additionalProperties": false,
-                    "description": "5-point covenant checklist for self-replicating outputs"
+                    "description": "5-point covenant checklist for self-replicating outputs, or empty object {} if not applicable"
                   }
                 },
                 "required": ["index", "to", "utxoType"],
@@ -111,7 +110,7 @@
               "enum": ["exactly-replicating", "state-mutating", "state-and-balance-mutating", "conditionally-replicating"],
               "description": "How the contract's UTXO changes over time"
             },
-            "nftStateType": { "type": ["string", "null"], "description": "Which nftStateType this contract uses, or null" },
+            "nftStateType": { "type": "string", "description": "Which nftStateType this contract uses, or empty string if none" },
             "holdsBch": { "type": "boolean" },
             "holdsNft": { "type": "boolean" },
             "holdsFungible": { "type": "boolean" },
@@ -123,7 +122,7 @@
                   "name": { "type": "string" },
                   "transaction": { "type": "string", "description": "Which transaction template this function validates" },
                   "inputPosition": { "type": "integer" },
-                  "outputPosition": { "type": ["integer", "null"], "description": "Output position if self-replicating, null if consumed" },
+                  "outputPosition": { "type": "integer", "description": "Output position if self-replicating, or -1 if consumed" },
                   "validates": {
                     "type": "array",
                     "items": { "type": "string" },
@@ -135,7 +134,7 @@
               }
             },
             "relationships": {
-              "type": ["object", "null"],
+              "type": "object",
               "properties": {
                 "sidecarOf": { "type": "string" },
                 "functionOf": { "type": "string" },
@@ -145,9 +144,10 @@
                 "hasSidecar": { "type": "string" },
                 "hasFunctions": { "type": "array", "items": { "type": "string" } }
               },
-              "additionalProperties": false
+              "additionalProperties": false,
+              "description": "Contract relationships, or empty object {} if none"
             },
-            "stateLayout": { "type": ["string", "null"], "description": "Human-readable state layout summary" }
+            "stateLayout": { "type": "string", "description": "Human-readable state layout summary, or empty string if none" }
           },
           "required": ["name", "role", "lifecycle", "holdsBch", "holdsNft", "holdsFungible", "functions"],
           "additionalProperties": false
@@ -159,17 +159,30 @@
         "properties": {
           "baseCategory": { "type": "string", "description": "Symbolic name for the system's base category" },
           "typeDiscriminators": {
-            "type": "object",
-            "additionalProperties": { "type": "string" },
-            "description": "Map of byte prefixes to contract names, e.g., { '0x00': 'BallotContract' }"
+            "type": "array",
+            "description": "Byte prefix to contract name mappings",
+            "items": {
+              "type": "object",
+              "properties": {
+                "discriminator": { "type": "string", "description": "Byte prefix, e.g., '0x00'" },
+                "contract": { "type": "string", "description": "Contract name" }
+              },
+              "required": ["discriminator", "contract"],
+              "additionalProperties": false
+            }
           },
           "capabilities": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string",
-              "enum": ["none", "mutable", "minting"]
-            },
-            "description": "Map of contract names to their NFT capability"
+            "type": "array",
+            "description": "Contract to NFT capability mappings",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contract": { "type": "string", "description": "Contract name" },
+                "capability": { "type": "string", "enum": ["none", "mutable", "minting"] }
+              },
+              "required": ["contract", "capability"],
+              "additionalProperties": false
+            }
           },
           "authentication": {
             "type": "array",
@@ -200,7 +213,7 @@
               "enum": ["contract", "p2pkh"],
               "description": "contract = rules enforced, p2pkh = user has full control"
             },
-            "contractName": { "type": ["string", "null"], "description": "If contract custody, which contract" },
+            "contractName": { "type": "string", "description": "If contract custody, which contract, or empty string if p2pkh" },
             "rationale": { "type": "string" }
           },
           "required": ["entity", "custody", "rationale"],
