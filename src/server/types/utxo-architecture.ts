@@ -5,14 +5,22 @@
 // ============================================================================
 
 /**
+ * NFT state field - individual field in commitment layout
+ */
+export interface NFTStateField {
+  name: string;
+  type: string;
+  purpose: string;
+}
+
+/**
  * NFT state type - explicit commitment layout
  * The "states" in our state machine
- * fields format: "name:type:purpose|name:type:purpose"
  */
 export interface NFTStateType {
   name: string;
   derivedFrom: string;
-  fields: string; // Pipe-delimited: "ownerPkh:bytes20:Owner auth|hasVoted:bytes1:Vote flag"
+  fields: NFTStateField[];
   totalBytes: number;
   transitions?: string[];
 }

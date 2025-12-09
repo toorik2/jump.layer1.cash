@@ -11,7 +11,20 @@
           "properties": {
             "name": { "type": "string", "description": "State type name, e.g., VoterState, LoanState" },
             "derivedFrom": { "type": "string", "description": "Which Phase 1 entity this represents" },
-            "fields": { "type": "string", "description": "Pipe-delimited field specs: name:type:purpose|name:type:purpose (e.g., 'ownerPkh:bytes20:Owner auth|hasVoted:bytes1:Vote flag')" },
+            "fields": {
+              "type": "array",
+              "description": "Field definitions for NFT commitment layout",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string", "description": "Field name for CashScript variable" },
+                  "type": { "type": "string", "description": "CashScript type: bytes1, bytes2, bytes4, bytes8, bytes20, bytes32" },
+                  "purpose": { "type": "string", "description": "What this field stores" }
+                },
+                "required": ["name", "type", "purpose"],
+                "additionalProperties": false
+              }
+            },
             "totalBytes": { "type": "integer", "description": "Sum of field bytes, must be <= 128" },
             "transitions": {
               "type": "array",

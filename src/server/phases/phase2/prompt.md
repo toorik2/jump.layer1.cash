@@ -18,7 +18,10 @@ From Phase 1 entities, define explicit commitment layouts:
 {
   "name": "VoterState",
   "derivedFrom": "Voter entity",
-  "fields": "ownerPkh:bytes20:Owner authorization|hasVoted:bytes1:0x00=no, 0x01=yes",
+  "fields": [
+    { "name": "ownerPkh", "type": "bytes20", "purpose": "Owner authorization" },
+    { "name": "hasVoted", "type": "bytes1", "purpose": "0x00=no, 0x01=yes" }
+  ],
   "totalBytes": 21,
   "transitions": ["vote (hasVoted: 0x00 → 0x01)"]
 }
