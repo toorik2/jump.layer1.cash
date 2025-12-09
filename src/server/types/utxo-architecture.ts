@@ -79,14 +79,22 @@ export interface UTXOContract {
 }
 
 /**
+ * Type discriminator - maps a byte prefix to a contract type
+ * Used for cross-contract authentication via commitment[0]
+ */
+export interface TypeDiscriminator {
+  discriminator: string; // Hex byte, e.g., "0x00", "0x01"
+  contract: string;      // Contract name this discriminator identifies
+}
+
+/**
  * Token topology - how contracts authenticate each other
- * typeDiscriminators format: "0xNN=ContractName"
  * capabilities format: "ContractName:capability"
  * authentication format: "ContractA recognizes ContractB via commitment[0]==0x01"
  */
 export interface TokenTopology {
   baseCategory: string;
-  typeDiscriminators: string[]; // Each: "0x00=BallotContract"
+  typeDiscriminators: TypeDiscriminator[];
   capabilities: string[]; // Each: "BallotContract:mutable"
   authentication: string[];
 }

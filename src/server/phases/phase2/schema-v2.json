@@ -106,8 +106,16 @@
           "baseCategory": { "type": "string", "description": "Symbolic name for the system's base category" },
           "typeDiscriminators": {
             "type": "array",
-            "items": { "type": "string" },
-            "description": "Type discriminator mappings as strings: '0x00=ContractName'"
+            "description": "Maps byte prefixes to contract types for cross-contract authentication",
+            "items": {
+              "type": "object",
+              "properties": {
+                "discriminator": { "type": "string", "description": "Hex byte prefix, e.g., '0x00', '0x01'" },
+                "contract": { "type": "string", "description": "Contract name this discriminator identifies" }
+              },
+              "required": ["discriminator", "contract"],
+              "additionalProperties": false
+            }
           },
           "capabilities": {
             "type": "array",

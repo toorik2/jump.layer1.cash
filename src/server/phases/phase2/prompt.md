@@ -77,8 +77,8 @@ Define how contracts authenticate each other:
 {
   "baseCategory": "systemCategory",
   "typeDiscriminators": [
-    "0x00=BallotContract",
-    "0x01=VoterContract"
+    { "discriminator": "0x00", "contract": "BallotContract" },
+    { "discriminator": "0x01", "contract": "VoterContract" }
   ],
   "capabilities": [
     "BallotContract:mutable",
@@ -90,7 +90,6 @@ Define how contracts authenticate each other:
 }
 ```
 
-Format for typeDiscriminators: `0xNN=ContractName`
 Format for capabilities: `ContractName:capability`
 
 **Convention**:
