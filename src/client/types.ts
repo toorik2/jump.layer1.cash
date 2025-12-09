@@ -14,12 +14,21 @@ export type ContractInfo = {
 // Sentinel values: empty strings/arrays instead of null
 // CovenantChecklist is now a pipe-separated string: "locking|category|value|tokenAmount|commitment"
 
+export type ValidatesObject = {
+  indexCheck?: number;
+  categoryChecks?: string;
+  authCheck?: string;
+  stateTransition?: string;
+  covenantOutput?: number;
+  other?: string;
+};
+
 export type TransactionInput = {
   index: number;
   from: string;
   utxoType: string;
   stateRequired?: string;
-  validates?: string; // Comma-separated: "check1, check2, check3"
+  validates?: ValidatesObject;
 };
 
 export type TransactionOutput = {

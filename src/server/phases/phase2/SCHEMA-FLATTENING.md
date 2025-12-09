@@ -26,18 +26,19 @@ The problematic 4-level nesting patterns:
 Initial approach: Flatten everything to strings.
 Refined approach: Restore structures that don't exceed 3-level nesting.
 
-**Current schema: 186 lines** (Phase 1 reference: 180 lines)
+**Current schema: 197 lines** (Phase 1 reference: 180 lines)
 
 ### Current State
 
 | Structure | Status | Nesting | Grammar Risk |
 |-----------|--------|---------|--------------|
-| `nftStateTypes[].fields` | ✅ RESTORED | 3-level | LOW (no enum) |
+| `nftStateTypes[].fields` | ✅ RESTORED | 2-level | LOW (no enum) |
 | `typeDiscriminators` | ✅ RESTORED | 2-level | LOW |
 | `custodyDecisions` | ✅ RESTORED | 2-level | LOW |
+| `contracts[].functions` | ✅ RESTORED | 2-level | LOW |
+| `inputs[].validates` | ✅ RESTORED | object | LOW (object, not array) |
+| `functions[].validates` | ✅ RESTORED | object | LOW (object, not array) |
 | `capabilities` | ⚠️ FLATTENED | - | LOW |
-| `contracts[].functions` | ⚠️ FLATTENED | - | **CRITICAL** |
-| `inputs[].validates` | ⚠️ FLATTENED | - | **CRITICAL** |
 | `decisions` | ⚠️ FLATTENED | - | LOW |
 
 Target structure:
@@ -100,37 +101,26 @@ Originally flattened to pipe-delimited strings. **Now restored** to structured a
 
 **Grammar safety:** `type` field kept as plain string (not enum) to avoid grammar multiplication.
 
-#### FLATTENED: Contract Functions
+#### ✅ RESTORED: Contract Functions
 
-**Before:**
+Functions are now structured objects with `validates` as a comma-separated string (not an array):
+
 ```json
 "contracts": [{
   "name": "VoterContract",
   "functions": [{
     "name": "vote",
     "transaction": "castVote",
-    "inputPosition": 1,
-    "outputPosition": 1,
-    "validates": [
-      "this.activeInputIndex == 1",
-      "BallotContract at input[0]",
-      "Owner authorized via input[2]"
-    ]
+    "inputPos": 1,
+    "outputPos": 1,
+    "validates": "this.activeInputIndex == 1, BallotContract at input[0], Owner authorized via input[2]"
   }]
 }]
 ```
 
-**After:**
-```json
-"contracts": [{
-  "name": "VoterContract",
-  "functions": [
-    "vote @ castVote [1→1]: this.activeInputIndex == 1, BallotContract at input[0], Owner authorized via input[2]"
-  ]
-}]
-```
+**Why this works:** The key insight is that the grammar explosion was caused by `validates[]` being an array (creating 3 levels of array nesting). By keeping `validates` as a comma-separated string, we stay at 2 levels - the same pattern as `nftStateTypes[].fields[]` which works.
 
-**Format:** `funcName @ txName [inputPos→outputPos]: validation1, validation2, ...`
+**Phase 3 benefit:** Typed fields (`name`, `transaction`, `inputPos`, `outputPos`) eliminate regex parsing. Only `validates` needs `.split(',')` parsing.
 
 #### Token Topology (Partial Restoration)
 
@@ -210,8 +200,10 @@ Added format descriptions after each example.
 - `TypeDiscriminator` - typeDiscriminators is structured array again
 - `CustodyDecision` - custodyDecisions is structured array again
 
+**✅ NOW RESTORED:**
+- `ContractFunction` - functions is structured array (validates kept as string)
+
 **⚠️ Still Removed (strings in use):**
-- `ContractFunction` - functions is string[] (cannot restore: 4-level nesting)
 - `CapabilityMapping` - capabilities is string[] (low priority)
 - `ContractCountDecision` - decisions is string[] (zero Phase 3 impact)
 
@@ -256,7 +248,15 @@ export interface TransactionInput {
   validates?: string; // Comma-separated (cannot restore: 4-level nesting)
 }
 
-// ⚠️ STILL FLATTENED - functions is string[]
+// ✅ RESTORED - Structured function objects (validates kept as string)
+export interface ContractFunction {
+  name: string;
+  transaction: string;
+  inputPos: number;
+  outputPos: number;
+  validates: string; // Comma-separated (keeping as string avoids 3-level nesting)
+}
+
 export interface UTXOContract {
   name: string;
   role: 'container' | 'sidecar' | 'function' | 'minting' | 'independent';
@@ -265,7 +265,7 @@ export interface UTXOContract {
   holdsBch: boolean;
   holdsNft: boolean;
   holdsFungible: boolean;
-  functions: string[]; // Each: "funcName @ txName [inputPos→outputPos]: validations"
+  functions: ContractFunction[];  // ✅ RESTORED
   relationships?: string;
   stateLayout?: string;
 }
@@ -316,13 +316,14 @@ export type TransactionInput = {
 
 ## Restoration Status
 
-### ✅ Successfully Restored (Safe, 2-3 level nesting)
+### ✅ Successfully Restored (Safe, 2 level nesting)
 
 | Structure | Lines Added | Status |
 |-----------|-------------|--------|
 | `custodyDecisions` | +12 | Done |
 | `typeDiscriminators` | +8 | Done |
 | `nftStateTypes[].fields` | +13 | Done |
+| `contracts[].functions` | +11 | Done (validates is string) |
 
 ### ⚠️ Could Restore (Low Priority)
 
@@ -331,21 +332,37 @@ export type TransactionInput = {
 | `capabilities` | Easy to parse with `.split(':')`, low Phase 3 impact |
 | `decisions` | Zero Phase 3 impact (informational only) |
 
-### ❌ CANNOT Restore (4-Level Nesting = Grammar Explosion)
+### ✅ RESTORED: Validates Object (December 2024)
 
-| Structure | Why It Breaks |
-|-----------|---------------|
-| `contracts[].functions` | Would need `functions[].validates[]` = 4 levels |
-| `transactionTemplates[].inputs[].validates` | Already 3 levels, adding array = 4 levels |
+Originally a comma-separated string to avoid 3-level nesting. **Now restored** to a structured object:
 
-**Phase 3 must parse these strings.** Recommended parser:
-```typescript
-// For contracts[].functions[]:
-const FUNC_PATTERN = /^(\w+)\s*@\s*(\w+)\s*\[(\d+)→(\d+)\]:\s*(.+)$/;
-
-// For inputs[].validates:
-const validations = validates.split(',').map(v => v.trim());
+```json
+"validates": {
+  "indexCheck": 1,
+  "categoryChecks": "0:+0x00",
+  "authCheck": "2:ownerPkh",
+  "stateTransition": "hasVoted:0x00→0x01",
+  "covenantOutput": 1,
+  "other": ""
+}
 ```
+
+**Why this works:** Objects with primitive values don't count as array nesting. The nesting analysis:
+- `transactionTemplates[]` = level 1
+- `inputs[]` = level 2
+- `validates.{fields}` = object with primitives, NOT a 3rd level
+
+**ValidatesObject fields:**
+| Field | Type | Purpose |
+|-------|------|---------|
+| `indexCheck` | integer | `this.activeInputIndex == N`, -1 if none |
+| `categoryChecks` | string | `inputIdx:+0xNN` format, comma-separated |
+| `authCheck` | string | `inputIdx:fieldName` for auth source |
+| `stateTransition` | string | `field:from→to` state change |
+| `covenantOutput` | integer | Output index for 5-point covenant, -1 if none |
+| `other` | string | Catch-all for additional checks |
+
+**Phase 3 benefit:** Typed fields eliminate regex parsing. Only `categoryChecks` needs `.split(',')` for multiple checks.
 
 ---
 
@@ -362,9 +379,8 @@ There's no direct way to test grammar size before hitting the API. Best approach
 
 | Field | Format | Example | Phase 3 Parser |
 |-------|--------|---------|----------------|
-| `contracts[].functions[]` | `func @ tx [in→out]: validations` | `vote @ castVote [1→1]: check1, check2` | Regex |
 | `tokenTopology.capabilities[]` | `Contract:cap` | `VoterContract:mutable` | `.split(':')` |
 | `contractCountRationale.decisions[]` | `Entity: N - reason` | `Voter: 1 - state tracking` | N/A (informational) |
-| `transactionTemplates[].inputs[].validates` | `check1, check2, check3` | `index == 1, auth check, state valid` | `.split(',')` |
+| `*.validates` | `check1, check2, check3` | `index == 1, auth check, state valid` | `.split(',')` |
 
-**Note:** `nftStateTypes[].fields`, `typeDiscriminators`, and `custodyDecisions` are now structured objects.
+**Note:** `nftStateTypes[].fields`, `typeDiscriminators`, `custodyDecisions`, and `contracts[].functions` are now structured objects.
