@@ -21,15 +21,30 @@ The problematic 4-level nesting patterns:
 - `contracts[].functions[].validates[]`
 - `transactionTemplates[].inputs[].validates[]`
 
-## Solution: Hybrid Flattening
+## Solution: Hybrid Flattening + Selective Restoration
 
-Keep **transactions structured** (they are PRIMARY), flatten everything else to strings.
+Initial approach: Flatten everything to strings.
+Refined approach: Restore structures that don't exceed 3-level nesting.
+
+**Current schema: 186 lines** (Phase 1 reference: 180 lines)
+
+### Current State
+
+| Structure | Status | Nesting | Grammar Risk |
+|-----------|--------|---------|--------------|
+| `nftStateTypes[].fields` | ✅ RESTORED | 3-level | LOW (no enum) |
+| `typeDiscriminators` | ✅ RESTORED | 2-level | LOW |
+| `custodyDecisions` | ✅ RESTORED | 2-level | LOW |
+| `capabilities` | ⚠️ FLATTENED | - | LOW |
+| `contracts[].functions` | ⚠️ FLATTENED | - | **CRITICAL** |
+| `inputs[].validates` | ⚠️ FLATTENED | - | **CRITICAL** |
+| `decisions` | ⚠️ FLATTENED | - | LOW |
 
 Target structure:
 ```
 top-level object
   └── array of objects (level 1)
-        └── array of objects (level 2) ← ONLY for transaction inputs/outputs
+        └── array of objects (level 2) ← transactions, fields, typeDiscriminators
               └── primitive values only (level 3)
 ```
 
@@ -64,9 +79,10 @@ Transaction inputs and outputs remain structured because they are the PRIMARY de
 }]
 ```
 
-#### FLATTENED: NFT State Types
+#### ✅ RESTORED: NFT State Types
 
-**Before:**
+Originally flattened to pipe-delimited strings. **Now restored** to structured array:
+
 ```json
 "nftStateTypes": [{
   "name": "VoterState",
@@ -80,18 +96,9 @@ Transaction inputs and outputs remain structured because they are the PRIMARY de
 }]
 ```
 
-**After:**
-```json
-"nftStateTypes": [{
-  "name": "VoterState",
-  "derivedFrom": "Voter entity",
-  "fields": "ownerPkh:bytes20:Owner authorization|hasVoted:bytes1:0x00=no, 0x01=yes",
-  "totalBytes": 21,
-  "transitions": ["vote (hasVoted: 0x00 → 0x01)"]
-}]
-```
+**Why restored:** Phase 3 needs field names for variable declarations, field types for byte sizes in `split()` operations, and field order for cumulative offsets. Structured data eliminates parsing errors.
 
-**Format:** `name:type:purpose|name:type:purpose|...`
+**Grammar safety:** `type` field kept as plain string (not enum) to avoid grammar multiplication.
 
 #### FLATTENED: Contract Functions
 
@@ -125,47 +132,34 @@ Transaction inputs and outputs remain structured because they are the PRIMARY de
 
 **Format:** `funcName @ txName [inputPos→outputPos]: validation1, validation2, ...`
 
-#### FLATTENED: Token Topology
+#### Token Topology (Partial Restoration)
 
-**Before:**
+**typeDiscriminators** - ✅ RESTORED to structured objects:
 ```json
-"tokenTopology": {
-  "baseCategory": "systemCategory",
-  "typeDiscriminators": [
-    { "discriminator": "0x00", "contract": "BallotContract" },
-    { "discriminator": "0x01", "contract": "VoterContract" }
-  ],
-  "capabilities": [
-    { "contract": "BallotContract", "capability": "mutable" },
-    { "contract": "VoterContract", "capability": "mutable" }
-  ],
-  "authentication": [...]
-}
+"typeDiscriminators": [
+  { "discriminator": "0x00", "contract": "BallotContract" },
+  { "discriminator": "0x01", "contract": "VoterContract" }
+]
 ```
 
-**After:**
+**Why restored:** Phase 3 needs discriminator bytes for category arithmetic. Structured format is unambiguous.
+
+**capabilities** - ⚠️ STILL FLATTENED as strings:
 ```json
-"tokenTopology": {
-  "baseCategory": "systemCategory",
-  "typeDiscriminators": [
-    "0x00=BallotContract",
-    "0x01=VoterContract"
-  ],
-  "capabilities": [
-    "BallotContract:mutable",
-    "VoterContract:mutable"
-  ],
-  "authentication": [...]
-}
+"capabilities": [
+  "BallotContract:mutable",
+  "VoterContract:mutable"
+]
 ```
 
-**Formats:**
-- typeDiscriminators: `0xNN=ContractName`
-- capabilities: `ContractName:capability`
+**Format:** `ContractName:capability`
 
-#### FLATTENED: Custody Decisions
+**Why still flat:** Low Phase 3 impact. Easy to parse with `.split(':')`. Could be restored if needed.
 
-**Before:**
+#### ✅ RESTORED: Custody Decisions
+
+Originally flattened to strings. **Now restored** to structured objects:
+
 ```json
 "custodyDecisions": [
   { "entity": "Voter", "custody": "contract", "contractName": "VoterContract", "rationale": "Must enforce one-vote rule" },
@@ -173,31 +167,11 @@ Transaction inputs and outputs remain structured because they are the PRIMARY de
 ]
 ```
 
-**After:**
-```json
-"custodyDecisions": [
-  "Voter: contract(VoterContract) - Must enforce one-vote rule",
-  "Badge: p2pkh - No rules, user owns freely"
-]
-```
+**Why restored:** Phase 3 needs to know entity → custody mapping to determine locking script. Structured format is unambiguous.
 
-**Format:** `Entity: contract(ContractName) - rationale` or `Entity: p2pkh - rationale`
+#### ⚠️ FLATTENED: Contract Count Decisions
 
-#### FLATTENED: Contract Count Decisions
-
-**Before:**
-```json
-"contractCountRationale": {
-  "total": 2,
-  "breakdown": "2 containers, 0 sidecars, 0 functions",
-  "decisions": [
-    { "entity": "Ballot", "contracts": 1, "reason": "state tracking" },
-    { "entity": "Voter", "contracts": 1, "reason": "vote enforcement" }
-  ]
-}
-```
-
-**After:**
+Still flattened as strings:
 ```json
 "contractCountRationale": {
   "total": 2,
@@ -210,6 +184,8 @@ Transaction inputs and outputs remain structured because they are the PRIMARY de
 ```
 
 **Format:** `Entity: N - reason`
+
+**Why still flat:** Zero Phase 3 impact. This is purely informational/documentation. Easy to parse if ever needed.
 
 ---
 
@@ -227,36 +203,60 @@ Added format descriptions after each example.
 
 ### 3. utxo-architecture.ts
 
-#### Removed Interfaces (no longer needed)
-- `NFTStateField` - fields is now a string
-- `ContractFunction` - functions is now string[]
-- `TypeDiscriminator` - typeDiscriminators is now string[]
-- `CapabilityMapping` - capabilities is now string[]
-- `CustodyDecision` - custodyDecisions is now string[]
-- `ContractCountDecision` - decisions is now string[]
+#### Interface Status
 
-#### Updated Interfaces
+**✅ RESTORED Interfaces:**
+- `NFTStateField` - fields is structured array again
+- `TypeDiscriminator` - typeDiscriminators is structured array again
+- `CustodyDecision` - custodyDecisions is structured array again
+
+**⚠️ Still Removed (strings in use):**
+- `ContractFunction` - functions is string[] (cannot restore: 4-level nesting)
+- `CapabilityMapping` - capabilities is string[] (low priority)
+- `ContractCountDecision` - decisions is string[] (zero Phase 3 impact)
+
+#### Current Interfaces
 
 ```typescript
-// NFTStateType.fields: NFTStateField[] → string
+// ✅ RESTORED - Structured array of fields
+export interface NFTStateField {
+  name: string;
+  type: string;  // Plain string, not enum (grammar safety)
+  purpose: string;
+}
+
 export interface NFTStateType {
   name: string;
   derivedFrom: string;
-  fields: string; // Pipe-delimited: "name:type:purpose|..."
+  fields: NFTStateField[];  // ✅ RESTORED
   totalBytes: number;
   transitions?: string[];
 }
 
-// TransactionInput.validates: string[] → string
+// ✅ RESTORED - Structured discriminator objects
+export interface TypeDiscriminator {
+  discriminator: string;
+  contract: string;
+}
+
+// ✅ RESTORED - Structured custody objects
+export interface CustodyDecision {
+  entity: string;
+  custody: 'contract' | 'p2pkh';
+  contractName?: string;
+  rationale: string;
+}
+
+// ⚠️ STILL FLATTENED - validates is comma-separated string
 export interface TransactionInput {
   index: number;
   from: string;
   utxoType: string;
   stateRequired?: string;
-  validates?: string; // Comma-separated
+  validates?: string; // Comma-separated (cannot restore: 4-level nesting)
 }
 
-// UTXOContract.functions: ContractFunction[] → string[]
+// ⚠️ STILL FLATTENED - functions is string[]
 export interface UTXOContract {
   name: string;
   role: 'container' | 'sidecar' | 'function' | 'minting' | 'independent';
@@ -270,28 +270,28 @@ export interface UTXOContract {
   stateLayout?: string;
 }
 
-// TokenTopology: flattened arrays
+// Partial restoration
 export interface TokenTopology {
   baseCategory: string;
-  typeDiscriminators: string[]; // Each: "0x00=ContractName"
-  capabilities: string[]; // Each: "ContractName:mutable"
+  typeDiscriminators: TypeDiscriminator[];  // ✅ RESTORED
+  capabilities: string[];  // ⚠️ Still flat: "ContractName:mutable"
   authentication: string[];
 }
 
-// ContractCountRationale.decisions: ContractCountDecision[] → string[]
+// ⚠️ STILL FLATTENED - decisions is string[]
 export interface ContractCountRationale {
   total: number;
   breakdown: string;
   decisions: string[]; // Each: "Entity: N - reason"
 }
 
-// UTXOArchitecture.custodyDecisions: CustodyDecision[] → string[]
+// Partial restoration
 export interface UTXOArchitecture {
   nftStateTypes: NFTStateType[];
   transactionTemplates: TransactionTemplate[];
   contracts: UTXOContract[];
   tokenTopology: TokenTopology;
-  custodyDecisions: string[]; // Each: "Entity: contract(Name) - rationale"
+  custodyDecisions: CustodyDecision[];  // ✅ RESTORED
   contractCountRationale: ContractCountRationale;
   warnings: string[];
 }
@@ -314,26 +314,38 @@ export type TransactionInput = {
 
 ---
 
-## Rollback Options
+## Restoration Status
 
-If you need more structure back, here's what could potentially be restored (in order of grammar impact, lowest first):
+### ✅ Successfully Restored (Safe, 2-3 level nesting)
 
-### Low Risk (Try First)
-1. **custodyDecisions** - Simple objects, rarely more than 5 items
-2. **contractCountRationale.decisions** - Simple objects, rarely more than 10 items
+| Structure | Lines Added | Status |
+|-----------|-------------|--------|
+| `custodyDecisions` | +12 | Done |
+| `typeDiscriminators` | +8 | Done |
+| `nftStateTypes[].fields` | +13 | Done |
 
-### Medium Risk
-3. **tokenTopology.typeDiscriminators** - Simple objects
-4. **tokenTopology.capabilities** - Simple objects
+### ⚠️ Could Restore (Low Priority)
 
-### High Risk (Avoid)
-5. **contracts[].functions** - This was the main problem area
-6. **nftStateTypes[].fields** - Nested array of objects
-7. **transactionTemplates[].inputs[].validates** - 4-level nesting
+| Structure | Reason Still Flat |
+|-----------|-------------------|
+| `capabilities` | Easy to parse with `.split(':')`, low Phase 3 impact |
+| `decisions` | Zero Phase 3 impact (informational only) |
 
-### Do NOT Restore
-- Anything that creates 4-level nesting
-- Multiple nested arrays of objects at the same level
+### ❌ CANNOT Restore (4-Level Nesting = Grammar Explosion)
+
+| Structure | Why It Breaks |
+|-----------|---------------|
+| `contracts[].functions` | Would need `functions[].validates[]` = 4 levels |
+| `transactionTemplates[].inputs[].validates` | Already 3 levels, adding array = 4 levels |
+
+**Phase 3 must parse these strings.** Recommended parser:
+```typescript
+// For contracts[].functions[]:
+const FUNC_PATTERN = /^(\w+)\s*@\s*(\w+)\s*\[(\d+)→(\d+)\]:\s*(.+)$/;
+
+// For inputs[].validates:
+const validations = validates.split(',').map(v => v.trim());
+```
 
 ---
 
@@ -346,14 +358,13 @@ There's no direct way to test grammar size before hitting the API. Best approach
 
 ---
 
-## String Format Reference
+## String Format Reference (Remaining Flattened Fields)
 
-| Field | Format | Example |
-|-------|--------|---------|
-| `nftStateTypes[].fields` | `name:type:purpose\|...` | `ownerPkh:bytes20:Auth\|balance:bytes8:Amount` |
-| `contracts[].functions[]` | `func @ tx [in→out]: validations` | `vote @ castVote [1→1]: check1, check2` |
-| `tokenTopology.typeDiscriminators[]` | `0xNN=Contract` | `0x00=BallotContract` |
-| `tokenTopology.capabilities[]` | `Contract:cap` | `VoterContract:mutable` |
-| `custodyDecisions[]` | `Entity: type(name) - reason` | `Voter: contract(VoterContract) - enforce rules` |
-| `contractCountRationale.decisions[]` | `Entity: N - reason` | `Voter: 1 - state tracking` |
-| `transactionTemplates[].inputs[].validates` | `check1, check2, check3` | `index == 1, auth check, state valid` |
+| Field | Format | Example | Phase 3 Parser |
+|-------|--------|---------|----------------|
+| `contracts[].functions[]` | `func @ tx [in→out]: validations` | `vote @ castVote [1→1]: check1, check2` | Regex |
+| `tokenTopology.capabilities[]` | `Contract:cap` | `VoterContract:mutable` | `.split(':')` |
+| `contractCountRationale.decisions[]` | `Entity: N - reason` | `Voter: 1 - state tracking` | N/A (informational) |
+| `transactionTemplates[].inputs[].validates` | `check1, check2, check3` | `index == 1, auth check, state valid` | `.split(',')` |
+
+**Note:** `nftStateTypes[].fields`, `typeDiscriminators`, and `custodyDecisions` are now structured objects.
