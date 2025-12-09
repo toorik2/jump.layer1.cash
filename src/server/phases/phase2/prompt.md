@@ -18,10 +18,7 @@ From Phase 1 entities, define explicit commitment layouts:
 {
   "name": "VoterState",
   "derivedFrom": "Voter entity",
-  "fields": [
-    { "name": "ownerPkh", "type": "bytes20", "purpose": "Owner authorization" },
-    { "name": "hasVoted", "type": "bytes1", "purpose": "0x00=no, 0x01=yes" }
-  ],
+  "fields": "ownerPkh:bytes20:Owner authorization|hasVoted:bytes1:0x00=no, 0x01=yes",
   "totalBytes": 21,
   "transitions": ["vote (hasVoted: 0x00 → 0x01)"]
 }
@@ -64,21 +61,13 @@ For each (contract, transaction, position) tuple:
 ```json
 {
   "name": "VoterContract",
-  "functions": [{
-    "name": "vote",
-    "transaction": "castVote",
-    "inputPosition": 1,
-    "outputPosition": 1,
-    "validates": [
-      "this.activeInputIndex == 1",
-      "BallotContract at input[0]",
-      "Owner authorized via input[2]",
-      "hasVoted: 0x00 → 0x01",
-      "5-point covenant on output[1]"
-    ]
-  }]
+  "functions": [
+    "vote @ castVote [1→1]: this.activeInputIndex == 1, BallotContract at input[0], Owner authorized via input[2], hasVoted: 0x00 → 0x01, 5-point covenant on output[1]"
+  ]
 }
 ```
+
+Format: `funcName @ txName [inputPos→outputPos]: validation1, validation2, ...`
 
 ## Step 4: Token Topology
 
@@ -88,18 +77,21 @@ Define how contracts authenticate each other:
 {
   "baseCategory": "systemCategory",
   "typeDiscriminators": [
-    { "discriminator": "0x00", "contract": "BallotContract" },
-    { "discriminator": "0x01", "contract": "VoterContract" }
+    "0x00=BallotContract",
+    "0x01=VoterContract"
   ],
   "capabilities": [
-    { "contract": "BallotContract", "capability": "mutable" },
-    { "contract": "VoterContract", "capability": "mutable" }
+    "BallotContract:mutable",
+    "VoterContract:mutable"
   ],
   "authentication": [
-    { "from": "BallotContract", "recognizes": "VoterContract", "via": "commitment[0] == 0x01" }
+    "BallotContract recognizes VoterContract via commitment[0] == 0x01"
   ]
 }
 ```
+
+Format for typeDiscriminators: `0xNN=ContractName`
+Format for capabilities: `ContractName:capability`
 
 **Convention**:
 - `0x0X` = Containers and sidecars
@@ -121,17 +113,11 @@ For each entity: where is its NFT locked?
 
 For ANY self-replicating output, validate ALL five:
 
-```json
-{
-  "covenantChecklist": {
-    "lockingBytecode": "same contract code",
-    "tokenCategory": "systemCategory + 0x01 (mutable)",
-    "value": "1000 sats minimum",
-    "tokenAmount": 0,
-    "nftCommitment": "correctly updated state"
-  }
-}
 ```
+covenantChecklist: "same|systemCategory+0x01|>=1000|0|updated state"
+```
+
+Format: `locking|category|value|tokenAmount|commitment`
 
 **Missing ANY = critical vulnerability.**
 
@@ -196,25 +182,12 @@ For ANY self-replicating output, validate ALL five:
 
 Explicitly declare contract relationships:
 
-```json
-{
-  "name": "LoanSidecarContract",
-  "relationships": {
-    "sidecarOf": "LoanContract",
-    "linkMethod": "outpointTransactionHash"
-  }
-}
 ```
+LoanSidecarContract:
+  relationships: "sidecar of LoanContract via outpointTransactionHash"
 
-```json
-{
-  "name": "RepayLoanFuncContract",
-  "relationships": {
-    "functionOf": "LoanContract",
-    "forTransaction": "repayLoan",
-    "identifier": "0x02"
-  }
-}
+RepayLoanFuncContract:
+  relationships: "function of LoanContract for repayLoan with identifier 0x02"
 ```
 
 ---

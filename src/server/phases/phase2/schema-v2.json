@@ -11,19 +11,7 @@
           "properties": {
             "name": { "type": "string", "description": "State type name, e.g., VoterState, LoanState" },
             "derivedFrom": { "type": "string", "description": "Which Phase 1 entity this represents" },
-            "fields": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" },
-                  "type": { "type": "string", "description": "CashScript type: bytes1, bytes4, bytes8, bytes20, bytes32" },
-                  "purpose": { "type": "string" }
-                },
-                "required": ["name", "type", "purpose"],
-                "additionalProperties": false
-              }
-            },
+            "fields": { "type": "string", "description": "Pipe-delimited field specs: name:type:purpose|name:type:purpose (e.g., 'ownerPkh:bytes20:Owner auth|hasVoted:bytes1:Vote flag')" },
             "totalBytes": { "type": "integer", "description": "Sum of field bytes, must be <= 128" },
             "transitions": {
               "type": "array",
@@ -52,11 +40,7 @@
                   "from": { "type": "string", "description": "Contract name or 'P2PKH'" },
                   "utxoType": { "type": "string", "description": "What the UTXO holds: 'BallotState NFT', 'BCH only', etc." },
                   "stateRequired": { "type": "string", "description": "Required state condition, or empty string if none" },
-                  "validates": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "What this input validates about the transaction, or empty array for P2PKH"
-                  }
+                  "validates": { "type": "string", "description": "Comma-separated validation requirements, or empty string for P2PKH" }
                 },
                 "required": ["index", "from", "utxoType"],
                 "additionalProperties": false
@@ -71,18 +55,7 @@
                   "to": { "type": "string", "description": "Contract name, 'P2PKH', or 'burned'" },
                   "utxoType": { "type": "string" },
                   "stateProduced": { "type": "string", "description": "New state after transition, or empty string if none" },
-                  "covenantChecklist": {
-                    "type": "object",
-                    "properties": {
-                      "lockingBytecode": { "type": "string" },
-                      "tokenCategory": { "type": "string" },
-                      "value": { "type": "string" },
-                      "tokenAmount": { "type": "string" },
-                      "nftCommitment": { "type": "string" }
-                    },
-                    "additionalProperties": false,
-                    "description": "5-point covenant checklist for self-replicating outputs, or empty object {} if not applicable"
-                  }
+                  "covenantChecklist": { "type": "string", "description": "5-point covenant: locking|category|value|tokenAmount|commitment, or empty string" }
                 },
                 "required": ["index", "to", "utxoType"],
                 "additionalProperties": false
@@ -116,37 +89,10 @@
             "holdsFungible": { "type": "boolean" },
             "functions": {
               "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string" },
-                  "transaction": { "type": "string", "description": "Which transaction template this function validates" },
-                  "inputPosition": { "type": "integer" },
-                  "outputPosition": { "type": "integer", "description": "Output position if self-replicating, or -1 if consumed" },
-                  "validates": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "description": "List of validation requirements"
-                  }
-                },
-                "required": ["name", "transaction", "inputPosition", "validates"],
-                "additionalProperties": false
-              }
+              "items": { "type": "string" },
+              "description": "Contract functions as strings: 'funcName @ txName [inputPos→outputPos]: validation1, validation2'"
             },
-            "relationships": {
-              "type": "object",
-              "properties": {
-                "sidecarOf": { "type": "string" },
-                "functionOf": { "type": "string" },
-                "forTransaction": { "type": "string" },
-                "identifier": { "type": "string" },
-                "linkMethod": { "type": "string" },
-                "hasSidecar": { "type": "string" },
-                "hasFunctions": { "type": "array", "items": { "type": "string" } }
-              },
-              "additionalProperties": false,
-              "description": "Contract relationships, or empty object {} if none"
-            },
+            "relationships": { "type": "string", "description": "Relationship description or empty string if none" },
             "stateLayout": { "type": "string", "description": "Human-readable state layout summary, or empty string if none" }
           },
           "required": ["name", "role", "lifecycle", "holdsBch", "holdsNft", "holdsFungible", "functions"],
@@ -160,42 +106,18 @@
           "baseCategory": { "type": "string", "description": "Symbolic name for the system's base category" },
           "typeDiscriminators": {
             "type": "array",
-            "description": "Byte prefix to contract name mappings",
-            "items": {
-              "type": "object",
-              "properties": {
-                "discriminator": { "type": "string", "description": "Byte prefix, e.g., '0x00'" },
-                "contract": { "type": "string", "description": "Contract name" }
-              },
-              "required": ["discriminator", "contract"],
-              "additionalProperties": false
-            }
+            "items": { "type": "string" },
+            "description": "Type discriminator mappings as strings: '0x00=ContractName'"
           },
           "capabilities": {
             "type": "array",
-            "description": "Contract to NFT capability mappings",
-            "items": {
-              "type": "object",
-              "properties": {
-                "contract": { "type": "string", "description": "Contract name" },
-                "capability": { "type": "string", "enum": ["none", "mutable", "minting"] }
-              },
-              "required": ["contract", "capability"],
-              "additionalProperties": false
-            }
+            "items": { "type": "string" },
+            "description": "Capability mappings as strings: 'ContractName:mutable'"
           },
           "authentication": {
             "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "from": { "type": "string" },
-                "recognizes": { "type": "string" },
-                "via": { "type": "string", "description": "CashScript expression for recognition" }
-              },
-              "required": ["from", "recognizes", "via"],
-              "additionalProperties": false
-            }
+            "items": { "type": "string" },
+            "description": "How contracts recognize each other: 'ContractA recognizes ContractB via commitment[0]==0x01'"
           }
         },
         "required": ["baseCategory", "typeDiscriminators", "capabilities", "authentication"],
@@ -203,51 +125,19 @@
       },
       "custodyDecisions": {
         "type": "array",
-        "description": "Where each entity's NFT is locked",
-        "items": {
-          "type": "object",
-          "properties": {
-            "entity": { "type": "string" },
-            "custody": {
-              "type": "string",
-              "enum": ["contract", "p2pkh"],
-              "description": "contract = rules enforced, p2pkh = user has full control"
-            },
-            "contractName": { "type": "string", "description": "If contract custody, which contract, or empty string if p2pkh" },
-            "rationale": { "type": "string" }
-          },
-          "required": ["entity", "custody", "rationale"],
-          "additionalProperties": false
-        }
+        "items": { "type": "string" },
+        "description": "Custody decisions as strings: 'Entity: contract(ContractName) - rationale' or 'Entity: p2pkh - rationale'"
       },
       "contractCountRationale": {
         "type": "object",
         "description": "Explains why this many contracts were chosen",
         "properties": {
           "total": { "type": "integer" },
-          "breakdown": {
-            "type": "object",
-            "properties": {
-              "containers": { "type": "integer" },
-              "sidecars": { "type": "integer" },
-              "functions": { "type": "integer" },
-              "children": { "type": "integer" }
-            },
-            "required": ["containers", "sidecars", "functions", "children"],
-            "additionalProperties": false
-          },
+          "breakdown": { "type": "string", "description": "Format: 'N containers, N sidecars, N functions, N children'" },
           "decisions": {
             "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "entity": { "type": "string" },
-                "contracts": { "type": "integer" },
-                "reason": { "type": "string" }
-              },
-              "required": ["entity", "contracts", "reason"],
-              "additionalProperties": false
-            }
+            "items": { "type": "string" },
+            "description": "Per-entity decisions as strings: 'Entity: N - reason'"
           }
         },
         "required": ["total", "breakdown", "decisions"],
@@ -255,16 +145,8 @@
       },
       "warnings": {
         "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "severity": { "type": "string", "enum": ["high", "medium", "low"] },
-            "issue": { "type": "string" },
-            "mitigation": { "type": "string" }
-          },
-          "required": ["severity", "issue", "mitigation"],
-          "additionalProperties": false
-        }
+        "items": { "type": "string" },
+        "description": "Security warnings: 'SEVERITY: issue description - mitigation strategy'"
       }
     },
     "required": ["nftStateTypes", "transactionTemplates", "contracts", "tokenTopology", "custodyDecisions", "contractCountRationale", "warnings"],

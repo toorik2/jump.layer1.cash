@@ -5,61 +5,48 @@
 // ============================================================================
 
 /**
- * NFT commitment field structure
- */
-export interface NFTStateField {
-  name: string;
-  type: 'bytes1' | 'bytes2' | 'bytes4' | 'bytes8' | 'bytes20' | 'bytes32';
-  purpose: string;
-}
-
-/**
  * NFT state type - explicit commitment layout
  * The "states" in our state machine
+ * fields format: "name:type:purpose|name:type:purpose"
  */
 export interface NFTStateType {
   name: string;
   derivedFrom: string;
-  fields: NFTStateField[];
+  fields: string; // Pipe-delimited: "ownerPkh:bytes20:Owner auth|hasVoted:bytes1:Vote flag"
   totalBytes: number;
   transitions?: string[];
 }
 
 /**
  * 5-point covenant checklist for self-replicating outputs
- * Missing ANY = critical vulnerability
- * Use empty object {} for non-replicating outputs
+ * Format: "locking|category|value|tokenAmount|commitment"
+ * Example: "same|systemCategory+0x01|>=1000|0|updated state"
+ * Use empty string for non-replicating outputs
  */
-export interface CovenantChecklist {
-  lockingBytecode?: string;
-  tokenCategory?: string;
-  value?: string;
-  tokenAmount?: string;
-  nftCommitment?: string;
-}
+// covenantChecklist is now a pipe-separated string, not an interface
 
 /**
  * Transaction input specification
- * Sentinel values: stateRequired="" for no state, validates=[] for P2PKH
+ * Sentinel values: stateRequired="" for no state, validates="" for P2PKH
  */
 export interface TransactionInput {
   index: number;
   from: string;
   utxoType: string;
   stateRequired?: string;
-  validates?: string[];
+  validates?: string; // Comma-separated: "check1, check2, check3"
 }
 
 /**
  * Transaction output specification
- * Sentinel values: stateProduced="" for no state, covenantChecklist={} for non-replicating
+ * Sentinel values: stateProduced="" for no state, covenantChecklist="" for non-replicating
  */
 export interface TransactionOutput {
   index: number;
   to: string;
   utxoType: string;
   stateProduced?: string;
-  covenantChecklist?: CovenantChecklist;
+  covenantChecklist?: string;
 }
 
 /**
@@ -74,33 +61,9 @@ export interface TransactionTemplate {
 }
 
 /**
- * Contract function - validates one transaction at one position
- * Sentinel: outputPosition=-1 means consumed (no output)
- */
-export interface ContractFunction {
-  name: string;
-  transaction: string;
-  inputPosition: number;
-  outputPosition?: number;
-  validates: string[];
-}
-
-/**
- * Contract relationships - explicit cross-contract dependencies
- */
-export interface ContractRelationships {
-  sidecarOf?: string;
-  functionOf?: string;
-  forTransaction?: string;
-  identifier?: string;
-  linkMethod?: string;
-  hasSidecar?: string;
-  hasFunctions?: string[];
-}
-
-/**
  * Contract definition - DERIVED from transaction templates
- * Sentinels: nftStateType="" for no state, relationships={} for none, stateLayout="" for none
+ * Sentinels: nftStateType="" for no state, relationships="" for none, stateLayout="" for none
+ * functions format: "funcName @ txName [inputPos→outputPos]: validation1, validation2"
  */
 export interface UTXOContract {
   name: string;
@@ -110,93 +73,46 @@ export interface UTXOContract {
   holdsBch: boolean;
   holdsNft: boolean;
   holdsFungible: boolean;
-  functions: ContractFunction[];
-  relationships?: ContractRelationships;
+  functions: string[]; // Each: "funcName @ txName [inputPos→outputPos]: validations"
+  relationships?: string;
   stateLayout?: string;
 }
 
 /**
- * Type discriminator mapping
- */
-export interface TypeDiscriminator {
-  discriminator: string;
-  contract: string;
-}
-
-/**
- * Capability mapping
- */
-export interface CapabilityMapping {
-  contract: string;
-  capability: 'none' | 'mutable' | 'minting';
-}
-
-/**
  * Token topology - how contracts authenticate each other
+ * typeDiscriminators format: "0xNN=ContractName"
+ * capabilities format: "ContractName:capability"
+ * authentication format: "ContractA recognizes ContractB via commitment[0]==0x01"
  */
 export interface TokenTopology {
   baseCategory: string;
-  typeDiscriminators: TypeDiscriminator[];
-  capabilities: CapabilityMapping[];
-  authentication: {
-    from: string;
-    recognizes: string;
-    via: string;
-  }[];
-}
-
-/**
- * Custody decision - where each entity's NFT is locked
- * Sentinel: contractName="" for p2pkh custody
- */
-export interface CustodyDecision {
-  entity: string;
-  custody: 'contract' | 'p2pkh';
-  contractName?: string;
-  rationale: string;
-}
-
-/**
- * Contract count decision
- */
-export interface ContractCountDecision {
-  entity: string;
-  contracts: number;
-  reason: string;
+  typeDiscriminators: string[]; // Each: "0x00=BallotContract"
+  capabilities: string[]; // Each: "BallotContract:mutable"
+  authentication: string[];
 }
 
 /**
  * Contract count rationale
+ * breakdown format: "N containers, N sidecars, N functions, N children"
+ * decisions format: "Entity: N - reason"
  */
 export interface ContractCountRationale {
   total: number;
-  breakdown: {
-    containers: number;
-    sidecars: number;
-    functions: number;
-    children: number;
-  };
-  decisions: ContractCountDecision[];
-}
-
-/**
- * Warning with severity
- */
-export interface Warning {
-  severity: 'high' | 'medium' | 'low';
-  issue: string;
-  mitigation: string;
+  breakdown: string;
+  decisions: string[]; // Each: "Voter: 1 - state tracking"
 }
 
 /**
  * The complete UTXO architecture v2
+ * custodyDecisions format: "Entity: contract(ContractName) - rationale" or "Entity: p2pkh - rationale"
+ * warnings format: "SEVERITY: issue description - mitigation strategy"
  */
 export interface UTXOArchitecture {
   nftStateTypes: NFTStateType[];
   transactionTemplates: TransactionTemplate[];
   contracts: UTXOContract[];
   tokenTopology: TokenTopology;
-  custodyDecisions: CustodyDecision[];
+  custodyDecisions: string[]; // Each: "Voter: contract(VoterContract) - must enforce one-vote"
   contractCountRationale: ContractCountRationale;
-  warnings: Warning[];
+  warnings: string[];
 }

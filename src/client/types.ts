@@ -11,21 +11,15 @@ export type ContractInfo = {
 };
 
 // v2 schema types for transactions
-// Sentinel values: empty strings/arrays/objects instead of null
-export type CovenantChecklist = {
-  lockingBytecode?: string;
-  tokenCategory?: string;
-  value?: string;
-  tokenAmount?: string;
-  nftCommitment?: string;
-};
+// Sentinel values: empty strings/arrays instead of null
+// CovenantChecklist is now a pipe-separated string: "locking|category|value|tokenAmount|commitment"
 
 export type TransactionInput = {
   index: number;
   from: string;
   utxoType: string;
   stateRequired?: string;
-  validates?: string[];
+  validates?: string; // Comma-separated: "check1, check2, check3"
 };
 
 export type TransactionOutput = {
@@ -33,7 +27,7 @@ export type TransactionOutput = {
   to: string;
   utxoType: string;
   stateProduced?: string;
-  covenantChecklist?: CovenantChecklist;
+  covenantChecklist?: string;
 };
 
 export type Transaction = {
