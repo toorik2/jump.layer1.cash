@@ -10,31 +10,36 @@ export type ContractInfo = {
   validationError?: string;
 };
 
+// v2 schema types for transactions
+export type CovenantChecklist = {
+  lockingBytecode: string;
+  tokenCategory: string;
+  value: string;
+  tokenAmount: number | string;
+  nftCommitment: string;
+};
+
 export type TransactionInput = {
   index: number;
   from: string;
-  type?: string;
-  description: string;
-  required: boolean;
+  utxoType: string;
+  stateRequired?: string | null;
+  validates?: string[] | null;
 };
 
 export type TransactionOutput = {
   index: number;
   to: string;
-  type?: string;
-  description: string;
-  changes?: string;
-  required: boolean;
+  utxoType: string;
+  stateProduced?: string | null;
+  covenantChecklist?: CovenantChecklist | null;
 };
 
 export type Transaction = {
   name: string;
-  description: string;
-  purpose?: string;
+  purpose: string;
   inputs: TransactionInput[];
   outputs: TransactionOutput[];
-  participatingContracts?: string[];
-  flowDescription?: string;
 };
 
 export type PendingContract = {

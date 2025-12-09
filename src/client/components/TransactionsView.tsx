@@ -28,12 +28,25 @@ export default function TransactionsView(props: Props) {
     return contractNameSet().has(name);
   };
 
-  const getSlotTypeClass = (type: string) => {
-    if (type?.includes('NFT') && type?.includes('contract')) return styles.slotTypeContractNft;
-    if (type?.includes('NFT')) return styles.slotTypeUserNft;
-    if (type?.includes('BCH')) return styles.slotTypeBch;
-    if (type?.includes('fungible')) return styles.slotTypeFungible;
+  const getSlotTypeClass = (utxoType: string) => {
+    if (utxoType?.includes('NFT') && isContractType(utxoType)) return styles.slotTypeContractNft;
+    if (utxoType?.includes('NFT')) return styles.slotTypeUserNft;
+    if (utxoType?.includes('BCH')) return styles.slotTypeBch;
+    if (utxoType?.includes('fungible')) return styles.slotTypeFungible;
     return styles.slotType;
+  };
+
+  const isContractType = (utxoType: string): boolean => {
+    return utxoType?.toLowerCase().includes('contract') ||
+           utxoType?.toLowerCase().includes('state');
+  };
+
+  // Format utxoType for display (e.g., "BallotState NFT" -> "NFT")
+  const formatUtxoType = (utxoType: string): string => {
+    if (utxoType?.includes('NFT')) return 'NFT';
+    if (utxoType?.includes('BCH')) return 'BCH';
+    if (utxoType?.includes('fungible')) return 'FT';
+    return utxoType || '';
   };
 
   return (
@@ -75,10 +88,10 @@ export default function TransactionsView(props: Props) {
                 <div class={styles.header}>
                   <div class={styles.headerLeft}>
                     <h3 class={styles.name}>{tx.name}</h3>
-                    <p class={styles.description}>{tx.description}</p>
+                    <p class={styles.description}>{tx.purpose}</p>
                   </div>
                   {(() => {
-                    // Derive contracts from inputs/outputs instead of relying on AI-provided participatingContracts
+                    // Derive contracts from inputs/outputs
                     const contracts = new Set<string>();
                     for (const input of tx.inputs || []) {
                       if (isContractName(input.from)) contracts.add(input.from!);
@@ -107,11 +120,16 @@ export default function TransactionsView(props: Props) {
                           <div class={styles.slotContent}>
                             <div class={styles.slotLabel}>
                               {input.from}
-                              <Show when={input.type}>
-                                <span class={getSlotTypeClass(input.type)}>{input.type}</span>
+                              <Show when={input.utxoType}>
+                                <span class={getSlotTypeClass(input.utxoType)}>{formatUtxoType(input.utxoType)}</span>
                               </Show>
                             </div>
-                            <div class={styles.slotDescription}>{input.description}</div>
+                            <div class={styles.slotDescription}>
+                              {input.utxoType}
+                              <Show when={input.stateRequired}>
+                                <span> ({input.stateRequired})</span>
+                              </Show>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -129,24 +147,22 @@ export default function TransactionsView(props: Props) {
                           <div class={styles.slotContent}>
                             <div class={styles.slotLabel}>
                               {output.to}
-                              <Show when={output.type}>
-                                <span class={getSlotTypeClass(output.type)}>{output.type}</span>
+                              <Show when={output.utxoType}>
+                                <span class={getSlotTypeClass(output.utxoType)}>{formatUtxoType(output.utxoType)}</span>
                               </Show>
                             </div>
-                            <div class={styles.slotDescription}>{output.description}</div>
+                            <div class={styles.slotDescription}>
+                              {output.utxoType}
+                              <Show when={output.stateProduced}>
+                                <span> ({output.stateProduced})</span>
+                              </Show>
+                            </div>
                           </div>
                         </div>
                       )}
                     </For>
                   </div>
                 </div>
-
-                <Show when={tx.flowDescription}>
-                  <details class={styles.flowDescription}>
-                    <summary>Flow Description</summary>
-                    <p>{tx.flowDescription}</p>
-                  </details>
-                </Show>
               </div>
             )}
           </For>

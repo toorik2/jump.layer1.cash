@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 
 // Load and process prompt with schema embedded
 const promptTemplate = fs.readFileSync(path.join(__dirname, 'prompt.md'), 'utf-8');
-const outputSchema = JSON.parse(fs.readFileSync(path.join(__dirname, 'schema.json'), 'utf-8'));
+const outputSchema = JSON.parse(fs.readFileSync(path.join(__dirname, 'schema-v2.json'), 'utf-8'));
 const schemaForPrompt = JSON.stringify(outputSchema.schema, null, 2);
 const systemPrompt = promptTemplate.replace('{{SCHEMA}}', schemaForPrompt);
 
@@ -67,6 +67,12 @@ Design the UTXO architecture following the patterns and prime directives in the 
   if (!Array.isArray(architecture.transactionTemplates)) {
     throw new Error('Phase 2 returned invalid architecture: transactionTemplates missing');
   }
+  if (!Array.isArray(architecture.nftStateTypes)) {
+    throw new Error('Phase 2 returned invalid architecture: nftStateTypes missing');
+  }
+  if (!architecture.tokenTopology) {
+    throw new Error('Phase 2 returned invalid architecture: tokenTopology missing');
+  }
 
   const duration = Date.now() - startTime;
 
@@ -74,7 +80,8 @@ Design the UTXO architecture following the patterns and prime directives in the 
     duration: `${(duration / 1000).toFixed(2)}s`,
     contracts: architecture.contracts.length,
     transactions: architecture.transactionTemplates.length,
-    patterns: architecture.patterns?.map(p => p.name).join(', ') || '(none)'
+    stateTypes: architecture.nftStateTypes.length,
+    contractBreakdown: architecture.contractCountRationale?.breakdown || '(none)'
   });
 
   // Store Phase 2 architecture in database

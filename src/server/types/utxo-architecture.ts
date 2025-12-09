@@ -1,320 +1,180 @@
 // ============================================================================
-// UTXO ARCHITECTURE TYPES
-// CashScript-specific design derived from domain model
-// Phase 2 output: HOW to implement the domain in UTXO model
+// UTXO ARCHITECTURE TYPES v2
+// Transaction-centric state machine design
+// Phase 2 output: Transaction templates are PRIMARY, contracts are DERIVED
 // ============================================================================
 
 /**
- * A contract in the UTXO architecture
+ * NFT commitment field structure
  */
-export interface UTXOContract {
-  name: string;
-  description: string;
-
-  /**
-   * Contract role in the system
-   * - primary: Main coordinator, handles core logic
-   * - helper: Auxiliary contract (sidecar, function contract)
-   * - state: Pure state storage, validated by others
-   */
-  role: 'primary' | 'helper' | 'state';
-
-  /**
-   * What does this contract VALIDATE?
-   * PRIME DIRECTIVE: Every contract must have a clear validation purpose
-   */
-  validationPurpose: string;
-
-  /**
-   * Constructor parameters (immutable after deployment)
-   */
-  constructorParams: ConstructorParam[];
-
-  /**
-   * NFT configuration if this contract uses NFTs
-   */
-  nft?: NFTConfig;
-
-  /**
-   * Functions this contract will have
-   */
-  functions: UTXOFunction[];
-
-  /**
-   * Which domain entities does this contract manage?
-   */
-  managesEntities: string[];
-
-  /**
-   * Which transaction templates does this contract participate in?
-   */
-  participatesIn: string[];
-
-  /**
-   * Deployment order (lower = deploy first)
-   */
-  deploymentOrder: number;
-}
-
-export interface ConstructorParam {
-  name: string;
-  type: 'bytes20' | 'bytes32' | 'pubkey' | 'int' | 'bytes';
-  description: string;
-  /**
-   * Where does this value come from?
-   * - deployment: Set at deployment time
-   * - computed: Derived from other contracts (e.g., P2SH32 hash)
-   */
-  source: 'deployment' | 'computed';
-}
-
-export interface NFTConfig {
-  /**
-   * NFT capability
-   * - minting: Can create new NFTs (0x02)
-   * - mutable: State can change (0x01)
-   * - immutable: Permanent receipt (0x00)
-   */
-  capability: 'minting' | 'mutable' | 'immutable';
-
-  /**
-   * Commitment structure (max 128 bytes)
-   */
-  commitment: CommitmentField[];
-
-  /**
-   * Total bytes used by commitment
-   */
-  totalBytes: number;
-}
-
-export interface CommitmentField {
+export interface NFTStateField {
   name: string;
   type: 'bytes1' | 'bytes2' | 'bytes4' | 'bytes8' | 'bytes20' | 'bytes32';
-  bytes: number;
-  description: string;
-
-  /**
-   * Maps to which domain property?
-   */
-  mapsToProperty?: string;
-}
-
-export interface UTXOFunction {
-  name: string;
-  description: string;
-
-  /**
-   * What does this function VALIDATE?
-   * PRIME DIRECTIVE: Every function must add constraints
-   */
-  validationPurpose: string;
-
-  /**
-   * Function parameters (must all be used in body)
-   */
-  parameters: FunctionParam[];
-
-  /**
-   * Which transaction template does this function implement?
-   */
-  implementsTransition: string;
-
-  /**
-   * Expected input index for this contract
-   */
-  expectedInputIndex: number;
-
-  /**
-   * Validations this function must perform (maps to require statements)
-   */
-  validations: FunctionValidation[];
-
-  /**
-   * Does this function replicate the contract's NFT?
-   */
-  selfReplicates: boolean;
-
-  /**
-   * For self-replicating: which commitment fields change?
-   */
-  commitmentChanges?: string[];
-}
-
-export interface FunctionParam {
-  name: string;
-  type: 'sig' | 'pubkey' | 'int' | 'bytes' | 'bytes20' | 'bytes32';
-  description: string;
-
-  /**
-   * Where in the function body is this used?
-   * Helps ensure no unused parameters
-   */
-  usedFor: string;
-}
-
-export interface FunctionValidation {
-  category: 'position' | 'input' | 'output' | 'authorization' | 'state' | 'time' | 'count';
-  description: string;
-
-  /**
-   * The actual require statement (pseudo-code)
-   */
-  requireStatement: string;
-
-  /**
-   * Why is this validation needed?
-   */
-  reason: string;
+  purpose: string;
 }
 
 /**
- * A transaction template describing inputs/outputs structure
+ * NFT state type - explicit commitment layout
+ * The "states" in our state machine
+ */
+export interface NFTStateType {
+  name: string;
+  derivedFrom: string;
+  fields: NFTStateField[];
+  totalBytes: number;
+  transitions?: string[];
+}
+
+/**
+ * 5-point covenant checklist for self-replicating outputs
+ * Missing ANY = critical vulnerability
+ */
+export interface CovenantChecklist {
+  lockingBytecode: string;
+  tokenCategory: string;
+  value: string;
+  tokenAmount: number | string;
+  nftCommitment: string;
+}
+
+/**
+ * Transaction input specification
+ */
+export interface TransactionInput {
+  index: number;
+  from: string;
+  utxoType: string;
+  stateRequired?: string | null;
+  validates?: string[] | null;
+}
+
+/**
+ * Transaction output specification
+ */
+export interface TransactionOutput {
+  index: number;
+  to: string;
+  utxoType: string;
+  stateProduced?: string | null;
+  covenantChecklist?: CovenantChecklist | null;
+}
+
+/**
+ * Transaction template - the PRIMARY design artifact
+ * Design transactions first, contracts are derived from these
  */
 export interface TransactionTemplate {
   name: string;
-  description: string;
-
-  /**
-   * Which domain transition does this implement?
-   */
-  implementsTransition: string;
-
-  /**
-   * All inputs in order
-   */
+  purpose: string;
   inputs: TransactionInput[];
-
-  /**
-   * All outputs in order
-   */
   outputs: TransactionOutput[];
-
-  /**
-   * Maximum allowed outputs (PRIME DIRECTIVE: output count limiting)
-   */
-  maxOutputs: number;
-
-  /**
-   * Which contracts participate and validate?
-   */
-  participatingContracts: string[];
-
-  /**
-   * Human-readable description of the transaction flow
-   */
-  flowDescription: string;
-}
-
-export interface TransactionInput {
-  index: number;
-  nftCapability?: 'minting' | 'mutable' | 'immutable';
-  type: 'contract-nft' | 'user-nft' | 'bch' | 'fungible';
-  from: string; // Contract name (ending with "Contract") or "P2PKH"/"User" for wallets
-  description: string;
-  required: boolean;
-}
-
-export interface TransactionOutput {
-  index: number;
-  nftCapability?: 'minting' | 'mutable' | 'immutable';
-  type: 'contract-nft' | 'user-nft' | 'bch' | 'fungible';
-  to: string; // Contract name (ending with "Contract") or "P2PKH"/"User" for wallets
-  description: string;
-
-  /**
-   * What changes from input to output?
-   */
-  changes: OutputChange[];
-
-  required: boolean;
-}
-
-export interface OutputChange {
-  field: 'commitment' | 'value' | 'category' | 'tokenAmount';
-  changeType: 'unchanged' | 'updated' | 'derived';
-  description: string;
 }
 
 /**
- * The complete UTXO architecture
+ * Contract function - validates one transaction at one position
+ */
+export interface ContractFunction {
+  name: string;
+  transaction: string;
+  inputPosition: number;
+  outputPosition?: number | null;
+  validates: string[];
+}
+
+/**
+ * Contract relationships - explicit cross-contract dependencies
+ */
+export interface ContractRelationships {
+  sidecarOf?: string;
+  functionOf?: string;
+  forTransaction?: string;
+  identifier?: string;
+  linkMethod?: string;
+  hasSidecar?: string;
+  hasFunctions?: string[];
+}
+
+/**
+ * Contract definition - DERIVED from transaction templates
+ */
+export interface UTXOContract {
+  name: string;
+  role: 'container' | 'sidecar' | 'function' | 'minting' | 'independent';
+  lifecycle: 'exactly-replicating' | 'state-mutating' | 'state-and-balance-mutating' | 'conditionally-replicating';
+  nftStateType?: string | null;
+  holdsBch: boolean;
+  holdsNft: boolean;
+  holdsFungible: boolean;
+  functions: ContractFunction[];
+  relationships?: ContractRelationships | null;
+  stateLayout?: string | null;
+}
+
+/**
+ * Token topology - how contracts authenticate each other
+ */
+export interface TokenTopology {
+  baseCategory: string;
+  typeDiscriminators: Record<string, string>;
+  capabilities: Record<string, 'none' | 'mutable' | 'minting'>;
+  authentication: {
+    from: string;
+    recognizes: string;
+    via: string;
+  }[];
+}
+
+/**
+ * Custody decision - where each entity's NFT is locked
+ */
+export interface CustodyDecision {
+  entity: string;
+  custody: 'contract' | 'p2pkh';
+  contractName?: string | null;
+  rationale: string;
+}
+
+/**
+ * Contract count decision
+ */
+export interface ContractCountDecision {
+  entity: string;
+  contracts: number;
+  reason: string;
+}
+
+/**
+ * Contract count rationale
+ */
+export interface ContractCountRationale {
+  total: number;
+  breakdown: {
+    containers: number;
+    sidecars: number;
+    functions: number;
+    children: number;
+  };
+  decisions: ContractCountDecision[];
+}
+
+/**
+ * Warning with severity
+ */
+export interface Warning {
+  severity: 'high' | 'medium' | 'low';
+  issue: string;
+  mitigation: string;
+}
+
+/**
+ * The complete UTXO architecture v2
  */
 export interface UTXOArchitecture {
-  /**
-   * System overview
-   */
-  systemName: string;
-  systemDescription: string;
-
-  /**
-   * Token category design
-   */
-  tokenCategory: TokenCategoryDesign;
-
-  /**
-   * All contracts in the system
-   */
-  contracts: UTXOContract[];
-
-  /**
-   * All transaction templates
-   */
+  nftStateTypes: NFTStateType[];
   transactionTemplates: TransactionTemplate[];
-
-  /**
-   * Deployment instructions
-   */
-  deployment: DeploymentPlan;
-
-  /**
-   * Architecture patterns used
-   */
-  patterns: ArchitecturePattern[];
-
-  /**
-   * Warnings and considerations
-   */
-  warnings: string[];
-}
-
-export interface TokenCategoryDesign {
-  /**
-   * How is the genesis category created?
-   */
-  genesisDescription: string;
-
-  /**
-   * Capability assignments
-   */
-  capabilities: {
-    '0x02_minting': string; // Which contract holds minting?
-    '0x01_mutable': string; // Which contracts use mutable?
-    '0x00_immutable': string; // What gets immutable (receipts)?
-  };
-}
-
-export interface DeploymentPlan {
-  /**
-   * Ordered steps for deployment
-   */
-  steps: DeploymentStep[];
-
-  /**
-   * Dependencies between contracts
-   */
-  dependencies: { [contract: string]: string[] };
-}
-
-export interface DeploymentStep {
-  order: number;
-  action: string;
-  contracts?: string[];
-  description: string;
-  prerequisites: string[];
-}
-
-export interface ArchitecturePattern {
-  name: 'main-sidecar' | 'function-contracts' | 'strict-position' | 'origin-proof' | 'state-machine' | 'permissionless';
-  appliedTo: string[]; // Contract names
-  reason: string;
+  contracts: UTXOContract[];
+  tokenTopology: TokenTopology;
+  custodyDecisions: CustodyDecision[];
+  contractCountRationale: ContractCountRationale;
+  warnings: Warning[];
 }
