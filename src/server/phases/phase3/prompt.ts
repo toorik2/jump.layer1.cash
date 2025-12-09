@@ -38,6 +38,21 @@ This means:
 
 The validations after the colon ARE your require() statements. Parse and implement them.
 
+=== CROSS-CONTRACT AUTHENTICATION ===
+
+When a validation says "ContractX at input[N]", you MUST validate using tokenCategory:
+
+1. Use tokenTopology.typeDiscriminators to find the discriminator for ContractX
+2. Validate: require(tx.inputs[N].tokenCategory == systemCategory);
+3. Optionally check discriminator: require(tx.inputs[N].nftCommitment.split(1)[0] == 0xNN);
+
+Example - "VoterContract at input[0]" with discriminator 0x01:
+  require(tx.inputs[0].tokenCategory == systemCategory);  // REQUIRED: uses systemCategory
+  require(tx.inputs[0].nftCommitment.split(1)[0] == 0x01);  // Type check
+
+CRITICAL: If contract has systemCategory parameter, it MUST be used in at least one require().
+All constructor parameters must be used in function bodies or compilation fails.
+
 === LIFECYCLE PATTERNS ===
 
 - exactly-replicating: Output is identical to input (function contracts)
