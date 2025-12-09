@@ -65,34 +65,12 @@ For each (contract, transaction, position) tuple:
 {
   "name": "VoterContract",
   "functions": [
-    {
-      "name": "vote",
-      "transaction": "castVote",
-      "inputPos": 1,
-      "outputPos": 1,
-      "validates": {
-        "indexCheck": 1,
-        "categoryChecks": "0:+0x00",
-        "authCheck": "2:ownerPkh",
-        "stateTransition": "hasVoted:0x00→0x01",
-        "covenantOutput": 1
-      }
-    }
+    "vote @ castVote [1→1]: this.activeInputIndex == 1, BallotContract at input[0], Owner authorized via input[2], hasVoted: 0x00 → 0x01, 5-point covenant on output[1]"
   ]
 }
 ```
 
-- `name`: Function name matching the CashScript function
-- `transaction`: Which transaction template this function validates
-- `inputPos`: Position in tx.inputs where this contract sits
-- `outputPos`: Position in tx.outputs for replicated UTXO (-1 if destroyed)
-- `validates`: Structured validation object with typed fields:
-  - `indexCheck`: Required input index (this.activeInputIndex == N), -1 if none
-  - `categoryChecks`: "inputIdx:+0xNN" format, comma-separated for multiple
-  - `authCheck`: "inputIdx:fieldName" - which input provides auth signature
-  - `stateTransition`: "field:from→to" - state change to validate
-  - `covenantOutput`: Output index for 5-point covenant, -1 if none
-  - `other`: Any additional checks not covered above
+Format: `funcName @ txName [inputPos→outputPos]: validation1, validation2, ...`
 
 ## Step 4: Token Topology
 

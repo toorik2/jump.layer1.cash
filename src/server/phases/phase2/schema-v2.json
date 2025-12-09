@@ -53,19 +53,7 @@
                   "from": { "type": "string", "description": "Contract name or 'P2PKH'" },
                   "utxoType": { "type": "string", "description": "What the UTXO holds: 'BallotState NFT', 'BCH only', etc." },
                   "stateRequired": { "type": "string", "description": "Required state condition, or empty string if none" },
-                  "validates": {
-                    "type": "object",
-                    "description": "Structured validation requirements for this input",
-                    "properties": {
-                      "indexCheck": { "type": "integer", "description": "Required input index: this.activeInputIndex == N, or -1 if none" },
-                      "categoryChecks": { "type": "string", "description": "Category checks: 'inputIdx:+0xNN' or 'inputIdx:P2PKH', comma-separated" },
-                      "authCheck": { "type": "string", "description": "Auth source: 'inputIdx:fieldName' e.g. '2:ownerPkh'" },
-                      "stateTransition": { "type": "string", "description": "State change: 'field:from→to' e.g. 'hasVoted:0x00→0x01'" },
-                      "covenantOutput": { "type": "integer", "description": "Output index for 5-point covenant check, -1 if none" },
-                      "other": { "type": "string", "description": "Any additional validation not covered above" }
-                    },
-                    "additionalProperties": false
-                  }
+                  "validates": { "type": "string", "description": "Comma-separated validation requirements, or empty string for P2PKH" }
                 },
                 "required": ["index", "from", "utxoType"],
                 "additionalProperties": false
@@ -114,31 +102,8 @@
             "holdsFungible": { "type": "boolean" },
             "functions": {
               "type": "array",
-              "description": "Contract function definitions",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "name": { "type": "string", "description": "Function name, e.g., 'vote', 'withdraw'" },
-                  "transaction": { "type": "string", "description": "Transaction name this function validates" },
-                  "inputPos": { "type": "integer", "description": "Position of this contract in transaction inputs" },
-                  "outputPos": { "type": "integer", "description": "Position of replicated output, or -1 if destroyed" },
-                  "validates": {
-                    "type": "object",
-                    "description": "Structured validation requirements for this function",
-                    "properties": {
-                      "indexCheck": { "type": "integer", "description": "Required input index: this.activeInputIndex == N" },
-                      "categoryChecks": { "type": "string", "description": "Category checks: 'inputIdx:+0xNN' comma-separated" },
-                      "authCheck": { "type": "string", "description": "Auth source: 'inputIdx:fieldName'" },
-                      "stateTransition": { "type": "string", "description": "State change: 'field:from→to'" },
-                      "covenantOutput": { "type": "integer", "description": "Output index for 5-point covenant check, -1 if none" },
-                      "other": { "type": "string", "description": "Any additional validation not covered above" }
-                    },
-                    "additionalProperties": false
-                  }
-                },
-                "required": ["name", "transaction", "inputPos", "outputPos", "validates"],
-                "additionalProperties": false
-              }
+              "items": { "type": "string" },
+              "description": "Contract functions as strings: 'funcName @ txName [inputPos→outputPos]: validation1, validation2'"
             },
             "relationships": { "type": "string", "description": "Relationship description or empty string if none" },
             "stateLayout": { "type": "string", "description": "Human-readable state layout summary, or empty string if none" }

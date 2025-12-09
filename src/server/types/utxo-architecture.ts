@@ -34,28 +34,15 @@ export interface NFTStateType {
 // covenantChecklist is now a pipe-separated string, not an interface
 
 /**
- * Structured validation object for inputs and functions
- * All fields optional - omit or use -1/empty string for "not applicable"
- */
-export interface ValidatesObject {
-  indexCheck?: number;       // Required input index: this.activeInputIndex == N, -1 if none
-  categoryChecks?: string;   // Format: 'inputIdx:+0xNN' or 'inputIdx:P2PKH', comma-separated
-  authCheck?: string;        // Format: 'inputIdx:fieldName' e.g. '2:ownerPkh'
-  stateTransition?: string;  // Format: 'field:from→to' e.g. 'hasVoted:0x00→0x01'
-  covenantOutput?: number;   // Output index for 5-point covenant check, -1 if none
-  other?: string;            // Any additional validation not covered above
-}
-
-/**
  * Transaction input specification
- * Sentinel values: stateRequired="" for no state
+ * Sentinel values: stateRequired="" for no state, validates="" for P2PKH
  */
 export interface TransactionInput {
   index: number;
   from: string;
   utxoType: string;
   stateRequired?: string;
-  validates?: ValidatesObject;
+  validates?: string; // Comma-separated: "check1, check2, check3"
 }
 
 /**
@@ -82,20 +69,9 @@ export interface TransactionTemplate {
 }
 
 /**
- * Contract function definition
- * validates is now a structured object
- */
-export interface ContractFunction {
-  name: string;
-  transaction: string;
-  inputPos: number;
-  outputPos: number;
-  validates: ValidatesObject;
-}
-
-/**
  * Contract definition - DERIVED from transaction templates
  * Sentinels: nftStateType="" for no state, relationships="" for none, stateLayout="" for none
+ * functions format: "funcName @ txName [inputPos→outputPos]: validation1, validation2"
  */
 export interface UTXOContract {
   name: string;
@@ -105,7 +81,7 @@ export interface UTXOContract {
   holdsBch: boolean;
   holdsNft: boolean;
   holdsFungible: boolean;
-  functions: ContractFunction[];
+  functions: string[]; // Each: "funcName @ txName [inputPos→outputPos]: validations"
   relationships?: string;
   stateLayout?: string;
 }
