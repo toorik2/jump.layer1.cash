@@ -41,12 +41,24 @@ export default function TransactionsView(props: Props) {
            utxoType?.toLowerCase().includes('state');
   };
 
-  // Format utxoType for display (e.g., "BallotState NFT" -> "NFT")
+  // Format utxoType for badge display (e.g., "BallotState NFT" -> "NFT")
   const formatUtxoType = (utxoType: string): string => {
     if (utxoType?.includes('NFT')) return 'NFT';
     if (utxoType?.includes('BCH')) return 'BCH';
     if (utxoType?.includes('FT') || utxoType?.includes('fungible')) return 'FT';
     return '';  // Hide badge for unrecognized types
+  };
+
+  // Strip type suffix from description (badge shows type, no need to repeat)
+  const formatDescription = (utxoType: string): string => {
+    if (!utxoType) return '';
+    return utxoType
+      .replace(/ NFT$/, '')
+      .replace(/ FT$/, '')
+      .replace(/ BCH$/, '')
+      .replace(/^BCH only$/, 'BCH')
+      .replace(/ fungible tokens?$/i, '')
+      .trim();
   };
 
   return (
@@ -138,7 +150,7 @@ export default function TransactionsView(props: Props) {
                               </Show>
                             </div>
                             <div class={styles.slotDescription}>
-                              {input.utxoType}
+                              {formatDescription(input.utxoType)}
                               <Show when={input.stateRequired}>
                                 <span> ({input.stateRequired})</span>
                               </Show>
@@ -165,7 +177,7 @@ export default function TransactionsView(props: Props) {
                               </Show>
                             </div>
                             <div class={styles.slotDescription}>
-                              {output.utxoType}
+                              {formatDescription(output.utxoType)}
                               <Show when={output.stateProduced}>
                                 <span> ({output.stateProduced})</span>
                               </Show>
