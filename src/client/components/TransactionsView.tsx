@@ -56,7 +56,7 @@ export default function TransactionsView(props: Props) {
       .replace(/ NFT$/, '')
       .replace(/ FT$/, '')
       .replace(/ BCH$/, '')
-      .replace(/^BCH only$/, 'BCH')
+      .replace(/^BCH only$/, '')
       .replace(/ fungible tokens?$/i, '')
       .trim();
   };
