@@ -23,7 +23,7 @@
             },
             "code": {
               "type": "string",
-              "description": "Complete valid CashScript starting with 'pragma cashscript ^0.13.0;'"
+              "description": "Complete valid CashScript code. MUST use \\n for newlines between statements. Example: 'pragma cashscript ^0.13.0;\\n\\ncontract Foo {\\n  function bar() {\\n    require(true);\\n  }\\n}'"
             },
             "role": {
               "type": "string",

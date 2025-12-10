@@ -11,7 +11,7 @@
             "id": { "type": "string" },
             "name": { "type": "string" },
             "purpose": { "type": "string" },
-            "code": { "type": "string" },
+            "code": { "type": "string", "description": "Fixed CashScript code. MUST use \\n for newlines between statements." },
             "role": {
               "type": "string",
               "enum": ["primary", "helper", "state"]

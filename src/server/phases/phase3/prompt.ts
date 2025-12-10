@@ -123,6 +123,18 @@ Map Phase 2 roles to output schema roles:
    - Explain validation logic: require(x) // Why this check matters
    - Document state transitions: int newCount = old + 1; // Increment vote count
 
+=== JSON CODE FORMATTING ===
+
+CRITICAL: The "code" field is a JSON string. You MUST use \\n escape sequences for newlines.
+
+CORRECT:
+"code": "pragma cashscript ^0.13.0;\\n\\ncontract Foo {\\n  function bar() {\\n    require(true);\\n  }\\n}"
+
+WRONG (will cause compilation failure):
+"code": "pragma cashscript ^0.13.0; contract Foo { function bar() { require(true); } }"
+
+The CashScript compiler requires proper line breaks. Single-line code will fail.
+
 === CASHSCRIPT REFERENCE ===
 
 Use this reference for CashScript syntax and patterns:

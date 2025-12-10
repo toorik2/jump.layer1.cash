@@ -24,15 +24,16 @@ COMMON FIXES:
 - Missing require → Add the specific validation needed
 - Wrong operator with tx.time → Use >= only (tx.time >= deadline)
 
-Respond with valid JSON:
+Respond with valid JSON. CRITICAL: Use \\n for newlines in code - single-line code will fail compilation.
+
 {
   "contracts": [
     {
       "id": "contract-id",
       "name": "ContractName",
       "purpose": "What it validates",
-      "code": "pragma cashscript ^0.13.0; contract ...",
-      "role": "primary|helper|state"
+      "code": "pragma cashscript ^0.13.0;\\n\\ncontract ContractName {\\n  function example() {\\n    require(true);\\n  }\\n}",
+      "role": "primary"
     }
   ]
 }`;
