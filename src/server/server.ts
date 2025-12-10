@@ -31,11 +31,14 @@ const anthropic = new Anthropic({
 let knowledgeBase = '';
 let activeConversions = 0;
 
-// Middleware to restrict access to localhost only
+// Middleware to restrict access to localhost or allowed IPs
+const ALLOWED_IPS = ['127.0.0.1', '::1', '::ffff:127.0.0.1', '91.129.107.33'];
+
 function localhostOnly(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const ip = req.ip || req.socket.remoteAddress || '';
-  const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-  if (!isLocalhost) {
+  // Check X-Real-IP first (set by nginx for real client IP), then fallback to req.ip
+  const realIp = req.headers['x-real-ip'] as string | undefined;
+  const ip = realIp || req.ip || req.socket.remoteAddress || '';
+  if (!ALLOWED_IPS.includes(ip)) {
     return res.status(403).json({ error: 'Access denied' });
   }
   next();
