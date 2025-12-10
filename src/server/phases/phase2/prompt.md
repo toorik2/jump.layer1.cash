@@ -130,25 +130,64 @@ Format: `locking|category|value|tokenAmount|commitment`
 
 ---
 
-# CONTRACT COUNT DECISION
+# CONTRACT ARCHITECTURE DECISION
 
-## When to Create Contracts
+## Architecture Patterns (from ParityUSD analysis)
 
-| Condition | Action |
-|-----------|--------|
-| Entity has enforceable rules | Create container contract |
-| 4+ operations on container | Add function contracts |
-| Need 2+ token types | Add sidecar contract |
-| Spawns independent children | Add child contracts |
-| No on-chain rules | No contract (P2PKH custody) |
+### Pattern 1: Single Container Contract
+Use when: 1-6 operations with similar validation logic
 
-## Complexity Thresholds
+```
+EntityContract
+├── operation1()
+├── operation2()
+└── operation3()
+```
 
-| Operations | Architecture |
-|------------|--------------|
-| 1-3 | Single contract |
-| 4-6 | Container + functions |
-| 7+ | Full modular system |
+### Pattern 2: Container + Sidecar
+Use when: Contract needs to hold multiple token types
+
+```
+EntityContract (holds NFT state)
+EntitySidecarContract (holds fungible tokens)
+```
+
+Sidecar validates same-origin via:
+- `outpointTransactionHash` equality
+- Sequential `outpointIndex`
+
+### Pattern 3: Function Contract Pattern
+Use when: 7+ operations OR very different validation requirements
+
+```
+EntityContract (router)
+├── Operation1FuncContract (0x10)
+├── Operation2FuncContract (0x11)
+└── Operation3FuncContract (0x12)
+```
+
+Router validates function NFT identifier byte, function contracts validate operation-specific logic.
+
+## Decision Table
+
+| Operations | Validation Similarity | Recommendation |
+|------------|----------------------|----------------|
+| 1-3 | Any | Single container |
+| 4-6 | High | Single container |
+| 4-6 | Low | Consider function pattern |
+| 7+ | Any | Function pattern |
+| Need multiple tokens | N/A | Add sidecar |
+
+## CRITICAL: contracts[] Only Contains Real Contracts
+
+The `contracts[]` array is for **CashScript contracts only** - things that compile to locking scripts.
+
+**DO NOT** add entries to `contracts[]` for:
+- Entities with `custody: "p2pkh"` in custodyDecisions
+- Tokens minted to regular addresses
+- Anything with zero functions
+
+If custody is P2PKH, document ONLY in `custodyDecisions`, not in `contracts[]`.
 
 ---
 
@@ -242,18 +281,54 @@ All participants at fixed, known positions. No dynamic discovery.
 
 ---
 
-# CROSS-CONTRACT AUTHENTICATION
+# TWO-LAYER TOKEN AUTHENTICATION
 
-Use token category arithmetic:
+CashTokens authentication uses TWO separate mechanisms that must be understood distinctly:
+
+## Layer 1: Category + Capability (System Membership)
+
+The 33rd byte of `tokenCategory` encodes the NFT **capability level**, NOT contract type:
+- `systemCategory + 0x01` = mutable NFT (can update commitment)
+- `systemCategory + 0x02` = minting NFT (can create new tokens)
+- `systemCategory` alone = immutable NFT or fungible tokens
+
+```cashscript
+// Verify input belongs to our system with mutable capability
+require(tx.inputs[0].tokenCategory == systemCategory + 0x01);
+```
+
+**Use when**: Verifying an NFT is part of your system with the correct capability.
+
+## Layer 2: Commitment Discriminator (Contract Type)
+
+When multiple contract types share the same category+capability, the **first byte of nftCommitment** distinguishes them:
+
+```cashscript
+// Verify specific contract type via commitment prefix
+require(tx.inputs[0].nftCommitment.split(1)[0] == 0x00);  // BallotContract type
+require(tx.inputs[0].nftCommitment.split(1)[0] == 0x01);  // VoterContract type
+```
+
+**Use when**: Distinguishing between contract types that share the same tokenCategory.
+
+## Combined Pattern (Recommended)
+
+For robust cross-contract authentication, check BOTH layers:
 
 ```cashscript
 contract VoterContract(bytes32 systemCategory) {
     function vote() {
-        // Recognize BallotContract at input[0]
+        // Layer 1: Verify system membership + mutable capability
         require(tx.inputs[0].tokenCategory == systemCategory + 0x01);
+        // Layer 2: Verify specific contract type (BallotContract = 0x00)
+        require(tx.inputs[0].nftCommitment.split(1)[0] == 0x00);
     }
 }
 ```
+
+This ensures:
+1. The NFT belongs to our system with correct capability
+2. The NFT is specifically the contract type we expect
 
 ---
 

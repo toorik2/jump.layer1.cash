@@ -26,4 +26,12 @@ Web application that converts EVM smart contracts to CashScript.
 - `BCH_knowledge_base/` - CashScript reference docs
 
 ## Development
-6. **Use production server only.** Run `npm run server` (port 3001). Never use `npm run dev` (port 3002).
+6. **Use production server only.** Run on port 3001. Never use `npm run dev` (port 3002).
+7. **Server commands.** Always run the server as a background process:
+   ```bash
+   # Restart server (kills existing, starts new in background):
+   fuser -k 3001/tcp 2>/dev/null; sleep 1; npm run server 2>&1 &
+
+   # Build then restart:
+   npm run build && fuser -k 3001/tcp 2>/dev/null; sleep 1; npm run server 2>&1 &
+   ```

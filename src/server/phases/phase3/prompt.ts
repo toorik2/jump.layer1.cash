@@ -45,17 +45,31 @@ This means:
 
 The validations after the colon ARE your require() statements. Parse and implement them.
 
-=== CROSS-CONTRACT AUTHENTICATION ===
+=== CROSS-CONTRACT AUTHENTICATION (TWO LAYERS) ===
 
-When a validation says "ContractX at input[N]", you MUST validate using tokenCategory:
+When a validation says "ContractX at input[N]", implement BOTH authentication layers:
 
-1. Use tokenTopology.typeDiscriminators to find the discriminator for ContractX
-2. Validate: require(tx.inputs[N].tokenCategory == systemCategory);
-3. Optionally check discriminator: require(tx.inputs[N].nftCommitment.split(1)[0] == 0xNN);
+**Layer 1: Category + Capability** (REQUIRED)
+Check tokenTopology.sharedCapability to determine the capability byte:
+- "mutable" → require(tx.inputs[N].tokenCategory == systemCategory + 0x01);
+- "minting" → require(tx.inputs[N].tokenCategory == systemCategory + 0x02);
+- "none" → require(tx.inputs[N].tokenCategory == systemCategory);
 
-Example - "VoterContract at input[0]" with discriminator 0x01:
-  require(tx.inputs[0].tokenCategory == systemCategory);  // REQUIRED: uses systemCategory
-  require(tx.inputs[0].nftCommitment.split(1)[0] == 0x01);  // Type check
+**Layer 2: Type Discriminator** (REQUIRED when multiple contract types exist)
+Use tokenTopology.typeDiscriminators to find the discriminator byte:
+- require(tx.inputs[N].nftCommitment.split(1)[0] == 0xNN);
+
+**Complete Example**:
+"VoterContract at input[0]" with discriminator 0x01 and sharedCapability "mutable":
+
+  // Layer 1: System membership + mutable capability
+  require(tx.inputs[0].tokenCategory == systemCategory + 0x01);
+  // Layer 2: Contract type discrimination
+  require(tx.inputs[0].nftCommitment.split(1)[0] == 0x01);
+
+Both checks ensure:
+1. NFT belongs to our system with correct capability
+2. NFT is specifically the expected contract type
 
 CRITICAL: If contract has systemCategory parameter, it MUST be used in at least one require().
 All constructor parameters must be used in function bodies or compilation fails.

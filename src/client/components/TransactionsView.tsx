@@ -91,19 +91,32 @@ export default function TransactionsView(props: Props) {
                     <p class={styles.description}>{tx.purpose}</p>
                   </div>
                   {(() => {
-                    // Derive contracts from inputs/outputs
-                    const contracts = new Set<string>();
+                    // Derive participants from inputs/outputs (contracts + P2PKH)
+                    const participants = new Set<string>();
                     for (const input of tx.inputs || []) {
-                      if (isContractName(input.from)) contracts.add(input.from!);
+                      if (isContractName(input.from)) participants.add(input.from!);
+                      else if (input.from === 'P2PKH') participants.add('P2PKH');
                     }
                     for (const output of tx.outputs || []) {
-                      if (isContractName(output.to)) contracts.add(output.to!);
+                      if (isContractName(output.to)) participants.add(output.to!);
+                      else if (output.to === 'P2PKH') participants.add('P2PKH');
                     }
-                    const contractList = [...contracts];
+                    const participantList = [...participants];
                     return (
-                      <Show when={contractList.length > 0}>
+                      <Show when={participantList.length > 0}>
                         <div class={styles.headerRight}>
-                          <span class={styles.badge}>{contractList.join(' · ')}</span>
+                          <For each={participantList}>
+                            {(participant, i) => (
+                              <>
+                                <span class={participant === 'P2PKH' ? styles.badgeP2pkh : styles.badge}>
+                                  {participant}
+                                </span>
+                                <Show when={i() < participantList.length - 1}>
+                                  <span class={styles.badgeSeparator}>·</span>
+                                </Show>
+                              </>
+                            )}
+                          </For>
                         </div>
                       </Show>
                     );

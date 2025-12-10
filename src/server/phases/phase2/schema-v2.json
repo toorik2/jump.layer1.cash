@@ -119,7 +119,7 @@
           "baseCategory": { "type": "string", "description": "Symbolic name for the system's base category" },
           "typeDiscriminators": {
             "type": "array",
-            "description": "Maps byte prefixes to contract types for cross-contract authentication",
+            "description": "First byte of nftCommitment identifies contract type (Layer 2 authentication)",
             "items": {
               "type": "object",
               "properties": {
@@ -130,18 +130,18 @@
               "additionalProperties": false
             }
           },
-          "capabilities": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "Capability mappings as strings: 'ContractName:mutable'"
+          "sharedCapability": {
+            "type": "string",
+            "enum": ["none", "mutable", "minting"],
+            "description": "NFT capability for all system contracts (none=immutable, mutable=0x01, minting=0x02). All contracts typically share the same capability."
           },
           "authentication": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "How contracts recognize each other: 'ContractA recognizes ContractB via commitment[0]==0x01'"
+            "description": "Full authentication patterns using both layers: 'ContractA authenticates ContractB: category+capability AND commitment[0]==0xNN'"
           }
         },
-        "required": ["baseCategory", "typeDiscriminators", "capabilities", "authentication"],
+        "required": ["baseCategory", "typeDiscriminators", "sharedCapability", "authentication"],
         "additionalProperties": false
       },
       "custodyDecisions": {

@@ -326,6 +326,10 @@
     font-size: 0.8125rem;
   }
 
+  .exampleButtonsOverlay {
+    display: none;
+  }
+
   .convertBtn {
     font-size: 0.9375rem;
     padding: 0.875rem 1.5rem;

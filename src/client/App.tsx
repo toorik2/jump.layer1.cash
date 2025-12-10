@@ -441,15 +441,16 @@ export default function App() {
         {' · '}
         <a href="https://t.me/Toorik_2" target="_blank" rel="noopener noreferrer">contact</a>
         <div class={styles.donate}>
+          donate:{' '}
           <span
             class={styles.footerLink}
             onClick={(e) => {
               navigator.clipboard.writeText('bitcoincash:qp2qwd3y6ldweg27yj9dyyh93wyrf7l2wygvdvys6v');
               const el = e.currentTarget;
               el.textContent = 'copied! thank you!';
-              setTimeout(() => el.textContent = 'donate: bitcoincash:qp2qwd3y6ldweg27yj9dyyh93wyrf7l2wygvdvys6v', 1500);
+              setTimeout(() => el.textContent = 'bitcoincash:qp2qwd3y6ldweg27yj9dyyh93wyrf7l2wygvdvys6v', 1500);
             }}
-          >donate: bitcoincash:qp2qwd3y6ldweg27yj9dyyh93wyrf7l2wygvdvys6v</span>
+          >bitcoincash:qp2qwd3y6ldweg27yj9dyyh93wyrf7l2wygvdvys6v</span>
         </div>
       </footer>
     </>

@@ -349,12 +349,42 @@ const validations = validates.split(',').map(v => v.trim());
 
 ---
 
+## Failed Approaches (DO NOT RETRY)
+
+### ❌ Validates as Object (December 2024)
+
+**Theory:** Objects with primitive values don't count as array nesting. Converting `validates` from a string to an object should work:
+
+```json
+"validates": {
+  "indexCheck": 1,
+  "categoryChecks": "0:+0x00",
+  "authCheck": "2:ownerPkh",
+  "stateTransition": "hasVoted:0x00→0x01",
+  "covenantOutput": 1
+}
+```
+
+**Result:** Grammar compilation failed (400 error). Even objects with only primitive values inside `inputs[]` cause grammar explosion.
+
+**Lesson:** The grammar compiler is stricter than expected. Objects at the 2nd array level work when they ARE the array items (like `inputs[]`, `outputs[]`, `fields[]`). But adding an object PROPERTY to an item at the 2nd level still breaks the grammar.
+
+**What works:**
+- `transactionTemplates[].inputs[]` - objects as array items ✅
+- `nftStateTypes[].fields[]` - objects as array items ✅
+
+**What breaks:**
+- `transactionTemplates[].inputs[].validates` as object - object property of array item ❌
+
+---
+
 ## Testing Grammar Size
 
 There's no direct way to test grammar size before hitting the API. Best approach:
 1. Compare line count and nesting depth to Phase 1 schema (180 lines, 3 levels)
 2. Keep total schema under 200 lines
 3. Never exceed 3 levels of array nesting
+4. **NEVER add object properties to items at 2nd array level** - use strings instead
 
 ---
 
