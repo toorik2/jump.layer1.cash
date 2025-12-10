@@ -56,18 +56,10 @@ class ContractRegistry {
   mergeFixed(fixedContracts: ContractInfo[], attemptNumber: number): ContractInfo[] {
     const expectedFailed = this.getFailedNames();
 
-    // Handle name drift
+    // Strict name validation - fail if AI returns unexpected names
     for (const fixed of fixedContracts) {
       if (!this.validatedContracts.has(fixed.name) && !expectedFailed.includes(fixed.name)) {
-        const unmatchedExpected = expectedFailed.find(name =>
-          !fixedContracts.some(c => c.name === name)
-        );
-        if (unmatchedExpected) {
-          console.warn(`[Phase 4] Name drift: "${fixed.name}" -> "${unmatchedExpected}"`);
-          fixed.name = unmatchedExpected;
-        } else {
-          throw new Error(`[Phase 4] Unknown contract returned by AI: "${fixed.name}"`);
-        }
+        throw new Error(`[Phase 4] AI returned unexpected contract name: "${fixed.name}". Expected one of: ${expectedFailed.join(', ')}`);
       }
     }
 
@@ -158,21 +150,6 @@ function enhanceErrorMessage(error: string, code: string): string {
   const context = getCodeContext(code, lineNum);
 
   return `${error}\n${context}`;
-}
-
-export function extractContractNameFromCode(code: string): string | null {
-  const match = code.match(/contract\s+(\w+)/);
-  return match ? match[1] : null;
-}
-
-export function normalizeContractNames(contracts: ContractInfo[], logPrefix = '[Phase 4]'): void {
-  for (const contract of contracts) {
-    const extractedName = extractContractNameFromCode(contract.code);
-    if (extractedName && extractedName !== contract.name) {
-      console.log(`${logPrefix} Fixing contract name: "${contract.name}" -> "${extractedName}"`);
-      contract.name = extractedName;
-    }
-  }
 }
 
 function validateContracts(
@@ -440,32 +417,5 @@ async function fixContracts(
 
   const parsed = JSON.parse(response);
   const contracts = parsed.contracts || [];
-  normalizeContractNames(contracts);
   return contracts;
-}
-
-// ============================================================================
-// UTILITY EXPORTS
-// ============================================================================
-
-export function applyNameMappingToTemplates(
-  templates: any[],
-  nameMap: Map<string, string>
-): any[] {
-  if (nameMap.size === 0) return templates;
-
-  return templates.map(tx => ({
-    ...tx,
-    participatingContracts: tx.participatingContracts?.map((name: string) =>
-      nameMap.get(name) || name
-    ),
-    inputs: tx.inputs?.map((input: any) => ({
-      ...input,
-      from: nameMap.get(input.from) || input.from
-    })),
-    outputs: tx.outputs?.map((output: any) => ({
-      ...output,
-      to: nameMap.get(output.to) || output.to
-    }))
-  }));
 }

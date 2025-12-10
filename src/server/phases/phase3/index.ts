@@ -40,7 +40,13 @@ export async function execute(
   console.log('[Phase 3] Starting code generation...');
   const startTime = Date.now();
 
-  const systemPrompt = buildCodeGenerationPrompt(knowledgeBase);
+  // Extract contract metadata from architecture for dynamic prompt
+  const contractMeta = architecture.contracts?.map(c => ({
+    name: c.name,
+    role: c.role
+  })) || [];
+
+  const systemPrompt = buildCodeGenerationPrompt(knowledgeBase, contractMeta);
   const utxoArchitectureJSON = JSON.stringify(architecture, null, 2);
 
   // Architecture-only user message - no domain model

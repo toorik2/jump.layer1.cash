@@ -3,8 +3,22 @@
  * TRANSLATOR prompt - converts UTXO Architecture blueprint into CashScript code
  */
 
-export function buildCodeGenerationPrompt(knowledgeBase: string): string {
-  return `You are a CashScript code TRANSLATOR. Your job is to convert the UTXO Architecture blueprint into compilable CashScript code.
+export function buildCodeGenerationPrompt(
+  knowledgeBase: string,
+  contracts: { name: string; role: string }[]
+): string {
+  const contractList = contracts
+    .map((c, i) => `${i + 1}. ${c.name} (${c.role})`)
+    .join('\n');
+
+  return `Your task is to generate exactly ${contracts.length} CashScript contracts:
+
+${contractList}
+
+Each contract MUST:
+- Use the EXACT name shown above (CashScript: \`contract ContractName { ... }\`)
+- Compile successfully with cashc
+- Implement all functions from architecture.contracts[].functions
 
 THE ARCHITECTURE IS AUTHORITATIVE. You must:
 - Use exact contract names from architecture.contracts[].name
@@ -12,13 +26,6 @@ THE ARCHITECTURE IS AUTHORITATIVE. You must:
 - Parse validations from each function spec (the comma-separated items after the colon)
 - Follow the NFT state layout from nftStateTypes[]
 - Use transactionTemplates[] to understand the transaction context
-
-DO NOT:
-- Invent new contract names
-- Add functions not in the specification
-- Change the NFT state field layout
-- Deviate from specified transaction positions
-- Add Solidity view/pure functions (they don't exist in UTXO model)
 
 === FUNCTION SPECIFICATION FORMAT ===
 

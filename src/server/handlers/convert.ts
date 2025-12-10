@@ -14,7 +14,7 @@ import * as phase1 from '../phases/phase1/index.js';
 import * as phase2 from '../phases/phase2/index.js';
 import * as phase3 from '../phases/phase3/index.js';
 import * as phase4 from '../phases/phase4/index.js';
-import { applyNameMappingToTemplates, type ContractInfo } from '../phases/phase4/index.js';
+import type { ContractInfo } from '../phases/phase4/index.js';
 
 type SSEWriter = {
   sendEvent: (event: string, data: any) => void;
@@ -174,6 +174,14 @@ export async function handleConversion(
     );
     const contracts = phase3Result.contracts;
 
+    // Validate Phase 3 names match Phase 2 exactly (fail loud - no drift allowed)
+    const phase2Names = new Set(utxoArchitecture.contracts?.map(c => c.name) || []);
+    for (const contract of contracts) {
+      if (!phase2Names.has(contract.name)) {
+        throw new Error(`Phase 3 returned unknown contract "${contract.name}". Phase 2 defined: ${[...phase2Names].join(', ')}`);
+      }
+    }
+
     sse.sendEvent('phase3_complete', { message: 'Code generation complete' });
 
     // PHASE 4: Validation + Fix Loop
@@ -240,30 +248,6 @@ export async function handleConversion(
     persistContracts(conversionId, finalContracts);
 
     sse.sendEvent('phase4_complete', { message: 'Validation complete' });
-
-    // Handle name drift for transaction templates
-    if (utxoArchitecture.transactionTemplates?.length > 0) {
-      const nameMap = new Map<string, string>();
-      const archContracts = utxoArchitecture.contracts || [];
-
-      for (let i = 0; i < archContracts.length && i < finalContracts.length; i++) {
-        const archName = archContracts[i]?.name;
-        const validatedName = finalContracts[i]?.name;
-        if (archName && validatedName && archName !== validatedName) {
-          console.log(`[Transactions] Name drift: "${archName}" → "${validatedName}"`);
-          nameMap.set(archName, validatedName);
-        }
-      }
-
-      if (nameMap.size > 0) {
-        const updatedTemplates = applyNameMappingToTemplates(utxoArchitecture.transactionTemplates, nameMap);
-        const updatedSpecs = contractSpecs.map(spec => ({
-          ...spec,
-          name: nameMap.get(spec.name) || spec.name
-        }));
-        sse.sendEvent('transactions_ready', { transactions: updatedTemplates, contractSpecs: updatedSpecs });
-      }
-    }
 
     logConversionComplete(conversionId, startTime, 'success');
     sse.sendEvent('done', { contracts: finalContracts });
