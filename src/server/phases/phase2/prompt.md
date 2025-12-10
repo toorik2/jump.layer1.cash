@@ -110,6 +110,15 @@ Format for capabilities: `ContractName:capability`
 
 For each entity: where is its NFT locked?
 
+**CRITICAL RULE**: If Phase 1 lists a "critical" severity invariant for an entity,
+that entity's transitions MUST have contract enforcement. P2PKH custody cannot
+enforce invariants - it only provides key-holder authorization.
+
+Check each critical invariant:
+- Can it be violated with P2PKH custody? -> Needs contract
+- Does it require validation logic? -> Needs contract
+- Is it "structural" (from UTXO model)? -> May not need contract
+
 ```json
 "custodyDecisions": [
   { "entity": "Voter", "custody": "contract", "contractName": "VoterContract", "rationale": "Must enforce one-vote rule" },
@@ -133,6 +142,57 @@ covenantChecklist: "same|systemCategory+0x01|>=1000|0|updated state"
 Format: `locking|category|value|tokenAmount|commitment`
 
 **Missing ANY = critical vulnerability.**
+
+---
+
+# CASHTOKENS FT MECHANICS (CRITICAL)
+
+**Fungible tokens work DIFFERENTLY than ERC-20. Understand these rules:**
+
+## FT Supply is FIXED at Genesis
+
+ALL fungible tokens of a category are created in the genesis transaction.
+After genesis, NO new FT can EVER be created. This is consensus-enforced.
+
+The "minting" capability (0x02) only applies to NFTs, not fungible tokens.
+
+- WRONG: "Contract mints FT when user deposits BCH"
+- RIGHT: "Contract releases pre-minted FT from reserves when user deposits BCH"
+
+## FT Conservation is AUTOMATIC
+
+The protocol enforces: sum(output FT) <= sum(input FT) for each category.
+Contracts don't need to validate this - it's impossible to violate.
+
+## FT Burning
+
+Tokens are burned by NOT including them in outputs (implicit burn).
+This is how "withdraw" works - FT comes in, is not replicated to output.
+
+## Implications for Backed Tokens (WETH-like)
+
+For tokens with BCH/collateral backing:
+
+1. **Genesis**: Pre-mint TOTAL SUPPLY in a ReserveContract
+2. **Deposit**: Contract holds FT reserves + accepts BCH -> releases FT to user
+3. **Withdraw**: Contract accepts FT (burned or returned) -> releases BCH to user
+4. **Invariant**: Backing is structural: BCH_held correlates with FT_distributed
+
+**The contract doesn't MINT - it DISTRIBUTES from a fixed supply.**
+
+## When to Use ReserveContract Pattern
+
+If Phase 1 has ANY of these invariants:
+- "Total supply equals collateral locked"
+- "Tokens backed 1:1 by X"
+- "Cannot create tokens except through deposit"
+
+Then you MUST design a ReserveContract that:
+1. Holds pre-minted FT supply at genesis
+2. Validates deposit conditions before releasing FT
+3. Validates withdrawal conditions before releasing collateral
+
+**NEVER assume "native CashTokens handles minting" - it doesn't.**
 
 ---
 
