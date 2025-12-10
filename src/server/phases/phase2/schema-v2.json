@@ -51,7 +51,7 @@
                 "properties": {
                   "index": { "type": "integer" },
                   "from": { "type": "string", "description": "Contract name or 'P2PKH'" },
-                  "utxoType": { "type": "string", "description": "What the UTXO holds: 'BallotState NFT', 'BCH only', etc." },
+                  "utxoType": { "type": "string", "description": "UTXO contents. MUST end with token type suffix: '{description} NFT' for non-fungible, '{description} FT' for fungible, or 'BCH only' for satoshis. Examples: 'PoolState NFT', 'liquidity tokens FT', 'BCH only'" },
                   "stateRequired": { "type": "string", "description": "Required state condition, or empty string if none" },
                   "validates": { "type": "string", "description": "Comma-separated validation requirements, or empty string for P2PKH" }
                 },
@@ -66,7 +66,7 @@
                 "properties": {
                   "index": { "type": "integer" },
                   "to": { "type": "string", "description": "Contract name, 'P2PKH', or 'burned'" },
-                  "utxoType": { "type": "string" },
+                  "utxoType": { "type": "string", "description": "UTXO contents. MUST end with token type suffix: '{description} NFT', '{description} FT', or 'BCH only'" },
                   "stateProduced": { "type": "string", "description": "New state after transition, or empty string if none" },
                   "covenantChecklist": { "type": "string", "description": "5-point covenant: locking|category|value|tokenAmount|commitment, or empty string" }
                 },

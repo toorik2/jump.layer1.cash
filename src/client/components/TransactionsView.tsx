@@ -32,7 +32,7 @@ export default function TransactionsView(props: Props) {
     if (utxoType?.includes('NFT') && isContractType(utxoType)) return styles.slotTypeContractNft;
     if (utxoType?.includes('NFT')) return styles.slotTypeUserNft;
     if (utxoType?.includes('BCH')) return styles.slotTypeBch;
-    if (utxoType?.includes('fungible')) return styles.slotTypeFungible;
+    if (utxoType?.includes('FT') || utxoType?.includes('fungible')) return styles.slotTypeFungible;
     return styles.slotType;
   };
 
@@ -45,8 +45,8 @@ export default function TransactionsView(props: Props) {
   const formatUtxoType = (utxoType: string): string => {
     if (utxoType?.includes('NFT')) return 'NFT';
     if (utxoType?.includes('BCH')) return 'BCH';
-    if (utxoType?.includes('fungible')) return 'FT';
-    return utxoType || '';
+    if (utxoType?.includes('FT') || utxoType?.includes('fungible')) return 'FT';
+    return '';  // Hide badge for unrecognized types
   };
 
   return (

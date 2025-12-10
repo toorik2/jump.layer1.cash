@@ -52,6 +52,12 @@ Outputs:
 
 **This is the PRIMARY design artifact.** Contracts are derived from this.
 
+**utxoType Format Rules:**
+- NFT outputs: `{StateName} NFT` (e.g., "PoolState NFT", "VoterState NFT")
+- Fungible tokens: `{description} FT` (e.g., "liquidity tokens FT", "token0 reserves FT")
+- Pure BCH: `BCH only`
+- NEVER use freeform descriptions without the type suffix (NFT/FT/BCH)
+
 ## Step 3: Contract Derivation
 
 From transaction templates, derive what each contract validates:
