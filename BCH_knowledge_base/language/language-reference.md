@@ -951,7 +951,7 @@ function anyFunction() {
 | Arithmetic | `+ - * / %` | `int` | Integer only, div/0 fails |
 | Comparison | `< <= > >= == !=` | `int` `bool` `bytes` `string` | - |
 | Logical | `! && ||` | `bool` | NO short-circuit (all operands evaluated) |
-| Bitwise | `& | ^` | `int` `bytes` | AND, OR, XOR only. No shift or invert operators |
+| Bitwise | `& | ^` | `bytes` only | AND, OR, XOR only. NOT supported on int. No shift or invert |
 | Concatenation | `+` | `string` `bytes` | - |
 | Unary | `+ - !` | `int` `bool` | - |
 
@@ -1015,16 +1015,21 @@ do {
 
 ### Bitwise Operations
 ```cashscript
-// Supported: AND, OR, XOR (on bytes and int)
+// Supported: AND, OR, XOR (on bytes ONLY, NOT int)
 bytes flags = 0xFF;
 bytes masked = flags & 0x0F;     // AND for masking
 bytes combined = a | b;          // OR for combining
 bytes toggled = a ^ b;           // XOR for toggling
 
-int intFlags = 15;
-int result = intFlags & 7;       // Bitwise AND on integers
+// For bit flag validation, use bytes types:
+bytes1 configFlags = 0x05;       // Example: active=1, paused=0, borrowEnabled=1
+require((configFlags & 0x01) == 0x01);  // Check bit 0 is set
+require((configFlags & 0x04) == 0x00);  // Check bit 2 is clear
 ```
-**Note**: CashScript does NOT support shift operators (`<<`, `>>`) or bitwise NOT (`~`)
+**Note**: CashScript does NOT support:
+- Bitwise operators on `int` types (use `bytes` instead)
+- Shift operators (`<<`, `>>`)
+- Bitwise NOT (`~`)
 
 ### Array Bounds
 ```cashscript

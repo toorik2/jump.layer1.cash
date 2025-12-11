@@ -262,8 +262,7 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 | Arithmetic | `+`, `-`, `*`, `/`, `%` | Integer only, division truncates |
 | Comparison | `<`, `<=`, `>`, `>=`, `==`, `!=` | All types |
 | Logical | `!`, `&&`, `\|\|` | No short-circuit evaluation |
-| Bitwise (legacy) | `&`, `\|`, `^` | AND, OR, XOR only |
-| Bitwise (modern) | `&`, `\|`, `^`, `~`, `<<`, `>>` | Full support in recent versions |
+| Bitwise | `&`, `\|`, `^` | `bytes` only - NOT supported on `int`. No `~`, `<<`, `>>` |
 | Assignment | `=` | No compound (`+=`, `-=`, etc.) |
 
 ### Units

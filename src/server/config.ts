@@ -71,7 +71,7 @@ export const SERVER_CONFIG = {
 
 export const RATE_LIMIT_CONFIG = {
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '300000', 10), // 5 minutes
-  maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '5', 10),
+  maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '20', 10),
   cleanupIntervalMs: parseInt(process.env.RATE_LIMIT_CLEANUP_MS || '600000', 10), // 10 minutes
 } as const;
 

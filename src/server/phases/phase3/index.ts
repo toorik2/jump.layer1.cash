@@ -12,7 +12,7 @@ import { insertApiAttempt } from '../../database.js';
 import type { DomainModel } from '../../types/domain-model.js';
 import type { UTXOArchitecture } from '../../types/utxo-architecture.js';
 import type { ContractInfo } from '../../types/contract-info.js';
-import { buildCodeGenerationPrompt } from './prompt.js';
+import { getStaticInstructions, buildUserMessage } from './prompt.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,16 +46,9 @@ export async function execute(
     role: c.role
   })) || [];
 
-  const systemPrompt = buildCodeGenerationPrompt(knowledgeBase, contractMeta);
   const utxoArchitectureJSON = JSON.stringify(architecture, null, 2);
-
-  // Architecture-only user message - no domain model
-  const userMessage = `UTXO ARCHITECTURE (AUTHORITATIVE - follow exactly):
-${utxoArchitectureJSON}
-
-GENERATE CashScript code for each contract in architecture.contracts[].
-For each function, parse the validation list (after the colon) and implement them.
-Use transactionTemplates[] to understand the transaction context.`;
+  const staticInstructions = getStaticInstructions();
+  const userMessage = buildUserMessage(contractMeta, utxoArchitectureJSON);
 
   let message: Anthropic.Beta.Messages.BetaMessage;
   let errorMessage: string | undefined;
@@ -64,11 +57,17 @@ Use transactionTemplates[] to understand the transaction context.`;
     message = await anthropic.beta.messages.create({
       model: ANTHROPIC_CONFIG.phase3.model,
       max_tokens: ANTHROPIC_CONFIG.phase3.maxTokens,
-      system: [{
-        type: 'text',
-        text: systemPrompt,
-        cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl },
-      }],
+      system: [
+        {
+          type: 'text',
+          text: knowledgeBase,  // ~30k tokens - CACHEABLE across all conversions
+          cache_control: { type: ANTHROPIC_CONFIG.cache.type, ttl: ANTHROPIC_CONFIG.cache.ttl },
+        },
+        {
+          type: 'text',
+          text: staticInstructions,  // ~2k tokens - static instructions
+        }
+      ],
       betas: [...ANTHROPIC_CONFIG.betas],
       output_format: outputSchema,
       messages: [{ role: 'user', content: userMessage }],
@@ -83,7 +82,7 @@ Use transactionTemplates[] to understand the transaction context.`;
       success: false,
       user_message: userMessage,
       error_message: errorMessage,
-      system_prompt: systemPrompt,
+      system_prompt: `[KNOWLEDGE_BASE: ${knowledgeBase.length} chars]\n\n${staticInstructions}`,
     });
     throw e;
   }
@@ -105,7 +104,7 @@ Use transactionTemplates[] to understand the transaction context.`;
     response_type: 'multi',
     user_message: userMessage,
     response_json: response,
-    system_prompt: systemPrompt,
+    system_prompt: `[KNOWLEDGE_BASE: ${knowledgeBase.length} chars]\n\n${staticInstructions}`,
   });
 
   // Parse response - check for token limit truncation

@@ -602,32 +602,29 @@ contract SecureBitwise() {
 - Verify shift results are as expected
 - Test boundary cases (0, 1, max bits)
 
-### 2. Bitwise Operation Overflow
+### 2. Bitwise Operation Security
 
-**Risk**: Bitwise operations producing unexpected values.
+**Risk**: Bitwise operations producing unexpected values or type errors.
+
+**CRITICAL**: CashScript only supports bitwise operators (`& | ^`) on `bytes` types, NOT on `int`.
 
 **Secure Pattern**:
 ```cashscript
-contract BitwiseSecurity(int mask) {
-    function processFlags(int flags) {
-        // Validate input before bitwise operations
-        require(flags >= 0);
-        require(flags <= 0xFFFFFFFF);  // 32-bit max
+contract BitwiseSecurity(bytes4 mask) {
+    function processFlags(bytes4 flags) {
+        // Bitwise AND on bytes types
+        bytes4 result = flags & mask;
 
-        int result = flags & mask;
-
-        // Verify result is within expected range
-        require(result >= 0);
-        require(result <= mask);
+        // Verify result matches expected pattern
+        require(result == mask);  // All mask bits must be set
     }
 }
 ```
 
 **Best Practices**:
-- Validate inputs to bitwise operations
-- Use appropriate masks for bit ranges
-- Check operation results
-- Test with edge values (0, max, all bits set)
+- Use `bytes` or `bytesN` types for bitwise operations (NOT `int`)
+- Use appropriate fixed-length bytes for bit ranges (bytes1, bytes2, bytes4)
+- Test with edge values (0x00, 0xFF, all bits set)
 
 ### 3. Bit Flag Security
 
@@ -635,26 +632,24 @@ contract BitwiseSecurity(int mask) {
 
 **Secure Pattern**:
 ```cashscript
-contract FlagValidator(int requiredFlags) {
-    function checkPermissions(int userFlags) {
-        // Validate flags are set correctly
-        require(userFlags >= 0);
-
-        // Check required flags are ALL set
-        int result = userFlags & requiredFlags;
+contract FlagValidator(bytes1 requiredFlags) {
+    function checkPermissions(bytes1 userFlags) {
+        // Check required flags are ALL set (bitwise AND on bytes)
+        bytes1 result = userFlags & requiredFlags;
         require(result == requiredFlags);
 
-        // Optionally check no extra flags are set
-        int allowedFlags = 0xFF;
-        require((userFlags & ~allowedFlags) == 0);
+        // Check specific bit flags using bytes comparison
+        bytes1 allowedFlags = 0xFF;
+        bytes1 extraFlags = userFlags & (allowedFlags ^ requiredFlags);
+        require(extraFlags == 0x00);  // No unauthorized flags
     }
 }
 ```
 
 **Best Practices**:
-- Validate all required flags are set
-- Check for unauthorized flags
-- Use explicit flag constants
+- Use `bytes1` for single-byte flag fields
+- Validate all required flags are set using `& mask == mask` pattern
+- Define explicit flag masks as `bytes` constants
 - Test all flag combinations
 
 ## Security Testing
