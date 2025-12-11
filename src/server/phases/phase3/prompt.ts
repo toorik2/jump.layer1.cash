@@ -98,6 +98,27 @@ All constructor parameters must be used in function bodies or compilation fails.
    - tokenAmount constraint
    - commitment update
 
+=== MINTING CONTRACT CUSTODY ENFORCEMENT ===
+
+When a minting contract creates NEW NFTs (not self-replicating), it MUST validate the output
+lockingBytecode to ensure the newly minted NFT goes to the correct custody contract.
+
+CRITICAL: Check the transactionTemplates[].outputs for outputs that say:
+- "to": "SomeContract" (not "P2PKH" or "burned")
+- "utxoType": contains "new" or indicates a newly created NFT
+
+For these outputs, the minting contract MUST validate:
+  require(tx.outputs[childIdx].lockingBytecode == expectedContractBytecode);
+
+Without this check, minting contracts allow NFTs to be created to arbitrary addresses,
+completely bypassing the custody enforcement designed in Phase 2.
+
+**Pattern**: Use the minter's own lockingBytecode if the child goes to the same contract type,
+OR pass the target contract's lockingBytecode as a constructor parameter.
+
+Example for minting a child that should go to same contract as parent:
+  require(tx.outputs[childIdx].lockingBytecode == tx.inputs[parentIdx].lockingBytecode);
+
 === ROLE MAPPING ===
 
 Map Phase 2 roles to output schema roles:

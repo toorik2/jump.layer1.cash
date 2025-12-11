@@ -58,7 +58,7 @@ require(tx.outputs[0].nftCommitment == bytes4(newID) + restOfCommitment);
 | `hash160` | `(any)` | `bytes20` | SHA-256 then RIPEMD-160 |
 | `hash256` | `(any)` | `bytes32` | Double SHA-256 |
 | `checkSig` | `(sig, pubkey)` | `bool` | Transaction signature. NULLFAIL: invalid=fail, `0x`=false |
-| `checkMultiSig` | `(sig[], pubkey[])` | `bool` | Multi-sig. NOT in TypeScript SDK |
+| `checkMultiSig` | `([sig, ...], [pubkey, ...])` | `bool` | Multi-sig. INLINE arrays only: `checkMultisig([s1,s2], [pk1,pk2,pk3])`. NOT in TypeScript SDK |
 | `checkDataSig` | `(datasig, bytes, pubkey)` | `bool` | Data signature. NULLFAIL applies |
 | `bytes` | `(any)` | `bytes` | Type conversion |
 | `bytesN` | `(any)` | `bytesN` | Fixed-length conversion (pads/truncates) |
