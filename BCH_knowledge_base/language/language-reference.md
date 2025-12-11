@@ -36,6 +36,25 @@ require(campaignID != 0xFFFFFFFFFF);       // Sentinel value check (bytes5)
 
 **Why MSB matters**: In Script Number encoding, the MSB indicates sign. If you use the full byte range, you risk creating values that get interpreted as negative. Always subtract 1 bit from max capacity.
 
+### CRITICAL: int Type Casting Limit
+
+Only `bytes1` through `bytes8` can be cast to `int`. Larger bounded bytes types cause a compile error:
+
+| Type | Cast to int | Error |
+|------|-------------|-------|
+| `bytes1-bytes8` | ✅ `int(value)` | - |
+| `bytes9-bytes64` | ❌ | "Type 'bytesN' is not castable to type 'int'" |
+
+```cashscript
+// OK - bytes8 or smaller
+bytes8 amount = bytes8(commitment.slice(0, 8));
+require(int(amount) > 0);
+
+// COMPILE ERROR - bytes16 cannot cast to int
+bytes16 liquidity = bytes16(commitment.slice(0, 16));
+require(int(liquidity) > 0);  // ❌ Error!
+```
+
 **Auto-increment pattern with overflow check:**
 ```cashscript
 bytes4 currentID = bytes4(tx.inputs[0].nftCommitment.split(4)[0]);
