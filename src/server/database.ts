@@ -111,6 +111,21 @@ function createTables() {
     )
   `);
 
+  // VALIDATION_ATTEMPTS - Track every validation attempt per contract (for error analysis)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS validation_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      conversion_id INTEGER NOT NULL,
+      contract_name TEXT NOT NULL,
+      attempt_number INTEGER NOT NULL,
+      passed INTEGER NOT NULL DEFAULT 0,
+      validation_error TEXT,
+      code_hash TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (conversion_id) REFERENCES conversions(id) ON DELETE CASCADE
+    )
+  `);
+
   // Indexes
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_conversions_session ON conversions(session_id);
@@ -124,6 +139,8 @@ function createTables() {
     CREATE INDEX IF NOT EXISTS idx_contracts_role ON contracts(role);
     CREATE INDEX IF NOT EXISTS idx_semantic_conversion ON semantic_analyses(conversion_id);
     CREATE INDEX IF NOT EXISTS idx_architecture_conversion ON utxo_architectures(conversion_id);
+    CREATE INDEX IF NOT EXISTS idx_validation_attempts_conversion ON validation_attempts(conversion_id);
+    CREATE INDEX IF NOT EXISTS idx_validation_attempts_error ON validation_attempts(validation_error) WHERE validation_error IS NOT NULL;
   `);
 
   // Migrations - add columns if missing, fail loud on unexpected errors
@@ -416,6 +433,41 @@ export function insertApiAttempt(record: Omit<ApiAttemptRecord, 'id'>): number {
     record.response_json || null,
     record.error_message || null,
     record.system_prompt || null
+  );
+
+  return result.lastInsertRowid as number;
+}
+
+// ============================================================================
+// VALIDATION_ATTEMPTS TABLE
+// ============================================================================
+
+export interface ValidationAttemptRecord {
+  id?: number;
+  conversion_id: number;
+  contract_name: string;
+  attempt_number: number;
+  passed: boolean;
+  validation_error?: string;
+  code_hash?: string;
+  created_at: string;
+}
+
+export function insertValidationAttempt(record: Omit<ValidationAttemptRecord, 'id'>): number {
+  const stmt = db.prepare(`
+    INSERT INTO validation_attempts (
+      conversion_id, contract_name, attempt_number, passed, validation_error, code_hash, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const result = stmt.run(
+    record.conversion_id,
+    record.contract_name,
+    record.attempt_number,
+    record.passed ? 1 : 0,
+    record.validation_error || null,
+    record.code_hash || null,
+    record.created_at
   );
 
   return result.lastInsertRowid as number;

@@ -9,7 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { compileString } from 'cashc';
 import { ANTHROPIC_CONFIG } from '../../config.js';
-import { insertApiAttempt } from '../../database.js';
+import { insertApiAttempt, insertValidationAttempt, generateHash } from '../../database.js';
 import type { ContractInfo } from '../../types/contract-info.js';
 import { buildFixPrompt } from './prompt.js';
 
@@ -154,7 +154,9 @@ function enhanceErrorMessage(error: string, code: string): string {
 
 function validateContracts(
   contracts: ContractInfo[],
-  alreadySentContracts?: Set<string>
+  alreadySentContracts?: Set<string>,
+  conversionId?: number,
+  attemptNumber?: number
 ): {
   allValid: boolean;
   firstError?: string;
@@ -197,6 +199,19 @@ function validateContracts(
         allValid = false;
         firstError = `${contract.name}: ${validation.error}`;
       }
+    }
+
+    // Record validation attempt for error analysis
+    if (conversionId !== undefined && attemptNumber !== undefined) {
+      insertValidationAttempt({
+        conversion_id: conversionId,
+        contract_name: contract.name,
+        attempt_number: attemptNumber,
+        passed: validation.valid,
+        validation_error: contract.validationError,
+        code_hash: generateHash(contract.code),
+        created_at: new Date().toISOString(),
+      });
     }
   }
 
@@ -250,7 +265,7 @@ export async function* execute(
   yield { type: 'validation_start' };
 
   // Initial validation
-  const validation = validateContracts(contracts, sentContracts);
+  const validation = validateContracts(contracts, sentContracts, conversionId, 1);
 
   yield {
     type: 'validation_progress',
@@ -287,7 +302,7 @@ export async function* execute(
     }
 
     // Revalidate merged contracts
-    const revalidation = validateContracts(merged, sentContracts);
+    const revalidation = validateContracts(merged, sentContracts, conversionId, attempt);
 
     yield {
       type: 'validation_progress',
