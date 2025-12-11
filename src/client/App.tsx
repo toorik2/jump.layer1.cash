@@ -239,7 +239,7 @@ export default function App() {
         break;
       case 'error':
         console.error('[Jump] Error:', event.data);
-        store.setError(event.data.message || 'Conversion failed');
+        store.setError(event.data.details || event.data.message || 'Conversion failed');
         break;
     }
   };

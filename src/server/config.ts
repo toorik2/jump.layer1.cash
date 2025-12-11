@@ -25,9 +25,10 @@ export const ANTHROPIC_CONFIG = {
   },
 
   // Phase 3: Code Generation
+  // Note: max_tokens > 21333 requires streaming mode per Anthropic API
   phase3: {
     model: process.env.PHASE3_MODEL || 'claude-sonnet-4-5-20250929',
-    maxTokens: parseInt(process.env.PHASE3_MAX_TOKENS || '21000', 10),
+    maxTokens: parseInt(process.env.PHASE3_MAX_TOKENS || '21333', 10),
   },
 
   // Phase 4: Validation + Fix Loop

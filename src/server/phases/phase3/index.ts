@@ -108,8 +108,29 @@ Use transactionTemplates[] to understand the transaction context.`;
     system_prompt: systemPrompt,
   });
 
-  // Direct pass-through - structured output schema guarantees correct shape
-  const parsed = JSON.parse(response);
+  // Parse response - check for token limit truncation
+  let parsed;
+  try {
+    parsed = JSON.parse(response);
+  } catch (parseError) {
+    const outputTokens = message.usage?.output_tokens || 0;
+    const maxTokens = ANTHROPIC_CONFIG.phase3.maxTokens;
+
+    // Check if we hit the token limit (output_tokens >= maxTokens indicates truncation)
+    if (outputTokens >= maxTokens - 100) {
+      throw new Error(
+        `Response truncated: This contract system is too large for a single generation pass. ` +
+        `The AI generated ${outputTokens.toLocaleString()} tokens but was cut off at the ` +
+        `${maxTokens.toLocaleString()} token limit (Anthropic API hard limit for non-streaming). ` +
+        `This is rare and only affects very complex multi-contract systems. ` +
+        `Try simplifying the input contract or reducing the number of functions.`
+      );
+    }
+
+    // Some other JSON parse error
+    throw new Error(`Failed to parse generated code: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+  }
+
   const contracts: ContractInfo[] = parsed.contracts;
 
   if (!contracts || contracts.length === 0) {
