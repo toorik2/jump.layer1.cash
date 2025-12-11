@@ -81,6 +81,11 @@ All constructor parameters must be used in function bodies or compilation fails.
 6. The CashScript compiler only accepts ASCII characters.
 7. tx.time can ONLY be used in require() statements: require(tx.time >= expr)
    For arithmetic or variable assignments, use tx.locktime instead.
+8. For byte extraction from commitments:
+   - Use slice(start, end) to extract bytes from MIDDLE positions
+   - Use split(index) only for head/tail separation
+   - slice() example: bytes8(commitment.slice(64, 72)) extracts bytes 64-71
+   - WRONG: split(72)[0].split(8)[1] produces bytes64, NOT bytes8!
 
 === MINTING CONTRACT CUSTODY ENFORCEMENT ===
 

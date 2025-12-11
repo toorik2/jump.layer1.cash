@@ -6,8 +6,8 @@
 |------|-----------|---------|-------------|------|-------------|
 | `bool` | `! && || == !=` | - | - | 1 bit | - |
 | `int` | `+ - * / % < <= > >= == !=` | - | `bytes(int)` `bytesN(int)` | Variable | Integer-only, div/0 fails, underscores OK: `1_000_000`, scientific: `1e6` |
-| `string` | `+ == !=` | `.length` `.reverse()` `.split(i)` | `bytes(string)` | Variable | UTF-8 encoded |
-| `bytes` | `+ == != & | ^` | `.length` `.reverse()` `.split(i)` | Variable | Hex: `0x1234abcd` |
+| `string` | `+ == !=` | `.length` `.reverse()` `.split(i)` `.slice(start,end)` | `bytes(string)` | Variable | UTF-8 encoded |
+| `bytes` | `+ == != & | ^` | `.length` `.reverse()` `.split(i)` `.slice(start,end)` | Variable | Hex: `0x1234abcd` |
 | `bytesN` | Same as bytes | Same as bytes | `bytesN(any)` | N bytes (1-64) | Fixed length, N=1-64, `byte` alias for `bytes1` |
 | `pubkey` | `== !=` | - | Auto to bytes | 33 bytes | Bitcoin public key |
 | `sig` | `== !=` | - | Auto to bytes | ~65 bytes | Transaction signature |
@@ -307,6 +307,53 @@ require(tx.outputs[0].nftCommitment == bytes2(newFee) + existingTail);
 - `bytes32` = token category ID, hashes
 
 **CRITICAL**: Plan your commitment layout BEFORE writing code. Changing layout breaks existing UTXOs.
+
+### slice() vs split() - Byte Extraction Guide
+
+CashScript provides TWO methods for byte extraction:
+
+| Method | Signature | Returns | Use Case |
+|--------|-----------|---------|----------|
+| `split(index)` | `.split(i)` | `(bytes, bytes)` tuple | Head/tail separation |
+| `slice(start, end)` | `.slice(s, e)` | `bytes` | Extract from middle |
+
+**CRITICAL: When to use which:**
+- **split()** - Best for extracting from START or END, or sequential destructuring
+- **slice()** - Best for extracting bytes from the MIDDLE of a commitment
+
+```cashscript
+// WRONG: Chained splits produce wrong sizes!
+// To extract 8 bytes at offset 64:
+int reserve = int(commitment.split(72)[0].split(8)[1]);
+// split(72)[0] → bytes72 (first 72 bytes)
+// .split(8)[1] → bytes64 (72-8=64 bytes!), NOT bytes8!
+// ERROR: "Type 'bytes64' is not castable to type 'int'"
+
+// CORRECT: Use slice() for middle extraction
+bytes8 reserveBytes = bytes8(commitment.slice(64, 72));  // bytes 64-71
+int reserve = int(reserveBytes);
+
+// CORRECT: Use split() for head extraction
+bytes20 ownerPkh = bytes20(commitment.split(20)[0]);  // first 20 bytes
+
+// CORRECT: Use split() for tail extraction (40-byte commitment)
+bytes4 suffix = bytes4(commitment.split(36)[1]);  // last 4 bytes
+
+// CORRECT: Sequential destructuring with split()
+bytes20 owner, bytes rest = commitment.split(20);
+bytes8 balance, bytes rest2 = rest.split(8);
+bytes4 timestamp = bytes4(rest2.split(4)[0]);
+```
+
+**Common extraction patterns by position:**
+```
+Commitment: [field0(20) | field1(8) | field2(32) | field3(4)] = 64 bytes
+
+Field 0 (offset 0, size 20):   bytes20(commitment.split(20)[0])
+Field 1 (offset 20, size 8):   bytes8(commitment.slice(20, 28))
+Field 2 (offset 28, size 32):  bytes32(commitment.slice(28, 60))
+Field 3 (offset 60, size 4):   bytes4(commitment.split(60)[1])
+```
 
 ## DUST AND FEE ACCOUNTING
 

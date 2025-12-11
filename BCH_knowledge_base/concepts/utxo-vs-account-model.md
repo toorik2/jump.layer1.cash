@@ -241,8 +241,8 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 |------|------|------------------|------------|----------------|
 | `bool` | 1 byte | `true`, `false` | `!`, `&&`, `\|\|` | N/A |
 | `int` | Variable | -2^63 to 2^63-1 | `+`, `-`, `*`, `/`, `%`, `<`, `>`, `==`, `!=`, `<=`, `>=` | `bytes` |
-| `string` | Variable | UTF-8 or hex (`0x...`) | `.split()`, `.length`, `.reverse()` | `bytes` |
-| `bytes` | Variable | Arbitrary byte sequence | `.split()`, `.length`, `.reverse()`, `&`, `\|`, `^` | N/A |
+| `string` | Variable | UTF-8 or hex (`0x...`) | `.split()`, `.slice()`, `.length`, `.reverse()` | `bytes` |
+| `bytes` | Variable | Arbitrary byte sequence | `.split()`, `.slice()`, `.length`, `.reverse()`, `&`, `\|`, `^` | N/A |
 | `bytes1` to `bytes64` | Fixed (N) | Fixed-length byte sequence | Same as `bytes` | `bytes` |
 | `pubkey` | 33 bytes | Compressed public key | Used in `checkSig`, `checkMultiSig` | `bytes` |
 | `sig` | 64-65 bytes | Schnorr signature | Used in `checkSig`, `checkMultiSig` | `bytes` |
@@ -254,6 +254,7 @@ require(this.age >= blocks);       // Blocks only (SDK limitation, not 512-sec c
 - Fixed-length: `bytesN` where N ∈ [1, 64]
 - Collections: Arrays limited (mainly `sig[]`, `pubkey[]` for `checkMultiSig`)
 - Tuples: Only from `split()` operations, requires destructuring
+- Use `slice(start, end)` to extract bytes from middle positions without tuples
 
 ### Operators
 
