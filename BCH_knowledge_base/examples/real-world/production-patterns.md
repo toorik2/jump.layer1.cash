@@ -295,7 +295,7 @@ contract SimpleDAO(
         bytes proposalMetadata = new LockingBytecodeNullData([
             0x5052,  // "PR" for proposal
             bytes(proposalId),
-            bytes(tx.time + votingPeriod),  // Voting deadline
+            bytes(tx.locktime + votingPeriod),  // Voting deadline
             proposalData
         ]);
         require(tx.outputs[1].lockingBytecode == proposalMetadata);
@@ -315,7 +315,7 @@ contract SimpleDAO(
         require(tx.inputs[0].tokenAmount >= votingPower);
         
         // Validate voting period
-        require(tx.time <= getProposalDeadline(proposalId));
+        require(tx.locktime <= getProposalDeadline(proposalId));
         
         // Record vote
         bytes voteData = new LockingBytecodeNullData([
@@ -337,7 +337,7 @@ contract SimpleDAO(
         require(checkSig(executorSig, executorPk));
         
         // Validate voting period ended
-        require(tx.time > getProposalDeadline(proposalId));
+        require(tx.locktime > getProposalDeadline(proposalId));
         
         // Validate quorum
         require(totalVotes >= quorumRequirement);
@@ -350,7 +350,7 @@ contract SimpleDAO(
     
     function getProposalDeadline(int proposalId) -> int {
         // This would lookup the actual deadline from stored data
-        return tx.time + votingPeriod;
+        return tx.locktime + votingPeriod;
     }
 }
 ```
@@ -422,8 +422,8 @@ contract PriceFeedOracle(
         require(prices.length == oracleSignatures.length);
         
         // Validate timestamp
-        require(timestamp >= tx.time - 300);  // Max 5 minutes old
-        require(timestamp <= tx.time);
+        require(timestamp >= tx.locktime - 300);  // Max 5 minutes old
+        require(timestamp <= tx.locktime);
         
         // Validate oracle signatures
         for (int i = 0; i < oracleSignatures.length; i++) {

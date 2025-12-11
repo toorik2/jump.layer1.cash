@@ -79,6 +79,8 @@ All constructor parameters must be used in function bodies or compilation fails.
    - tokenAmount constraint
    - commitment update
 6. The CashScript compiler only accepts ASCII characters.
+7. tx.time can ONLY be used in require() statements: require(tx.time >= expr)
+   For arithmetic or variable assignments, use tx.locktime instead.
 
 === MINTING CONTRACT CUSTODY ENFORCEMENT ===
 

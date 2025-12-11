@@ -50,7 +50,7 @@ this.activeBytecode                // bytes: Current UTXO's script
 // Time
 tx.time                           // int: nLocktime (<500M=block, ≥500M=Unix timestamp)
 tx.version                        // int: Transaction version
-tx.locktime                       // int: Same as tx.time
+tx.locktime                       // int: nLocktime value (use for arithmetic/assignments)
 this.age                          // int: nSequence relative timelock (blocks only in SDK)
 ```
 

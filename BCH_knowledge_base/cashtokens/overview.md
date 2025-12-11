@@ -311,7 +311,7 @@ contract TokenVesting(
         require(checkSig(beneficiarySig, beneficiary));
         
         // Calculate vested amount based on time
-        int vestedAmount = (tx.time * totalAmount) / vestingPeriod;
+        int vestedAmount = (tx.locktime * totalAmount) / vestingPeriod;
         
         // Ensure claim doesn't exceed vested amount
         require(claimAmount <= vestedAmount);
