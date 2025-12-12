@@ -176,6 +176,13 @@ contract BallotInitializer(bytes20 chairpersonPkh) {
 - tokenCategory returns `0x` when no tokens present
 - Category byte order: unreversed (OP_HASH256 format, NOT wallet/explorer format)
 
+**Token Exclusion (Security Pattern)**:
+To prevent ANY tokens on an output, require empty tokenCategory:
+```cashscript
+require(tx.outputs[N].tokenCategory == 0x);  // No tokens allowed - pure BCH only
+```
+Critical when minting NFTs exist - without this check, minting capability allows creating tokens on ANY output. Use on change outputs and any output that should be pure BCH.
+
 ## NFT COMMITMENT DATA STORAGE
 
 **CRITICAL**: BCH has no global state. Store data in NFT commitments (local transferrable state).

@@ -393,8 +393,13 @@ There's no direct way to test grammar size before hitting the API. Best approach
 | Field | Format | Example | Phase 3 Parser |
 |-------|--------|---------|----------------|
 | `contracts[].functions[]` | `func @ tx [in→out]: validations` | `vote @ castVote [1→1]: check1, check2` | Regex |
-| `tokenTopology.capabilities[]` | `Contract:cap` | `VoterContract:mutable` | `.split(':')` |
+| `tokenTopology.capabilities[]` | `Name:cap` | `Voter:mutable` | `.split(':')` |
 | `contractCountRationale.decisions[]` | `Entity: N - reason` | `Voter: 1 - state tracking` | N/A (informational) |
+| `transactionTemplates[].inputs[].from` | `Name.function` or `P2PKH` | `Voter.vote`, `P2PKH` | `.split('.')` |
+| `transactionTemplates[].outputs[].to` | `Name.function`, `P2PKH`, or `burned` | `Ballot.recordVote` | `.split('.')` |
 | `transactionTemplates[].inputs[].validates` | `check1, check2, check3` | `index == 1, auth check, state valid` | `.split(',')` |
 
 **Note:** `nftStateTypes[].fields`, `typeDiscriminators`, and `custodyDecisions` are now structured objects.
+
+**Naming convention:** Contract names no longer use "Contract" suffix. Use short names like `Voter`, `Ballot`, `LoanSidecar`.
+Long names may be abbreviated: `NonfungiblePositionManager` → `NFTPosMgr`.

@@ -16,7 +16,7 @@ export type ContractInfo = {
 
 export type TransactionInput = {
   index: number;
-  from: string;
+  from: string; // Format: "ContractName.functionName" or "P2PKH"
   utxoType: string;
   stateRequired?: string;
   validates?: string; // Comma-separated: "check1, check2, check3"
@@ -24,7 +24,7 @@ export type TransactionInput = {
 
 export type TransactionOutput = {
   index: number;
-  to: string;
+  to: string; // Format: "ContractName.functionName", "P2PKH", or "burned"
   utxoType: string;
   stateProduced?: string;
   covenantChecklist?: string;

@@ -34,21 +34,27 @@ From Phase 1 entities, define explicit commitment layouts:
 
 ## Step 2: Transaction Templates (PRIMARY)
 
-For EACH Phase 1 transition, design the full transaction:
+For EACH Phase 1 transition that involves at least one contract, design the full transaction.
+
+**SKIP transitions that are pure P2PKH-to-P2PKH** - if custody decisions show ALL participants
+use P2PKH custody (no contracts), there's nothing for CashScript to validate. These are native
+BCH operations handled by wallet software, not smart contract concerns.
 
 ```
 Transaction: castVote
 Purpose: Voter casts vote on proposal
 
 Inputs:
-  [0] BallotContract - BallotState NFT - validates vote count update
-  [1] VoterContract - VoterState NFT - validates hasVoted transition
-  [2] P2PKH (voter) - BCH only - provides authorization
+  [0] Ballot.recordVote - BallotState NFT - validates vote count update
+  [1] Voter.vote - VoterState NFT - validates hasVoted transition
+  [2] P2PKH - BCH only - provides authorization
 
 Outputs:
-  [0] BallotContract - BallotState NFT - voteCount incremented
-  [1] VoterContract - VoterState NFT - hasVoted = 0x01
+  [0] Ballot.recordVote - BallotState NFT - voteCount incremented
+  [1] Voter.vote - VoterState NFT - hasVoted = 0x01
 ```
+
+**Input/Output Format**: `ContractName.functionName` or just `P2PKH`/`burned`
 
 **This is the PRIMARY design artifact.** Contracts are derived from this.
 
@@ -69,9 +75,9 @@ For each (contract, transaction, position) tuple:
 
 ```json
 {
-  "name": "VoterContract",
+  "name": "Voter",
   "functions": [
-    "vote @ castVote [1→1]: this.activeInputIndex == 1, BallotContract at input[0], Owner authorized via input[2], hasVoted: 0x00 → 0x01, 5-point covenant on output[1]"
+    "vote @ castVote [1→1]: this.activeInputIndex == 1, Ballot at input[0], Owner authorized via input[2], hasVoted: 0x00 → 0x01, 5-point covenant on output[1]"
   ]
 }
 ```
@@ -86,20 +92,25 @@ Define how contracts authenticate each other:
 {
   "baseCategory": "systemCategory",
   "typeDiscriminators": [
-    { "discriminator": "0x00", "contract": "BallotContract" },
-    { "discriminator": "0x01", "contract": "VoterContract" }
+    { "discriminator": "0x00", "contract": "Ballot" },
+    { "discriminator": "0x01", "contract": "Voter" }
   ],
   "capabilities": [
-    "BallotContract:mutable",
-    "VoterContract:mutable"
+    "Ballot:mutable",
+    "Voter:mutable"
   ],
   "authentication": [
-    "BallotContract recognizes VoterContract via commitment[0] == 0x01"
+    "Ballot recognizes Voter via commitment[0] == 0x01"
   ]
 }
 ```
 
-Format for capabilities: `ContractName:capability`
+Format for capabilities: `Name:capability`
+
+**Capability assignment rules** (per CashTokens spec):
+- `minting` (0x02): Contracts with `role: "minting"` that create new NFTs
+- `mutable` (0x01): Contracts with `lifecycle: "state-mutating"` or `"state-and-balance-mutating"` - commitment changes on spend
+- `none` (no capability byte, 32-byte category only): Contracts with `lifecycle: "exactly-replicating"` - immutable, commitment cannot change
 
 **Convention**:
 - `0x0X` = Containers and sidecars
@@ -121,7 +132,7 @@ Check each critical invariant:
 
 ```json
 "custodyDecisions": [
-  { "entity": "Voter", "custody": "contract", "contractName": "VoterContract", "rationale": "Must enforce one-vote rule" },
+  { "entity": "Voter", "custody": "contract", "contractName": "Voter", "rationale": "Must enforce one-vote rule" },
   { "entity": "Badge", "custody": "p2pkh", "rationale": "No rules, user owns freely" }
 ]
 ```
@@ -204,7 +215,7 @@ Then you MUST design a ReserveContract that:
 Use when: 1-6 operations with similar validation logic
 
 ```
-EntityContract
+Entity
 ├── operation1()
 ├── operation2()
 └── operation3()
@@ -214,8 +225,8 @@ EntityContract
 Use when: Contract needs to hold multiple token types
 
 ```
-EntityContract (holds NFT state)
-EntitySidecarContract (holds fungible tokens)
+Entity (holds NFT state)
+EntitySidecar (holds fungible tokens)
 ```
 
 Sidecar validates same-origin via:
@@ -226,10 +237,10 @@ Sidecar validates same-origin via:
 Use when: 7+ operations OR very different validation requirements
 
 ```
-EntityContract (router)
-├── Operation1FuncContract (0x10)
-├── Operation2FuncContract (0x11)
-└── Operation3FuncContract (0x12)
+Entity (router)
+├── Op1Func (0x10)
+├── Op2Func (0x11)
+└── Op3Func (0x12)
 ```
 
 Router validates function NFT identifier byte, function contracts validate operation-specific logic.
@@ -276,11 +287,16 @@ If custody is P2PKH, document ONLY in `custodyDecisions`, not in `contracts[]`.
 
 # NAMING CONVENTION
 
-**Contract names**: `{Entity}{Role}Contract`
-- Container: `VoterContract`, `LoanContract`
-- Sidecar: `LoanSidecarContract`
-- Function: `RepayLoanFuncContract`
-- Minting: `VoterMinterContract`
+**Contract names**: `{Entity}` or `{Entity}{Role}` (NO "Contract" suffix)
+- Container: `Voter`, `Loan`
+- Sidecar: `LoanSidecar`
+- Function: `RepayFunc`
+- Minting: `VoterMinter`
+
+**Abbreviations**: Long names may be abbreviated for readability:
+- `NonfungiblePositionManager` → `NFTPosMgr`
+- `OperatorAuthorization` → `OpAuth`
+- Keep abbreviations recognizable and consistent within the system
 
 **Transaction names**: `{verb}{Entity}`
 - `castVote`, `repayLoan`, `depositCollateral`
@@ -295,11 +311,11 @@ If custody is P2PKH, document ONLY in `custodyDecisions`, not in `contracts[]`.
 Explicitly declare contract relationships:
 
 ```
-LoanSidecarContract:
-  relationships: "sidecar of LoanContract via outpointTransactionHash"
+LoanSidecar:
+  relationships: "sidecar of Loan via outpointTransactionHash"
 
-RepayLoanFuncContract:
-  relationships: "function of LoanContract for repayLoan with identifier 0x02"
+RepayFunc:
+  relationships: "function of Loan for repayLoan with identifier 0x02"
 ```
 
 ---
@@ -309,8 +325,8 @@ RepayLoanFuncContract:
 When main contract needs multiple token types:
 
 ```
-LoanContract: holds LoanState NFT (mutable)
-LoanSidecarContract: holds BCH collateral + fungible debt tokens
+Loan: holds LoanState NFT (mutable)
+LoanSidecar: holds BCH collateral + fungible debt tokens
 
 Linked via:
   require(tx.inputs[sidecarIdx].outpointTransactionHash ==
@@ -324,9 +340,9 @@ Linked via:
 When container has 4+ operations:
 
 ```
-LoanContract: "dumb" container, just checks function present
-RepayLoanFuncContract: validates repayLoan transaction
-LiquidateLoanFuncContract: validates liquidateLoan transaction
+Loan: "dumb" container, just checks function present
+RepayFunc: validates repayLoan transaction
+LiquidateFunc: validates liquidateLoan transaction
 
 Container checks:
   require(tx.inputs[funcIdx].tokenCategory == systemCategory);
@@ -371,8 +387,8 @@ When multiple contract types share the same category+capability, the **first byt
 
 ```cashscript
 // Verify specific contract type via commitment prefix
-require(tx.inputs[0].nftCommitment.split(1)[0] == 0x00);  // BallotContract type
-require(tx.inputs[0].nftCommitment.split(1)[0] == 0x01);  // VoterContract type
+require(tx.inputs[0].nftCommitment.split(1)[0] == 0x00);  // Ballot type
+require(tx.inputs[0].nftCommitment.split(1)[0] == 0x01);  // Voter type
 ```
 
 **Use when**: Distinguishing between contract types that share the same tokenCategory.
@@ -382,11 +398,11 @@ require(tx.inputs[0].nftCommitment.split(1)[0] == 0x01);  // VoterContract type
 For robust cross-contract authentication, check BOTH layers:
 
 ```cashscript
-contract VoterContract(bytes32 systemCategory) {
+contract Voter(bytes32 systemCategory) {
     function vote() {
         // Layer 1: Verify system membership + mutable capability
         require(tx.inputs[0].tokenCategory == systemCategory + 0x01);
-        // Layer 2: Verify specific contract type (BallotContract = 0x00)
+        // Layer 2: Verify specific contract type (Ballot = 0x00)
         require(tx.inputs[0].nftCommitment.split(1)[0] == 0x00);
     }
 }

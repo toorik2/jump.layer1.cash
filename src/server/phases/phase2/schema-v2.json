@@ -50,7 +50,7 @@
                 "type": "object",
                 "properties": {
                   "index": { "type": "integer" },
-                  "from": { "type": "string", "description": "Contract name or 'P2PKH'" },
+                  "from": { "type": "string", "description": "Format: 'ContractName.functionName' or 'P2PKH'. Examples: 'Ballot.recordVote', 'Voter.vote', 'P2PKH'" },
                   "utxoType": { "type": "string", "description": "UTXO contents. MUST end with token type suffix: '{description} NFT' for non-fungible, '{description} FT' for fungible, or 'BCH only' for satoshis. Examples: 'PoolState NFT', 'liquidity tokens FT', 'BCH only'" },
                   "stateRequired": { "type": "string", "description": "Required state condition, or empty string if none" },
                   "validates": { "type": "string", "description": "Comma-separated validation requirements, or empty string for P2PKH" }
@@ -65,7 +65,7 @@
                 "type": "object",
                 "properties": {
                   "index": { "type": "integer" },
-                  "to": { "type": "string", "description": "Contract name, 'P2PKH', or 'burned'" },
+                  "to": { "type": "string", "description": "Format: 'ContractName.functionName', 'P2PKH', or 'burned'. Examples: 'Ballot.recordVote', 'P2PKH'" },
                   "utxoType": { "type": "string", "description": "UTXO contents. MUST end with token type suffix: '{description} NFT', '{description} FT', or 'BCH only'" },
                   "stateProduced": { "type": "string", "description": "New state after transition, or empty string if none" },
                   "covenantChecklist": { "type": "string", "description": "5-point covenant: locking|category|value|tokenAmount|commitment, or empty string" }
@@ -85,7 +85,7 @@
         "items": {
           "type": "object",
           "properties": {
-            "name": { "type": "string", "description": "Contract name ending in 'Contract'" },
+            "name": { "type": "string", "description": "Contract name (e.g., Voter, LoanSidecar, RepayFunc)" },
             "role": {
               "type": "string",
               "enum": ["container", "sidecar", "function", "minting", "independent"],
@@ -130,10 +130,10 @@
               "additionalProperties": false
             }
           },
-          "sharedCapability": {
-            "type": "string",
-            "enum": ["none", "mutable", "minting"],
-            "description": "NFT capability for all system contracts (none=immutable, mutable=0x01, minting=0x02). All contracts typically share the same capability."
+          "capabilities": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Per-contract capability in format 'Name:capability' where capability is 'none', 'mutable', or 'minting'. Example: ['Ballot:mutable', 'Voter:mutable']"
           },
           "authentication": {
             "type": "array",
@@ -141,7 +141,7 @@
             "description": "Full authentication patterns using both layers: 'ContractA authenticates ContractB: category+capability AND commitment[0]==0xNN'"
           }
         },
-        "required": ["baseCategory", "typeDiscriminators", "sharedCapability", "authentication"],
+        "required": ["baseCategory", "typeDiscriminators", "capabilities", "authentication"],
         "additionalProperties": false
       },
       "custodyDecisions": {

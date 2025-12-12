@@ -24,13 +24,21 @@ export default function TransactionsView(props: Props) {
     return names;
   });
 
-  const isContractName = (name?: string): boolean => {
-    if (!name) return false;
-    return contractNameSet().has(name);
+  // Extract contract name from "ContractName.functionName" format
+  const getContractName = (slot: string): string => {
+    if (!slot || slot === 'P2PKH' || slot === 'burned') return slot;
+    return slot.split('.')[0]; // "Ballot.recordVote" -> "Ballot"
   };
 
-  const getSlotTypeClass = (utxoType: string, contractName?: string) => {
+  const isContractName = (slot?: string): boolean => {
+    if (!slot) return false;
+    const contractName = getContractName(slot);
+    return contractNameSet().has(contractName);
+  };
+
+  const getSlotTypeClass = (utxoType: string, slot?: string) => {
     if (utxoType?.includes('NFT')) {
+      const contractName = getContractName(slot || '');
       const cap = getCapability(contractName);
       if (cap === 'minting') return styles.slotTypeNftMinting;
       if (cap === 'mutable') return styles.slotTypeNftMutable;
@@ -63,8 +71,9 @@ export default function TransactionsView(props: Props) {
   };
 
   // Format utxoType for badge display (e.g., "BallotState NFT" -> "NFT")
-  const formatUtxoType = (utxoType: string, contractName?: string): string => {
+  const formatUtxoType = (utxoType: string, slot?: string): string => {
     if (utxoType?.includes('NFT')) {
+      const contractName = getContractName(slot || '');
       const cap = getCapability(contractName);
       return `NFT - ${formatCapability(cap)}`;
     }
@@ -128,11 +137,13 @@ export default function TransactionsView(props: Props) {
                       // Derive participants from inputs/outputs (contracts + P2PKH)
                       const participants = new Set<string>();
                       for (const input of tx.inputs || []) {
-                        if (isContractName(input.from)) participants.add(input.from!);
+                        const contractName = getContractName(input.from);
+                        if (isContractName(input.from)) participants.add(contractName);
                         else if (input.from === 'P2PKH') participants.add('P2PKH');
                       }
                       for (const output of tx.outputs || []) {
-                        if (isContractName(output.to)) participants.add(output.to!);
+                        const contractName = getContractName(output.to);
+                        if (isContractName(output.to)) participants.add(contractName);
                         else if (output.to === 'P2PKH') participants.add('P2PKH');
                       }
                       const participantList = [...participants];
@@ -163,7 +174,14 @@ export default function TransactionsView(props: Props) {
                           <div class={styles.slotIndex}>[{input.index}]</div>
                           <div class={styles.slotContent}>
                             <div class={styles.slotLabel}>
-                              {input.from}
+                              <span class={styles.slotLabelName}>
+                                {input.from.includes('.') ? (
+                                  <>
+                                    <span class={styles.contractNameInSlot}>{getContractName(input.from)}</span>
+                                    <span class={styles.functionName}>.{input.from.split('.')[1]}()</span>
+                                  </>
+                                ) : input.from}
+                              </span>
                               <Show when={input.utxoType}>
                                 <span class={getSlotTypeClass(input.utxoType, input.from)}>{formatUtxoType(input.utxoType, input.from)}</span>
                               </Show>
@@ -190,7 +208,14 @@ export default function TransactionsView(props: Props) {
                           <div class={styles.slotIndex}>[{output.index}]</div>
                           <div class={styles.slotContent}>
                             <div class={styles.slotLabel}>
-                              {output.to}
+                              <span class={styles.slotLabelName}>
+                                {output.to.includes('.') ? (
+                                  <>
+                                    <span class={styles.contractNameInSlot}>{getContractName(output.to)}</span>
+                                    <span class={styles.functionName}>.{output.to.split('.')[1]}()</span>
+                                  </>
+                                ) : output.to}
+                              </span>
                               <Show when={output.utxoType}>
                                 <span class={getSlotTypeClass(output.utxoType, output.to)}>{formatUtxoType(output.utxoType, output.to)}</span>
                               </Show>

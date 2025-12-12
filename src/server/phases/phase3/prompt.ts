@@ -119,6 +119,18 @@ OR pass the target contract's lockingBytecode as a constructor parameter.
 Example for minting a child that should go to same contract as parent:
   require(tx.outputs[childIdx].lockingBytecode == tx.inputs[parentIdx].lockingBytecode);
 
+=== TOKEN EXCLUSION (SECURITY) ===
+
+When minting NFTs exist, prevent unauthorized token creation on extra outputs:
+  require(tx.outputs[N].tokenCategory == 0x);  // No tokens allowed
+
+Use this pattern when:
+- Minting contracts exist and change/extra outputs should be pure BCH
+- Outputs should NOT receive any tokens (NFT or fungible)
+- Preventing token leakage to unintended destinations
+
+Without this check, minting capability allows creating tokens on ANY output.
+
 === ROLE MAPPING ===
 
 Map Phase 2 roles to output schema roles:
