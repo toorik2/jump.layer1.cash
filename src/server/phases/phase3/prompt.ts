@@ -89,6 +89,14 @@ All constructor parameters must be used in function bodies or compilation fails.
    - Use split(index) only for head/tail separation
    - slice() example: bytes8(commitment.slice(64, 72)) extracts bytes 64-71
    - WRONG: split(72)[0].split(8)[1] produces bytes64, NOT bytes8!
+10. tx.outputs has LIMITED properties:
+    - tx.outputs[i] has ONLY: value, lockingBytecode, tokenCategory, nftCommitment, tokenAmount
+    - outpointTransactionHash is ONLY on tx.inputs[i], NOT tx.outputs[i]
+    - tx.outputs describe what's being CREATED, tx.inputs describe where UTXOs CAME FROM
+11. checkDataSig requires datasig type (not sig):
+    - checkDataSig(datasig s, bytes msg, pubkey pk) -> bool
+    - WRONG: checkDataSig(sig, ...) causes type mismatch error
+    - datasig is for arbitrary message signing, sig is for transaction signing
 
 === MINTING CONTRACT CUSTODY ENFORCEMENT ===
 

@@ -22,6 +22,7 @@ export interface ConversionState {
   contracts: ContractInfo[];
   pendingContracts: PendingContract[];
   transactions: Transaction[];
+  capabilities: string[];
   retryAttempt: number;
 }
 
@@ -32,6 +33,7 @@ const initialState: ConversionState = {
   contracts: [],
   pendingContracts: [],
   transactions: [],
+  capabilities: [],
   retryAttempt: 1
 };
 
@@ -50,6 +52,7 @@ export function createConversionStore() {
   const contracts = createMemo(() => state().contracts);
   const pendingContracts = createMemo(() => state().pendingContracts);
   const transactions = createMemo(() => state().transactions);
+  const capabilities = createMemo(() => state().capabilities);
   const retryAttempt = createMemo(() => state().retryAttempt);
 
   // Actions
@@ -87,11 +90,12 @@ export function createConversionStore() {
     setState(s => ({ ...s, status: statusMap[phase], phase }));
   }
 
-  function addTransactions(txs: Transaction[], specs: PendingContract[]) {
+  function addTransactions(txs: Transaction[], specs: PendingContract[], caps: string[] = []) {
     setState(s => ({
       ...s,
       transactions: txs,
-      pendingContracts: specs
+      pendingContracts: specs,
+      capabilities: caps
     }));
   }
 
@@ -136,6 +140,7 @@ export function createConversionStore() {
     contracts,
     pendingContracts,
     transactions,
+    capabilities,
     retryAttempt,
 
     // Actions

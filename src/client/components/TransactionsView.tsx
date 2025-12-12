@@ -8,6 +8,7 @@ type Props = {
   loading: Accessor<boolean>;
   pendingContracts: Accessor<PendingContract[]>;
   validatedContracts: Accessor<ContractInfo[]>;
+  capabilities: Accessor<string[]>;
 };
 
 export default function TransactionsView(props: Props) {
@@ -28,9 +29,13 @@ export default function TransactionsView(props: Props) {
     return contractNameSet().has(name);
   };
 
-  const getSlotTypeClass = (utxoType: string) => {
-    if (utxoType?.includes('NFT') && isContractType(utxoType)) return styles.slotTypeContractNft;
-    if (utxoType?.includes('NFT')) return styles.slotTypeUserNft;
+  const getSlotTypeClass = (utxoType: string, contractName?: string) => {
+    if (utxoType?.includes('NFT')) {
+      const cap = getCapability(contractName);
+      if (cap === 'minting') return styles.slotTypeNftMinting;
+      if (cap === 'mutable') return styles.slotTypeNftMutable;
+      return styles.slotTypeNftImmutable;
+    }
     if (utxoType?.includes('BCH')) return styles.slotTypeBch;
     if (utxoType?.includes('FT') || utxoType?.includes('fungible')) return styles.slotTypeFungible;
     return styles.slotType;
@@ -41,9 +46,28 @@ export default function TransactionsView(props: Props) {
            utxoType?.toLowerCase().includes('state');
   };
 
+  // Get capability for a contract (e.g., "BallotContract:mutable" -> "mutable")
+  const getCapability = (contractName?: string): string | null => {
+    if (!contractName) return null;
+    const caps = props.capabilities();
+    const entry = caps.find(c => c.startsWith(`${contractName}:`));
+    if (!entry) return null;
+    return entry.split(':')[1]; // "mutable", "minting", or "none"
+  };
+
+  // Format capability for display ("none" -> "immutable")
+  const formatCapability = (cap: string | null): string => {
+    if (cap === 'minting') return 'minting';
+    if (cap === 'mutable') return 'mutable';
+    return 'immutable'; // "none" in schema means immutable
+  };
+
   // Format utxoType for badge display (e.g., "BallotState NFT" -> "NFT")
-  const formatUtxoType = (utxoType: string): string => {
-    if (utxoType?.includes('NFT')) return 'NFT';
+  const formatUtxoType = (utxoType: string, contractName?: string): string => {
+    if (utxoType?.includes('NFT')) {
+      const cap = getCapability(contractName);
+      return `NFT - ${formatCapability(cap)}`;
+    }
     if (utxoType?.includes('BCH')) return 'BCH';
     if (utxoType?.includes('FT') || utxoType?.includes('fungible')) return 'FT';
     return '';  // Hide badge for unrecognized types
@@ -98,41 +122,36 @@ export default function TransactionsView(props: Props) {
             {(tx) => (
               <div class={styles.card}>
                 <div class={styles.header}>
-                  <div class={styles.headerLeft}>
+                  <div class={styles.headerTop}>
                     <h3 class={styles.name}>{tx.name}</h3>
-                    <p class={styles.description}>{tx.purpose}</p>
-                  </div>
-                  {(() => {
-                    // Derive participants from inputs/outputs (contracts + P2PKH)
-                    const participants = new Set<string>();
-                    for (const input of tx.inputs || []) {
-                      if (isContractName(input.from)) participants.add(input.from!);
-                      else if (input.from === 'P2PKH') participants.add('P2PKH');
-                    }
-                    for (const output of tx.outputs || []) {
-                      if (isContractName(output.to)) participants.add(output.to!);
-                      else if (output.to === 'P2PKH') participants.add('P2PKH');
-                    }
-                    const participantList = [...participants];
-                    return (
-                      <Show when={participantList.length > 0}>
-                        <div class={styles.headerRight}>
-                          <For each={participantList}>
-                            {(participant, i) => (
-                              <>
+                    {(() => {
+                      // Derive participants from inputs/outputs (contracts + P2PKH)
+                      const participants = new Set<string>();
+                      for (const input of tx.inputs || []) {
+                        if (isContractName(input.from)) participants.add(input.from!);
+                        else if (input.from === 'P2PKH') participants.add('P2PKH');
+                      }
+                      for (const output of tx.outputs || []) {
+                        if (isContractName(output.to)) participants.add(output.to!);
+                        else if (output.to === 'P2PKH') participants.add('P2PKH');
+                      }
+                      const participantList = [...participants];
+                      return (
+                        <Show when={participantList.length > 0}>
+                          <div class={styles.headerRight}>
+                            <For each={participantList}>
+                              {(participant) => (
                                 <span class={participant === 'P2PKH' ? styles.badgeP2pkh : styles.badge}>
                                   {participant}
                                 </span>
-                                <Show when={i() < participantList.length - 1}>
-                                  <span class={styles.badgeSeparator}>·</span>
-                                </Show>
-                              </>
-                            )}
-                          </For>
-                        </div>
-                      </Show>
-                    );
-                  })()}
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                      );
+                    })()}
+                  </div>
+                  <p class={styles.description}>{tx.purpose}</p>
                 </div>
 
                 <div class={styles.flow}>
@@ -146,7 +165,7 @@ export default function TransactionsView(props: Props) {
                             <div class={styles.slotLabel}>
                               {input.from}
                               <Show when={input.utxoType}>
-                                <span class={getSlotTypeClass(input.utxoType)}>{formatUtxoType(input.utxoType)}</span>
+                                <span class={getSlotTypeClass(input.utxoType, input.from)}>{formatUtxoType(input.utxoType, input.from)}</span>
                               </Show>
                             </div>
                             <div class={styles.slotDescription}>
@@ -173,7 +192,7 @@ export default function TransactionsView(props: Props) {
                             <div class={styles.slotLabel}>
                               {output.to}
                               <Show when={output.utxoType}>
-                                <span class={getSlotTypeClass(output.utxoType)}>{formatUtxoType(output.utxoType)}</span>
+                                <span class={getSlotTypeClass(output.utxoType, output.to)}>{formatUtxoType(output.utxoType, output.to)}</span>
                               </Show>
                             </div>
                             <div class={styles.slotDescription}>

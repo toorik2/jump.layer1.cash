@@ -157,6 +157,7 @@ export async function handleConversion(
       sse.sendEvent('transactions_ready', {
         transactions: transactionTemplates,
         contractSpecs,
+        capabilities: utxoArchitecture.tokenTopology?.capabilities || [],
       });
     }
 

@@ -107,6 +107,11 @@ require(tx.outputs[0].nftCommitment == bytes4(newID) + restOfCommitment);
 | `tx.outputs[i].nftCommitment` | `bytes` | Output NFT commitment | CashTokens, max 128 bytes |
 | `tx.outputs[i].tokenAmount` | `int` | Output fungible tokens | CashTokens |
 | `this.activeInputIndex` | `int` | Current input being evaluated | - |
+
+**CRITICAL: tx.outputs vs tx.inputs property differences**:
+- `tx.outputs[i]` does NOT have: `outpointTransactionHash`, `outpointIndex`, `unlockingBytecode`, `sequenceNumber`
+- These properties only exist on `tx.inputs[i]` (they describe where the UTXO came from)
+- `tx.outputs[i]` only describes what's being created: `value`, `lockingBytecode`, `tokenCategory`, `nftCommitment`, `tokenAmount`
 | `this.activeBytecode` | `bytes` | Current input's locking bytecode | For covenants |
 
 **Locking Bytecode Constructors**:

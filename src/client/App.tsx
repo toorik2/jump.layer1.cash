@@ -216,7 +216,8 @@ export default function App() {
         if (event.data.transactions && Array.isArray(event.data.transactions)) {
           const enrichedTxs = enrichTransactions(event.data.transactions);
           const specs = event.data.contractSpecs || [];
-          store.addTransactions(enrichedTxs, specs);
+          const caps = event.data.capabilities || [];
+          store.addTransactions(enrichedTxs, specs, caps);
         }
         break;
       case 'phase3_start':
@@ -402,7 +403,7 @@ export default function App() {
               </div>
 
               <Show when={activeMainTab() === 'transactions'}>
-                <TransactionsView transactions={store.transactions} loading={store.loading} pendingContracts={store.pendingContracts} validatedContracts={store.contracts} />
+                <TransactionsView transactions={store.transactions} loading={store.loading} pendingContracts={store.pendingContracts} validatedContracts={store.contracts} capabilities={store.capabilities} />
               </Show>
 
               <Show when={activeMainTab() === 'contracts'}>
