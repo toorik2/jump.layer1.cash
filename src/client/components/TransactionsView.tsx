@@ -180,7 +180,9 @@ export default function TransactionsView(props: Props) {
                                     <span class={styles.contractNameInSlot}>{getContractName(input.from)}</span>
                                     <span class={styles.functionName}>.{input.from.split('.')[1]}()</span>
                                   </>
-                                ) : input.from}
+                                ) : (
+                                  <span class={input.from === 'P2PKH' ? styles.p2pkhNameInSlot : undefined}>{input.from}</span>
+                                )}
                               </span>
                               <Show when={input.utxoType}>
                                 <span class={getSlotTypeClass(input.utxoType, input.from)}>{formatUtxoType(input.utxoType, input.from)}</span>
@@ -214,7 +216,9 @@ export default function TransactionsView(props: Props) {
                                     <span class={styles.contractNameInSlot}>{getContractName(output.to)}</span>
                                     <span class={styles.functionName}>.{output.to.split('.')[1]}()</span>
                                   </>
-                                ) : output.to}
+                                ) : (
+                                  <span class={output.to === 'P2PKH' ? styles.p2pkhNameInSlot : undefined}>{output.to}</span>
+                                )}
                               </span>
                               <Show when={output.utxoType}>
                                 <span class={getSlotTypeClass(output.utxoType, output.to)}>{formatUtxoType(output.utxoType, output.to)}</span>

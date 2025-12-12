@@ -241,6 +241,10 @@
   color: var(--color-info);
 }
 
+.p2pkhNameInSlot {
+  color: #0ac18e;
+}
+
 .functionName {
   color: var(--color-text-dim);
 }
