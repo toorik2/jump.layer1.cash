@@ -380,7 +380,7 @@ export default function App() {
                 </button>
 
                 <button
-                  class={activeMainTab() === 'contracts' ? styles.mainTabActive : styles.mainTab}
+                  class={activeMainTab() === 'contracts' ? styles.mainTabContractActive : styles.mainTabContract}
                   onClick={() => setActiveMainTab('contracts')}
                 >
                   Contracts
@@ -388,7 +388,7 @@ export default function App() {
                     {(() => {
                       const allValidated = contractsToDisplay().every(c => c.validated);
                       return (
-                        <span class={allValidated ? styles.tabCount : styles.tabCountLoading}>
+                        <span class={allValidated ? styles.tabCountContract : styles.tabCountContractLoading}>
                           {allValidated ? contractsToDisplay().length : <span class={styles.tabSpinnerInline}></span>}
                           {!allValidated && ` ${contractsToDisplay().filter(c => c.validated).length}/${contractsToDisplay().length}`}
                         </span>

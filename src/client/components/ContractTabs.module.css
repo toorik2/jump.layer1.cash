@@ -22,25 +22,25 @@
 }
 
 .tab:hover {
-  border-color: var(--color-accent);
+  border-color: var(--color-info);
   color: var(--color-text);
 }
 
 .tabActive {
   composes: tab;
-  background: rgba(57, 255, 20, 0.1);
-  border-color: var(--color-accent);
-  color: var(--color-accent);
+  background: rgba(88, 166, 255, 0.1);
+  border-color: var(--color-info);
+  color: var(--color-info);
 }
 
 .tabPending {
   composes: tab;
-  border-color: var(--color-warning);
-  opacity: 0.8;
+  border-color: var(--color-info);
+  opacity: 0.7;
 }
 
 .tabPending:hover {
-  border-color: var(--color-warning);
+  border-color: var(--color-info);
   opacity: 1;
 }
 
@@ -55,7 +55,7 @@
 
 .tabStatusValid {
   composes: tabStatus;
-  color: var(--color-accent);
+  color: var(--color-info);
 }
 
 .tabStatusPending {
@@ -70,7 +70,7 @@
   width: 14px;
   height: 14px;
   border: 2px solid var(--color-border);
-  border-top-color: var(--color-warning);
+  border-top-color: var(--color-info);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -112,8 +112,8 @@
 
 .originalTabActive {
   composes: originalTab;
-  border-color: var(--color-accent);
-  background: rgba(57, 255, 20, 0.1);
+  border-color: var(--color-info);
+  background: rgba(88, 166, 255, 0.1);
 }
 
 @media (max-width: 768px) {

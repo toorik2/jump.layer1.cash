@@ -216,6 +216,24 @@
   color: var(--color-accent);
 }
 
+/* Contract tab uses blue (--color-info) instead of green */
+.mainTabContract {
+  composes: mainTab;
+}
+
+.mainTabContract:hover {
+  background: rgba(88, 166, 255, 0.05);
+  border-color: var(--color-info);
+  color: var(--color-info);
+}
+
+.mainTabContractActive {
+  composes: mainTab;
+  background: rgba(88, 166, 255, 0.1);
+  border-color: var(--color-info);
+  color: var(--color-info);
+}
+
 .tabCount {
   background: rgba(57, 255, 20, 0.2);
   color: var(--color-accent);
@@ -228,8 +246,26 @@
   gap: 0.25rem;
 }
 
+.tabCountContract {
+  background: rgba(88, 166, 255, 0.2);
+  color: var(--color-info);
+  padding: 0.125rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .tabCountLoading {
   composes: tabCount;
+  background: rgba(255, 165, 0, 0.2);
+  color: var(--color-warning);
+}
+
+.tabCountContractLoading {
+  composes: tabCountContract;
   background: rgba(255, 165, 0, 0.2);
   color: var(--color-warning);
 }
