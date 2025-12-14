@@ -1,7 +1,7 @@
 import { createSignal, createEffect, createMemo, Show, onCleanup } from 'solid-js';
 import { codeToHtml } from 'shiki';
 import { API_STREAM_URL } from './config.frontend';
-import { SIMPLE_EXAMPLE, COMPLEX_EXAMPLE, NATURAL_LANGUAGE_EXAMPLE } from './data/examples';
+import { SIMPLE_EXAMPLE, COMPLEX_EXAMPLE, VERY_COMPLEX_EXAMPLE } from './data/examples';
 import type { DisplayContract } from './types';
 import { enrichTransactions } from './utils/transactions';
 import { createConversionStore } from './stores/conversion';
@@ -437,8 +437,8 @@ export default function App() {
                   <button class={styles.exampleBtn} onClick={() => setEvmContract(COMPLEX_EXAMPLE)} title="Load complex voting contract example">
                     Complex
                   </button>
-                  <button class={styles.exampleBtn} onClick={() => setEvmContract(NATURAL_LANGUAGE_EXAMPLE)} title="Try natural language description (experimental)">
-                    Natural language (experimental)
+                  <button class={styles.exampleBtn} onClick={() => setEvmContract(VERY_COMPLEX_EXAMPLE)} title="Try Compound CToken (very complex)">
+                    Very complex
                   </button>
                 </div>
               </div>
