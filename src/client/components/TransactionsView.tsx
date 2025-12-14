@@ -9,6 +9,7 @@ type Props = {
   pendingContracts: Accessor<PendingContract[]>;
   validatedContracts: Accessor<ContractInfo[]>;
   capabilities: Accessor<string[]>;
+  onNavigateToContract?: (contractName: string, functionName?: string) => void;
 };
 
 export default function TransactionsView(props: Props) {
@@ -34,6 +35,10 @@ export default function TransactionsView(props: Props) {
     if (!slot) return false;
     const contractName = getContractName(slot);
     return contractNameSet().has(contractName);
+  };
+
+  const isContractValidated = (contractName: string): boolean => {
+    return props.validatedContracts().some(c => c.name === contractName);
   };
 
   const getSlotTypeClass = (utxoType: string, slot?: string) => {
@@ -176,10 +181,27 @@ export default function TransactionsView(props: Props) {
                             <div class={styles.slotLabel}>
                               <span class={styles.slotLabelName}>
                                 {input.from.includes('.') ? (
-                                  <>
-                                    <span class={styles.contractNameInSlot}>{getContractName(input.from)}</span>
-                                    <span class={styles.functionName}>.{input.from.split('.')[1]}()</span>
-                                  </>
+                                  isContractValidated(getContractName(input.from)) ? (
+                                    <>
+                                      <span
+                                        class={styles.contractNameClickable}
+                                        onClick={() => props.onNavigateToContract?.(getContractName(input.from))}
+                                      >
+                                        {getContractName(input.from)}
+                                      </span>
+                                      <span
+                                        class={styles.functionNameClickable}
+                                        onClick={() => props.onNavigateToContract?.(getContractName(input.from), input.from.split('.')[1])}
+                                      >
+                                        .{input.from.split('.')[1]}()
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span class={styles.contractNameInSlot}>{getContractName(input.from)}</span>
+                                      <span class={styles.functionName}>.{input.from.split('.')[1]}()</span>
+                                    </>
+                                  )
                                 ) : (
                                   <span class={input.from === 'P2PKH' ? styles.p2pkhNameInSlot : undefined}>{input.from}</span>
                                 )}
@@ -212,10 +234,27 @@ export default function TransactionsView(props: Props) {
                             <div class={styles.slotLabel}>
                               <span class={styles.slotLabelName}>
                                 {output.to.includes('.') ? (
-                                  <>
-                                    <span class={styles.contractNameInSlot}>{getContractName(output.to)}</span>
-                                    <span class={styles.functionName}>.{output.to.split('.')[1]}()</span>
-                                  </>
+                                  isContractValidated(getContractName(output.to)) ? (
+                                    <>
+                                      <span
+                                        class={styles.contractNameClickable}
+                                        onClick={() => props.onNavigateToContract?.(getContractName(output.to))}
+                                      >
+                                        {getContractName(output.to)}
+                                      </span>
+                                      <span
+                                        class={styles.functionNameClickable}
+                                        onClick={() => props.onNavigateToContract?.(getContractName(output.to), output.to.split('.')[1])}
+                                      >
+                                        .{output.to.split('.')[1]}()
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span class={styles.contractNameInSlot}>{getContractName(output.to)}</span>
+                                      <span class={styles.functionName}>.{output.to.split('.')[1]}()</span>
+                                    </>
+                                  )
                                 ) : (
                                   <span class={output.to === 'P2PKH' ? styles.p2pkhNameInSlot : undefined}>{output.to}</span>
                                 )}

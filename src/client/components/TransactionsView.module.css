@@ -241,12 +241,31 @@
   color: var(--color-info);
 }
 
+.contractNameClickable {
+  color: var(--color-info);
+  cursor: pointer;
+}
+
+.contractNameClickable:hover {
+  text-decoration: underline;
+}
+
 .p2pkhNameInSlot {
   color: #0ac18e;
 }
 
 .functionName {
   color: var(--color-text-dim);
+}
+
+.functionNameClickable {
+  color: var(--color-text-dim);
+  cursor: pointer;
+}
+
+.functionNameClickable:hover {
+  color: var(--color-info);
+  text-decoration: underline;
 }
 
 .slotType {

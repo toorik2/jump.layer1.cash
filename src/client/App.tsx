@@ -275,6 +275,78 @@ export default function App() {
     }
   };
 
+  // Navigation from transaction slots to contracts
+  const logFunctionNotFound = async (contractName: string, functionName: string, reason: string) => {
+    try {
+      await fetch('/api/log-error', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'function_not_found',
+          contractName,
+          functionName,
+          reason,
+        }),
+      });
+    } catch (e) {
+      console.error('Failed to log error:', e);
+    }
+  };
+
+  const scrollToFunction = async (functionName: string, contractName: string) => {
+    // Get the contract's raw code to find line number
+    const contract = allContracts().find(c => c.name === contractName);
+    if (!contract?.code) {
+      await logFunctionNotFound(contractName, functionName, 'Contract code not found');
+      throw new Error(`Contract code not found for ${contractName}`);
+    }
+
+    // Find line number of function definition
+    const lines = contract.code.split('\n');
+    const pattern = new RegExp(`function\\s+${functionName}\\s*\\(`);
+    const lineIndex = lines.findIndex(line => pattern.test(line));
+
+    if (lineIndex === -1) {
+      await logFunctionNotFound(contractName, functionName, 'Function not in contract code');
+      throw new Error(`Function ${functionName} not found in contract ${contractName}`);
+    }
+
+    // Shiki renders each line as a span.line inside <pre><code>
+    // Find the target line element and scroll window to it
+    const codeBlock = document.querySelector('[class*="codeBlock"]');
+    if (!codeBlock) {
+      await logFunctionNotFound(contractName, functionName, 'Code block not found');
+      throw new Error(`Code block not found for contract ${contractName}`);
+    }
+
+    const lineSpans = codeBlock.querySelectorAll('.line');
+    const targetLine = lineSpans[lineIndex] as HTMLElement | undefined;
+
+    if (!targetLine) {
+      await logFunctionNotFound(contractName, functionName, `Line ${lineIndex} not found in DOM`);
+      throw new Error(`Line ${lineIndex} not found in contract ${contractName}`);
+    }
+
+    // Scroll window so target line is at top
+    targetLine.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const handleNavigateToContract = (contractName: string, functionName?: string) => {
+    const contracts = allContracts();
+    const index = contracts.findIndex(c => c.name === contractName);
+
+    if (index !== -1) {
+      setActiveMainTab('contracts');
+      setActiveContractTab(index);
+
+      if (functionName) {
+        setTimeout(() => {
+          scrollToFunction(functionName, contractName);
+        }, 100);
+      }
+    }
+  };
+
   // Derived state for view logic
   const hasIncrementalData = () => store.contracts().length > 0;
   const hasPendingContracts = () => store.pendingContracts().length > 0;
@@ -403,7 +475,7 @@ export default function App() {
               </div>
 
               <Show when={activeMainTab() === 'transactions'}>
-                <TransactionsView transactions={store.transactions} loading={store.loading} pendingContracts={store.pendingContracts} validatedContracts={store.contracts} capabilities={store.capabilities} />
+                <TransactionsView transactions={store.transactions} loading={store.loading} pendingContracts={store.pendingContracts} validatedContracts={store.contracts} capabilities={store.capabilities} onNavigateToContract={handleNavigateToContract} />
               </Show>
 
               <Show when={activeMainTab() === 'contracts'}>

@@ -67,6 +67,13 @@ ${multiContractPatterns}`;
   console.log(`[Server] Knowledge base loaded: ${knowledgeBase.length} characters`);
 }
 
+// Client-side error logging
+app.post('/api/log-error', (req, res) => {
+  const { type, contractName, functionName, reason } = req.body;
+  console.error(`[ClientError] ${type}: ${reason} (contract="${contractName}", function="${functionName}")`);
+  res.json({ logged: true });
+});
+
 // Conversion endpoint
 app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   if (activeConversions >= SERVER_CONFIG.maxConcurrentConversions) {
