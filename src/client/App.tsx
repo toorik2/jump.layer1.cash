@@ -6,6 +6,7 @@ import type { DisplayContract } from './types';
 import { enrichTransactions } from './utils/transactions';
 import { createConversionStore } from './stores/conversion';
 import { streamSSE, type SSEEvent } from './hooks/useSSE';
+import { useNavigationHistory } from './hooks/useNavigationHistory';
 import PhaseProgress from './components/PhaseProgress';
 import TransactionsView from './components/TransactionsView';
 import ContractTabs from './components/ContractTabs';
@@ -32,6 +33,14 @@ export default function App() {
   // Phase progress animation state
   const [phaseStartTimes, setPhaseStartTimes] = createSignal<{[key: number]: number}>({});
   const [connectorProgress, setConnectorProgress] = createSignal<{[key: number]: number}>({});
+
+  // Navigation history (browser back/forward support)
+  const navigationHistory = useNavigationHistory({
+    activeMainTab,
+    setActiveMainTab,
+    activeContractTab,
+    setActiveContractTab
+  });
 
   // All contracts (validated + pending) for tab display
   const allContracts = createMemo((): DisplayContract[] => {
@@ -74,6 +83,7 @@ export default function App() {
   };
 
   const handleReset = () => {
+    navigationHistory.resetHistory();
     setEvmContract('');
     setContractHighlightedHTML({});
     setOriginalContractHTML('');
@@ -84,6 +94,19 @@ export default function App() {
     setPhaseStartTimes({});
     setConnectorProgress({});
     store.reset();
+  };
+
+  // Navigation handlers that push history (for user-initiated navigation)
+  const navigateToMainTab = (tab: 'transactions' | 'contracts') => {
+    if (activeMainTab() === tab) return;
+    navigationHistory.pushNavigation();
+    setActiveMainTab(tab);
+  };
+
+  const navigateToContractTab = (index: number) => {
+    if (activeContractTab() === index) return;
+    navigationHistory.pushNavigation();
+    setActiveContractTab(index);
   };
 
   // Linear duration model from DB regression analysis
@@ -336,6 +359,9 @@ export default function App() {
     const index = contracts.findIndex(c => c.name === contractName);
 
     if (index !== -1) {
+      // Push current state BEFORE changing tabs (so back returns here)
+      navigationHistory.pushNavigation();
+
       setActiveMainTab('contracts');
       setActiveContractTab(index);
 
@@ -443,7 +469,7 @@ export default function App() {
               <div class={styles.mainTabs}>
                 <button
                   class={activeMainTab() === 'transactions' ? styles.mainTabActive : styles.mainTab}
-                  onClick={() => setActiveMainTab('transactions')}
+                  onClick={() => navigateToMainTab('transactions')}
                 >
                   Transactions
                   <Show when={store.transactions().length > 0}>
@@ -453,7 +479,7 @@ export default function App() {
 
                 <button
                   class={activeMainTab() === 'contracts' ? styles.mainTabContractActive : styles.mainTabContract}
-                  onClick={() => setActiveMainTab('contracts')}
+                  onClick={() => navigateToMainTab('contracts')}
                 >
                   Contracts
                   <Show when={contractsToDisplay().length > 0}>
@@ -482,7 +508,7 @@ export default function App() {
                 <ContractTabs
                   contracts={contractsToDisplay}
                   activeTab={activeContractTab}
-                  setActiveTab={setActiveContractTab}
+                  setActiveTab={navigateToContractTab}
                   retryAttempt={store.retryAttempt}
                   loading={store.loading}
                   isOriginalTab={isOriginalTab}
