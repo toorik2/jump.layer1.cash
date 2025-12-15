@@ -125,6 +125,11 @@ For each entity: where is its NFT locked?
 that entity's transitions MUST have contract enforcement. P2PKH custody cannot
 enforce invariants - it only provides key-holder authorization.
 
+**TOKEN DOMAIN SPECIAL RULE**: If domain is "token", apply the Token Feature
+Classification from the HYBRID ARCHITECTURE section FIRST. Native token operations
+(transfer, balance) ALWAYS use P2PKH custody, regardless of invariants, because
+CashTokens FT conservation is protocol-enforced.
+
 Check each critical invariant:
 - Can it be violated with P2PKH custody? -> Needs contract
 - Does it require validation logic? -> Needs contract
@@ -207,6 +212,80 @@ Then you MUST design a ReserveContract that:
 
 ---
 
+# TOKEN DOMAIN HYBRID ARCHITECTURE (ERC-20 Conversions)
+
+When the Phase 1 domain is "token", apply this hybrid analysis BEFORE custody decisions:
+
+## Token Feature Classification
+
+Classify EACH Phase 1 transition as either NATIVE or EXTENDED:
+
+### NATIVE (No contract needed - CashTokens FT handles automatically)
+- **Transfer**: Moving token amounts between addresses → P2PKH + FT
+- **Balance query**: Reading token balance → UTXO scanning (off-chain)
+- **Total supply conservation**: sum(inputs) >= sum(outputs) → Protocol-enforced
+
+### EXTENDED (Requires contract wrapper)
+- **Minting authority**: Who can release tokens from supply → SupplyController
+- **Burning with supply tracking**: Explicit supply state reduction → SupplyController with state NFT
+- **Allowance/delegation**: Spend-on-behalf-of mechanism → AllowanceMgr with approval NFTs
+- **Transfer restrictions**: Whitelist, blacklist, hooks → TransferValidator
+- **Pausable transfers**: Emergency stop mechanism → PauseController with pause NFT
+
+## Hybrid Architecture Rules
+
+1. **Never wrap native operations**: If a transition is NATIVE, its custody is P2PKH.
+   DO NOT create a contract just to "track" balances - CashTokens FT does this.
+
+2. **Isolate extended features**: Create contracts ONLY for EXTENDED transitions.
+   Each contract handles ONE specific extended feature.
+
+3. **No "TokenState" for basic balances**: Do NOT create an NFT to store what
+   tokenAmount already stores. Balance is the FT amount on UTXOs.
+
+4. **Supply tracking exception**: If the token has FIXED supply with no minting/burning,
+   no supply tracking contract needed. If supply is VARIABLE (mint/burn exists),
+   create a SupplyController with a state NFT.
+
+## Decision Tree for Token Domain
+
+```
+For each Phase 1 transition:
+├── Is it transfer/balance/conservation?
+│   └── YES → custody: "p2pkh", no contract
+├── Does it require authorization beyond possession?
+│   └── YES → Create authority contract (MintAuth, BurnAuth, etc.)
+├── Does it involve spending on behalf of another?
+│   └── YES → Create AllowanceMgr contract
+├── Does it track mutable supply?
+│   └── YES → Create SupplyController with state NFT
+└── Otherwise → custody: "p2pkh", no contract
+```
+
+## Example: Basic ERC-20 with Approve/TransferFrom
+
+Phase 1 transitions: TransferTokens, GrantAllowance, TransferFromAllowance
+Analysis:
+- TransferTokens → NATIVE (P2PKH + FT)
+- GrantAllowance → EXTENDED (creates approval NFT)
+- TransferFromAllowance → EXTENDED (consumes approval NFT)
+
+Result: **1 contract (AllowanceMgr)** instead of 0 or 3.
+Basic transfers remain P2PKH + FT.
+
+## Example: ERC-20 with Mint/Burn
+
+Phase 1 transitions: TransferTokens, MintTokens, BurnTokens
+Analysis:
+- TransferTokens → NATIVE (P2PKH + FT)
+- MintTokens → EXTENDED (SupplyController releases FT from reserves)
+- BurnTokens → EXTENDED (explicit burn with supply update)
+
+Result: **1 contract (SupplyController)** for mint/burn.
+Basic transfers remain P2PKH + FT.
+
+---
+
 # CONTRACT ARCHITECTURE DECISION
 
 ## Architecture Patterns (from ParityUSD analysis)
@@ -265,6 +344,25 @@ The `contracts[]` array is for **CashScript contracts only** - things that compi
 - Anything with zero functions
 
 If custody is P2PKH, document ONLY in `custodyDecisions`, not in `contracts[]`.
+
+## Hybrid Token Contract Count
+
+When domain is "token", the contract count may be LESS than the number of
+transitions because:
+- NATIVE transitions (transfer, balance) need 0 contracts
+- Only EXTENDED transitions need contracts
+
+Example rationale for basic ERC-20 with approve/transferFrom:
+```json
+{
+  "total": 1,
+  "breakdown": "1 container, 0 sidecars, 0 functions",
+  "decisions": [
+    "TransferTokens: 0 - native CashTokens FT, P2PKH custody",
+    "Allowance: 1 - approval NFTs require contract to validate consumption"
+  ]
+}
+```
 
 ---
 
