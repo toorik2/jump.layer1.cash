@@ -216,6 +216,20 @@ Then you MUST design a ReserveContract that:
 
 When the Phase 1 domain is "token", apply this hybrid analysis BEFORE custody decisions:
 
+## Simple Token Shortcut
+
+**FIRST, check if Phase 1 set `simpleToken: true`.**
+
+If `simpleToken: true`:
+- This is a basic token that just inherits ERC20/ERC721 without custom logic
+- **Skip the entire extended feature analysis below**
+- Set `contracts: []` (zero contracts needed)
+- All custodyDecisions → P2PKH (native token holding)
+- Add warning: "ARCHITECTURE: Simple token detected - native CashTokens FT handles all functionality. No smart contracts needed. Create fungible tokens at genesis, users hold in P2PKH addresses, transfers are native BCH transactions."
+- contractCountRationale: `{ "total": 0, "breakdown": "0 contracts - simple token uses native CashTokens", "decisions": ["Simple token pattern detected - all functionality handled by native CashTokens FT"] }`
+
+Only proceed with the detailed analysis below if `simpleToken: false` or not set.
+
 ## Token Feature Classification
 
 Classify EACH Phase 1 transition as either NATIVE or EXTENDED:

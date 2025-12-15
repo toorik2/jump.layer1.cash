@@ -12,6 +12,10 @@
         "enum": ["voting", "token", "crowdfunding", "marketplace", "game", "defi", "governance", "other"],
         "description": "Primary domain classification - choose the MOST SPECIFIC that applies"
       },
+      "simpleToken": {
+        "type": "boolean",
+        "description": "Only for token domain: true if contract just inherits ERC20/ERC721 without custom logic (only constructor + view functions). False if it has overrides, custom state, or additional functionality."
+      },
       "entities": {
         "type": "array",
         "description": "Things with identity and state that the contract manages",
