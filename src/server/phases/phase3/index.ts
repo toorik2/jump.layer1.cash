@@ -130,11 +130,7 @@ export async function execute(
     throw new Error(`Failed to parse generated code: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
   }
 
-  const contracts: ContractInfo[] = parsed.contracts;
-
-  if (!contracts || contracts.length === 0) {
-    throw new Error('No valid contracts generated');
-  }
+  const contracts: ContractInfo[] = parsed.contracts || [];
 
   console.log('[Phase 3] Code generation complete:', {
     duration: `${(duration / 1000).toFixed(2)}s`,

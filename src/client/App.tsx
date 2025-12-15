@@ -12,6 +12,7 @@ import TransactionsView from './components/TransactionsView';
 import ContractTabs from './components/ContractTabs';
 import ContractCard from './components/ContractCard';
 import ErrorDisplay from './components/ErrorDisplay';
+import NativeSolutionView from './components/NativeSolutionView';
 import './styles/global.css';
 import styles from './App.module.css';
 
@@ -258,6 +259,9 @@ export default function App() {
       case 'retrying':
         store.setRetryAttempt(event.data.attempt);
         break;
+      case 'native_solution':
+        store.setNativeSolution(event.data);
+        break;
       case 'done':
         store.complete();
         break;
@@ -461,11 +465,16 @@ export default function App() {
               canRetry={!!evmContract().trim()}
             />
 
-            <Show when={store.loading() || store.contracts().length > 0 || store.transactions().length > 0}>
+            <Show when={store.loading() || store.contracts().length > 0 || store.transactions().length > 0 || store.nativeSolution()}>
               <Show when={store.loading()}>
                 <PhaseProgress currentPhase={store.currentPhase} connectorProgress={connectorProgress} />
               </Show>
 
+              <Show when={store.nativeSolution()}>
+                <NativeSolutionView solution={store.nativeSolution()!} onReset={handleReset} />
+              </Show>
+
+              <Show when={!store.nativeSolution()}>
               <div class={styles.mainTabs}>
                 <button
                   class={activeMainTab() === 'transactions' ? styles.mainTabActive : styles.mainTab}
@@ -527,6 +536,7 @@ export default function App() {
                   loading={store.loading}
                   hasIncrementalData={hasIncrementalData()}
                 />
+              </Show>
               </Show>
             </Show>
           </div>

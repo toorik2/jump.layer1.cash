@@ -15,6 +15,13 @@ export type ConversionStatus =
   | 'complete'
   | 'error';
 
+export interface NativeSolution {
+  message: string;
+  guidance: string[];
+  custodyDecisions: Array<{ entity: string; custody: string; rationale: string }>;
+  rationale: { total: number; breakdown: string; decisions: string[] };
+}
+
 export interface ConversionState {
   status: ConversionStatus;
   phase: number;
@@ -24,6 +31,7 @@ export interface ConversionState {
   transactions: Transaction[];
   capabilities: string[];
   retryAttempt: number;
+  nativeSolution: NativeSolution | null;
 }
 
 const initialState: ConversionState = {
@@ -34,7 +42,8 @@ const initialState: ConversionState = {
   pendingContracts: [],
   transactions: [],
   capabilities: [],
-  retryAttempt: 1
+  retryAttempt: 1,
+  nativeSolution: null
 };
 
 export function createConversionStore() {
@@ -54,6 +63,7 @@ export function createConversionStore() {
   const transactions = createMemo(() => state().transactions);
   const capabilities = createMemo(() => state().capabilities);
   const retryAttempt = createMemo(() => state().retryAttempt);
+  const nativeSolution = createMemo(() => state().nativeSolution);
 
   // Actions
   function reset() {
@@ -128,6 +138,10 @@ export function createConversionStore() {
     setState(s => ({ ...s, status: 'complete', phase: 5 }));
   }
 
+  function setNativeSolution(solution: NativeSolution) {
+    setState(s => ({ ...s, nativeSolution: solution, status: 'complete', phase: 5 }));
+  }
+
   function setError(message: string) {
     setState(s => ({ ...s, status: 'error', error: message }));
   }
@@ -142,6 +156,7 @@ export function createConversionStore() {
     transactions,
     capabilities,
     retryAttempt,
+    nativeSolution,
 
     // Actions
     reset,
@@ -151,6 +166,7 @@ export function createConversionStore() {
     setRetryAttempt,
     addValidatedContract,
     complete,
+    setNativeSolution,
     setError
   };
 }

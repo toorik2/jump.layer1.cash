@@ -161,6 +161,22 @@ export async function handleConversion(
       });
     }
 
+    // Check for native CashTokens solution (0 contracts needed)
+    if (contractCount === 0) {
+      sse.sendEvent('native_solution', {
+        message: 'This functionality maps directly to native CashTokens',
+        guidance: utxoArchitecture.warnings || [],
+        custodyDecisions: utxoArchitecture.custodyDecisions || [],
+        rationale: utxoArchitecture.contractCountRationale,
+      });
+
+      persistContracts(conversionId, []);
+      logConversionComplete(conversionId, startTime, 'success');
+      sse.sendEvent('done', { contracts: [], native: true });
+      sse.endResponse();
+      return;
+    }
+
     // PHASE 3: Code Generation
     sse.sendEvent('phase3_start', { message: 'Generating CashScript...' });
 
