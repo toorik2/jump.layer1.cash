@@ -32,7 +32,7 @@ let knowledgeBase = '';
 let activeConversions = 0;
 
 // Middleware to restrict access to localhost or allowed IPs
-const ALLOWED_IPS = ['127.0.0.1', '::1', '::ffff:127.0.0.1', '91.129.107.33'];
+const ALLOWED_IPS = ['127.0.0.1', '::1', '::ffff:127.0.0.1', '91.129.107.33', '2a02:4780:c:985e::1', '2a07:d880:2::a02e'];
 
 function localhostOnly(req: express.Request, res: express.Response, next: express.NextFunction) {
   // Check X-Real-IP first (set by nginx for real client IP), then fallback to req.ip
