@@ -254,7 +254,8 @@ export async function* execute(
   anthropic: Anthropic,
   contracts: ContractInfo[],
   knowledgeBase: string,
-  conversionId: number
+  conversionId: number,
+  withHeartbeat: <T>(promise: Promise<T>) => Promise<T> = (p) => p
 ): AsyncGenerator<ValidationEvent> {
   const registry = new ContractRegistry();
   const sentContracts = new Set<string>();
@@ -293,7 +294,7 @@ export async function* execute(
 
     // Fix contracts with own Claude call
     attemptNumber++;
-    const fixed = await fixContracts(anthropic, systemPrompt, conversionId, attemptNumber, failed);
+    const fixed = await withHeartbeat(fixContracts(anthropic, systemPrompt, conversionId, attemptNumber, failed));
     const merged = registry.mergeFixed(fixed, attempt);
 
     // Clear failed contracts from sentContracts so they get re-emitted

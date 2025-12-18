@@ -228,7 +228,9 @@ export async function handleConversion(
 
     let finalContracts: ContractInfo[] = [];
 
-    for await (const event of phase4.execute(anthropic, contracts, knowledgeBase, conversionId)) {
+    const heartbeatWrapper = <T>(promise: Promise<T>) => withHeartbeat(sse, promise);
+
+    for await (const event of phase4.execute(anthropic, contracts, knowledgeBase, conversionId, heartbeatWrapper)) {
       if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
       switch (event.type) {
