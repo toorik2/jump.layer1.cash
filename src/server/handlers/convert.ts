@@ -40,6 +40,24 @@ function createSSEWriter(res: Response): SSEWriter {
   };
 }
 
+async function withHeartbeat<T>(
+  sse: SSEWriter,
+  promise: Promise<T>,
+  intervalMs = 15000
+): Promise<T> {
+  const interval = setInterval(() => {
+    if (!sse.isDisconnected()) {
+      sse.sendEvent('heartbeat', { timestamp: Date.now() });
+    }
+  }, intervalMs);
+
+  try {
+    return await promise;
+  } finally {
+    clearInterval(interval);
+  }
+}
+
 function validateContractInput(contract: any): { valid: boolean; error?: string } {
   if (typeof contract !== 'string') {
     return { valid: false, error: 'Contract must be a string' };
@@ -118,7 +136,7 @@ export async function handleConversion(
 
     if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
-    const phase1Result = await phase1.execute(anthropic, conversionId, contract);
+    const phase1Result = await withHeartbeat(sse, phase1.execute(anthropic, conversionId, contract));
     const domainModel = phase1Result.domainModel;
 
     sse.sendEvent('phase1_complete', {
@@ -133,7 +151,7 @@ export async function handleConversion(
 
     if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
-    const phase2Result = await phase2.execute(anthropic, conversionId, domainModel);
+    const phase2Result = await withHeartbeat(sse, phase2.execute(anthropic, conversionId, domainModel));
     const utxoArchitecture = phase2Result.architecture;
 
     const contractCount = utxoArchitecture.contracts?.length || 0;
@@ -182,13 +200,13 @@ export async function handleConversion(
 
     if (sse.isDisconnected()) throw new Error('AbortError: Client disconnected');
 
-    const phase3Result = await phase3.execute(
+    const phase3Result = await withHeartbeat(sse, phase3.execute(
       anthropic,
       conversionId,
       domainModel,
       utxoArchitecture,
       knowledgeBase
-    );
+    ));
     const contracts = phase3Result.contracts;
 
     // Validate Phase 3 names match Phase 2 exactly (fail loud - no drift allowed)
