@@ -116,4 +116,61 @@ Classify the contract into one of these domains based on its PRIMARY purpose:
 IMPORTANT: Choose the MOST SPECIFIC domain that applies.
 For example, a contract with "vote", "delegate", "ballot", "proposal" → domain: "voting"
 
+## 7. SIMPLE TOKEN DETECTION (Token Domain Only)
+
+When domain is "token" and the contract INHERITS from a standard (ERC20, ERC721, etc.):
+
+**Check for "Simple Token" pattern:**
+- Contract only has a constructor (and maybe view functions)
+- Constructor calls parent's mint/initialize
+- NO custom functions beyond inherited ones
+- NO overrides of transfer/approve/transferFrom/etc.
+- NO custom state variables (mappings, arrays) beyond what's inherited
+
+**If Simple Token detected:**
+- Set `"simpleToken": true` in output
+- Extract ONLY transitions that are EXPLICITLY written in the user's code
+- For a basic ERC20, this means only `InitializeToken` (from constructor)
+- DO NOT extract approve/transferFrom/allowance - these are inherited boilerplate
+
+**Rationale**: A contract that just inherits ERC20 without modifications is requesting basic token functionality. The user didn't write approve/transferFrom - they inherited library code. On Bitcoin Cash, CashTokens handles basic fungible tokens natively without smart contracts.
+
+**Examples:**
+
+Simple Token (`simpleToken: true`, extract only InitializeToken):
+```solidity
+contract MyToken is ERC20 {
+    constructor() ERC20("Name", "SYM") {
+        _mint(msg.sender, 1000000);
+    }
+}
+```
+
+```solidity
+contract GLDToken is ERC20 {
+    constructor(uint256 initialSupply) ERC20("Gold", "GLD") {
+        _mint(msg.sender, initialSupply);
+    }
+}
+```
+
+NOT Simple (`simpleToken: false`, extract all transitions):
+```solidity
+contract MyToken is ERC20 {
+    mapping(address => bool) public whitelist;  // Custom state!
+
+    function transfer(address to, uint256 amount) public override returns (bool) {
+        require(whitelist[msg.sender], "Not whitelisted");  // Custom logic!
+        return super.transfer(to, amount);
+    }
+}
+```
+
+```solidity
+contract MyToken is ERC20, Pausable {  // Multiple inheritance with custom features
+    function pause() external onlyOwner { _pause(); }
+    function transfer(...) public override whenNotPaused returns (bool) { ... }
+}
+```
+
 Output valid JSON following the structured output schema.
