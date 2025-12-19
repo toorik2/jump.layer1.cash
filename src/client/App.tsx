@@ -13,6 +13,7 @@ import ContractTabs from './components/ContractTabs';
 import ContractCard from './components/ContractCard';
 import ErrorDisplay from './components/ErrorDisplay';
 import NativeSolutionView from './components/NativeSolutionView';
+import NextStepsView from './components/NextStepsView';
 import './styles/global.css';
 import styles from './App.module.css';
 
@@ -29,7 +30,7 @@ export default function App() {
   const [contractHighlightedHTML, setContractHighlightedHTML] = createSignal<{[key: string]: string}>({});
   const [originalContractHTML, setOriginalContractHTML] = createSignal('');
   const [activeContractTab, setActiveContractTab] = createSignal(0);
-  const [activeMainTab, setActiveMainTab] = createSignal<'transactions' | 'contracts'>('transactions');
+  const [activeMainTab, setActiveMainTab] = createSignal<'transactions' | 'contracts' | 'next-steps'>('transactions');
 
   // Phase progress animation state
   const [phaseStartTimes, setPhaseStartTimes] = createSignal<{[key: number]: number}>({});
@@ -125,7 +126,7 @@ export default function App() {
   };
 
   // Navigation handlers that push history (for user-initiated navigation)
-  const navigateToMainTab = (tab: 'transactions' | 'contracts') => {
+  const navigateToMainTab = (tab: 'transactions' | 'contracts' | 'next-steps') => {
     if (activeMainTab() === tab) return;
     navigationHistory.pushNavigation();
     setActiveMainTab(tab);
@@ -534,6 +535,15 @@ export default function App() {
                   </Show>
                 </button>
 
+                <Show when={!store.loading() && store.contracts().length > 0}>
+                  <button
+                    class={activeMainTab() === 'next-steps' ? styles.mainTabActive : styles.mainTab}
+                    onClick={() => navigateToMainTab('next-steps')}
+                  >
+                    Next Steps
+                  </button>
+                </Show>
+
                 <button class={styles.startOverBtn} onClick={handleReset}>
                   Start over
                 </button>
@@ -566,6 +576,10 @@ export default function App() {
                   loading={store.loading}
                   hasIncrementalData={hasIncrementalData()}
                 />
+              </Show>
+
+              <Show when={activeMainTab() === 'next-steps'}>
+                <NextStepsView shareableUrl={window.location.href} />
               </Show>
               </Show>
             </Show>
