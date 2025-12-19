@@ -146,6 +146,26 @@ export function createConversionStore() {
     setState(s => ({ ...s, status: 'error', error: message }));
   }
 
+  function loadFromResult(result: {
+    contracts: Array<{ name: string; role: string; purpose: string; code: string; validated: boolean }>;
+    transactions: Transaction[];
+  }) {
+    setState({
+      ...initialState,
+      status: 'complete',
+      phase: 5,
+      contracts: result.contracts.map((c, i) => ({
+        id: `loaded-${i}`,
+        name: c.name,
+        role: c.role || 'primary',
+        purpose: c.purpose || '',
+        code: c.code,
+        validated: c.validated
+      })),
+      transactions: result.transactions
+    });
+  }
+
   return {
     // State accessors
     loading,
@@ -167,7 +187,8 @@ export function createConversionStore() {
     addValidatedContract,
     complete,
     setNativeSolution,
-    setError
+    setError,
+    loadFromResult
   };
 }
 

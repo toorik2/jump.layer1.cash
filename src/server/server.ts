@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import { initializeDatabase, closeDatabase, getConversions, getConversionById, getConversionStats, getVisitorAnalytics } from './database.js';
+import { initializeDatabase, closeDatabase, getConversions, getConversionById, getConversionByToken, getConversionStats, getVisitorAnalytics } from './database.js';
 import { loggerMiddleware } from './middleware/logger.js';
 import { rateLimiter } from './middleware/rate-limit.js';
 import { ANTHROPIC_CONFIG, SERVER_CONFIG } from './config.js';
@@ -89,6 +89,15 @@ app.post('/api/convert-stream', rateLimiter, async (req, res) => {
   } finally {
     activeConversions--;
   }
+});
+
+// Public results endpoint (shareable)
+app.get('/api/results/:token', (req, res) => {
+  const result = getConversionByToken(req.params.token);
+  if (!result) {
+    return res.status(404).json({ error: 'Result not found' });
+  }
+  res.json(result);
 });
 
 // History API endpoints (localhost only)

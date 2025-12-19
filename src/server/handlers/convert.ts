@@ -109,6 +109,7 @@ export async function handleConversion(
 ): Promise<void> {
   const startTime = Date.now();
   let conversionId: number | undefined;
+  let shareToken: string | undefined;
   const allContracts: Map<string, ContractInfo> = new Map();
 
   res.setHeader('Content-Type', 'text/event-stream');
@@ -129,7 +130,9 @@ export async function handleConversion(
     }
 
     const metadata = req.metadata!;
-    conversionId = logConversionStart(metadata, contract);
+    const result = logConversionStart(metadata, contract);
+    conversionId = result.id;
+    shareToken = result.shareToken;
 
     // PHASE 1: Domain Extraction
     sse.sendEvent('phase1_start', { message: 'Extracting domain model...' });
@@ -190,7 +193,7 @@ export async function handleConversion(
 
       persistContracts(conversionId, []);
       logConversionComplete(conversionId, startTime, 'success');
-      sse.sendEvent('done', { contracts: [], native: true });
+      sse.sendEvent('done', { contracts: [], native: true, token: shareToken });
       sse.endResponse();
       return;
     }
@@ -287,7 +290,7 @@ export async function handleConversion(
     sse.sendEvent('phase4_complete', { message: 'Validation complete' });
 
     logConversionComplete(conversionId, startTime, 'success');
-    sse.sendEvent('done', { contracts: finalContracts });
+    sse.sendEvent('done', { contracts: finalContracts, token: shareToken });
     sse.endResponse();
 
   } catch (error) {

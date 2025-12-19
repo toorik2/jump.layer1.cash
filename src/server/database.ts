@@ -152,6 +152,7 @@ function createTables() {
     { table: 'utxo_architectures', column: 'system_prompt', type: 'TEXT' },
     { table: 'api_attempts', column: 'system_prompt', type: 'TEXT' },
     { table: 'conversions', column: 'user_agent', type: 'TEXT' },
+    { table: 'conversions', column: 'share_token', type: 'TEXT' },
   ];
 
   for (const { table, column, type } of migrations) {
@@ -161,6 +162,11 @@ function createTables() {
       if (!e.message?.includes('duplicate column')) throw e;
     }
   }
+
+  // Post-migration indexes (for columns added via migration)
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_conversions_share_token ON conversions(share_token) WHERE share_token IS NOT NULL;
+  `);
 }
 
 // ============================================================================
@@ -175,7 +181,7 @@ export function generateUUID(): string {
   return createHash('sha256')
     .update(Date.now().toString() + Math.random().toString())
     .digest('hex')
-    .substring(0, 32);
+    .substring(0, 6);
 }
 
 // ============================================================================
@@ -196,6 +202,7 @@ export interface ConversionRecord {
   solidity_hash: string;
   is_multi_contract: boolean;
   contract_count: number;
+  share_token?: string;
 }
 
 export function insertConversion(record: Omit<ConversionRecord, 'id'>): number {
@@ -203,8 +210,8 @@ export function insertConversion(record: Omit<ConversionRecord, 'id'>): number {
     INSERT INTO conversions (
       session_id, ip_address, user_agent, created_at, completed_at, duration_ms,
       final_status, total_attempts, solidity_code, solidity_hash,
-      is_multi_contract, contract_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      is_multi_contract, contract_count, share_token
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -219,7 +226,8 @@ export function insertConversion(record: Omit<ConversionRecord, 'id'>): number {
     record.solidity_code,
     record.solidity_hash,
     record.is_multi_contract ? 1 : 0,
-    record.contract_count
+    record.contract_count,
+    record.share_token || null
   );
 
   return result.lastInsertRowid as number;
@@ -531,6 +539,34 @@ export function getConversionById(id: number) {
     semantic_analysis,
     utxo_architecture,
     api_attempts
+  };
+}
+
+export function getConversionByToken(token: string) {
+  const conversionStmt = db.prepare('SELECT * FROM conversions WHERE share_token = ?');
+  const conversion = conversionStmt.get(token) as any;
+  if (!conversion) return null;
+
+  const contractsStmt = db.prepare('SELECT * FROM contracts WHERE conversion_id = ? ORDER BY id');
+  const contracts = contractsStmt.all(conversion.id);
+
+  const archStmt = db.prepare('SELECT * FROM utxo_architectures WHERE conversion_id = ? LIMIT 1');
+  const utxo_architecture = archStmt.get(conversion.id) as any;
+
+  return {
+    token: conversion.share_token,
+    createdAt: conversion.created_at,
+    solidityCode: conversion.solidity_code,
+    contracts: contracts.map((c: any) => ({
+      name: c.name,
+      role: c.role,
+      purpose: c.purpose,
+      code: c.cashscript_code,
+      validated: Boolean(c.is_validated)
+    })),
+    transactions: utxo_architecture?.architecture_json
+      ? JSON.parse(utxo_architecture.architecture_json).transactionTemplates || []
+      : []
   };
 }
 

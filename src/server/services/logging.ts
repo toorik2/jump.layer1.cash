@@ -2,6 +2,7 @@ import {
   insertConversion,
   updateConversion,
   generateHash,
+  generateUUID,
   ConversionRecord,
 } from '../database.js';
 import type { RequestMetadata } from '../types/logging.js';
@@ -14,7 +15,8 @@ export type { RequestMetadata };
 export function logConversionStart(
   metadata: RequestMetadata,
   inputContract: string
-): number {
+): { id: number; shareToken: string } {
+  const shareToken = generateUUID();
   const record: Omit<ConversionRecord, 'id'> = {
     session_id: metadata.session_id,
     ip_address: metadata.ip_address,
@@ -25,8 +27,9 @@ export function logConversionStart(
     solidity_hash: generateHash(inputContract),
     is_multi_contract: false,
     contract_count: 0,
+    share_token: shareToken,
   };
-  return insertConversion(record);
+  return { id: insertConversion(record), shareToken };
 }
 
 /**

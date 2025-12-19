@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, Show, onCleanup } from 'solid-js';
+import { createSignal, createEffect, createMemo, Show, onCleanup, onMount } from 'solid-js';
 import { codeToHtml } from 'shiki';
 import { API_STREAM_URL } from './config.frontend';
 import { SIMPLE_EXAMPLE, COMPLEX_EXAMPLE, VERY_COMPLEX_EXAMPLE } from './data/examples';
@@ -41,6 +41,32 @@ export default function App() {
     setActiveMainTab,
     activeContractTab,
     setActiveContractTab
+  });
+
+  // Check for shareable result URL on mount
+  onMount(async () => {
+    const match = window.location.pathname.match(/^\/results\/([a-f0-9]+)$/);
+    if (match) {
+      const token = match[1];
+      try {
+        const res = await fetch(`/api/results/${token}`);
+        if (res.ok) {
+          const data = await res.json();
+          setEvmContract(data.solidityCode || '');
+          store.loadFromResult({ contracts: data.contracts, transactions: data.transactions });
+          // Highlight input after loading
+          if (data.solidityCode) {
+            const html = await codeToHtml(data.solidityCode, { lang: 'solidity', theme: 'dark-plus' });
+            setOriginalContractHTML(html);
+          }
+        } else {
+          store.setError('Result not found');
+        }
+      } catch (e) {
+        console.error('[Jump] Failed to load shared result:', e);
+        store.setError('Failed to load result');
+      }
+    }
   });
 
   // All contracts (validated + pending) for tab display
@@ -95,6 +121,7 @@ export default function App() {
     setPhaseStartTimes({});
     setConnectorProgress({});
     store.reset();
+    history.replaceState(null, '', '/');
   };
 
   // Navigation handlers that push history (for user-initiated navigation)
@@ -264,6 +291,9 @@ export default function App() {
         break;
       case 'done':
         store.complete();
+        if (event.data.token) {
+          history.replaceState(null, '', `/results/${event.data.token}`);
+        }
         break;
       case 'error':
         console.error('[Jump] Error:', event.data);
