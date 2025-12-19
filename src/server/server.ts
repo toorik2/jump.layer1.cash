@@ -31,16 +31,27 @@ const anthropic = new Anthropic({
 let knowledgeBase = '';
 let activeConversions = 0;
 
-// Middleware to restrict access to localhost or allowed IPs
-const ALLOWED_IPS = ['127.0.0.1', '::1', '::ffff:127.0.0.1', '91.129.107.33', '2a02:4780:c:985e::1', '2a07:d880:2::a02e', '69.57.226.224'];
-
-function localhostOnly(req: express.Request, res: express.Response, next: express.NextFunction) {
-  // Check X-Real-IP first (set by nginx for real client IP), then fallback to req.ip
-  const realIp = req.headers['x-real-ip'] as string | undefined;
-  const ip = realIp || req.ip || req.socket.remoteAddress || '';
-  if (!ALLOWED_IPS.includes(ip)) {
-    return res.status(403).json({ error: 'Access denied' });
+// Basic HTTP Auth for analytics endpoints
+function analyticsAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const password = process.env.ANALYTICS_PASSWORD;
+  if (!password) {
+    return res.status(500).json({ error: 'Analytics password not configured' });
   }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Basic ')) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Analytics"');
+    return res.status(401).send('Authentication required');
+  }
+
+  const credentials = Buffer.from(authHeader.slice(6), 'base64').toString();
+  const [, pwd] = credentials.split(':');
+
+  if (pwd !== password) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Analytics"');
+    return res.status(401).send('Invalid credentials');
+  }
+
   next();
 }
 
@@ -101,13 +112,13 @@ app.get('/api/results/:token', (req, res) => {
 });
 
 // History API endpoints (localhost only)
-app.get('/api/conversions', localhostOnly, (_req, res) => {
+app.get('/api/conversions', analyticsAuth, (_req, res) => {
   const limit = Math.min(parseInt(_req.query.limit as string) || 50, 100);
   const offset = parseInt(_req.query.offset as string) || 0;
   res.json(getConversions(limit, offset));
 });
 
-app.get('/api/conversions/:id', localhostOnly, (req, res) => {
+app.get('/api/conversions/:id', analyticsAuth, (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) {
     return res.status(400).json({ error: 'Invalid conversion ID' });
@@ -119,11 +130,11 @@ app.get('/api/conversions/:id', localhostOnly, (req, res) => {
   res.json(result);
 });
 
-app.get('/api/stats', localhostOnly, (_req, res) => {
+app.get('/api/stats', analyticsAuth, (_req, res) => {
   res.json(getConversionStats());
 });
 
-app.get('/api/analytics', localhostOnly, (_req, res) => {
+app.get('/api/analytics', analyticsAuth, (_req, res) => {
   res.json({
     stats: getConversionStats(),
     visitors: getVisitorAnalytics()
@@ -131,7 +142,7 @@ app.get('/api/analytics', localhostOnly, (_req, res) => {
 });
 
 // Prompts metadata endpoint
-app.get('/api/prompts', localhostOnly, async (_req, res) => {
+app.get('/api/prompts', analyticsAuth, async (_req, res) => {
   const phasesDir = join(__dirname, 'phases');
   const [phase1Schema, phase2Schema, phase3Schema, phase4Schema] = await Promise.all([
     readFile(join(phasesDir, 'phase1', 'schema.json'), 'utf-8'),
@@ -164,7 +175,7 @@ app.get('/api/prompts', localhostOnly, async (_req, res) => {
 });
 
 // Analytics page (localhost only)
-app.get('/analytics', localhostOnly, (_req, res) => {
+app.get('/analytics', analyticsAuth, (_req, res) => {
   res.sendFile(join(process.cwd(), 'dist', 'analytics.html'));
 });
 
