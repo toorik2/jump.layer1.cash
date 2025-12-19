@@ -14,8 +14,9 @@
   display: grid;
   grid-template-rows: 32px auto;
   gap: 0.5rem;
-  width: 90px;
-  flex-shrink: 0;
+  min-width: 60px;
+  max-width: 90px;
+  flex: 1;
   justify-items: center;
   opacity: 0.4;
   transition: opacity 0.3s ease;
@@ -85,10 +86,10 @@
 }
 
 .connector {
-  width: 40px;
+  min-width: 20px;
+  max-width: 40px;
   height: 32px;
-  flex-shrink: 0;
-  margin: 0 0.5rem;
+  flex: 0.5;
   display: flex;
   align-items: center;
 }
@@ -108,4 +109,30 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+@media (max-width: 600px) {
+  .progress {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  .step {
+    width: auto;
+  }
+
+  .connector {
+    display: none;
+  }
+
+  .indicator {
+    width: 32px;
+    height: 32px;
+  }
+
+  .label {
+    font-size: 0.6rem;
+  }
 }
