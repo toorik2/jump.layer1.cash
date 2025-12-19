@@ -93,6 +93,24 @@
   font-weight: 500;
 }
 
+.table th:nth-child(1),
+.table td:nth-child(1) { width: 50px; }  /* ID */
+
+.table th:nth-child(2),
+.table td:nth-child(2) { width: 160px; white-space: nowrap; }  /* Date */
+
+.table th:nth-child(3),
+.table td:nth-child(3) { width: 80px; }  /* Status */
+
+.table th:nth-child(4),
+.table td:nth-child(4) { width: 80px; }  /* Duration */
+
+.table th:nth-child(5),
+.table td:nth-child(5) { width: 80px; }  /* Contracts */
+
+.table th:nth-child(6),
+.table td:nth-child(6) { width: 60px; }  /* View */
+
 .row {
   cursor: pointer;
   transition: background 0.15s;
@@ -312,4 +330,19 @@
 .dailyCount {
   color: var(--color-text-muted);
   font-size: 0.875rem;
+}
+
+.viewBtn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.viewBtn:hover {
+  opacity: 0.9;
 }

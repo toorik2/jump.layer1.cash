@@ -501,7 +501,7 @@ export function getConversions(limit = 50, offset = 0): { conversions: Conversio
   const total = (countStmt.get() as { count: number }).count;
 
   const stmt = db.prepare(`
-    SELECT id, session_id, created_at, completed_at, final_status, duration_ms, contract_count, is_multi_contract
+    SELECT id, session_id, created_at, completed_at, final_status, duration_ms, contract_count, is_multi_contract, share_token
     FROM conversions
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?

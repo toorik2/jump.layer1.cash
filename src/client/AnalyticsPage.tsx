@@ -33,6 +33,7 @@ interface ConversionListItem {
   duration_ms: number | null;
   contract_count: number;
   is_multi_contract: boolean;
+  share_token: string | null;
 }
 
 interface ConversionDetail {
@@ -235,6 +236,7 @@ export default function AnalyticsPage() {
                   <th>Status</th>
                   <th>Duration</th>
                   <th>Contracts</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -260,10 +262,23 @@ export default function AnalyticsPage() {
                         </td>
                         <td>{formatDuration(conv.duration_ms)}</td>
                         <td>{conv.contract_count}</td>
+                        <td>
+                          <Show when={conv.share_token}>
+                            <button
+                              class={styles.viewBtn}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`/results/${conv.share_token}`, '_blank');
+                              }}
+                            >
+                              View
+                            </button>
+                          </Show>
+                        </td>
                       </tr>
                       <Show when={expandedId() === conv.id && detail()}>
                         <tr class={styles.detailRow}>
-                          <td colspan="5">
+                          <td colspan="6">
                             <div class={styles.detailContent}>
                               {/* Phase 1: Domain Extraction */}
                               <Section title="Phase 1: Domain Extraction">
