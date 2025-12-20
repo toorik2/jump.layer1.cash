@@ -279,9 +279,14 @@
   animation: spin 1s linear infinite;
 }
 
+.rightButtons {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
 .startOverBtn {
   composes: mainTab;
-  margin-left: auto;
   background: transparent;
   border-color: var(--color-border);
   color: var(--color-text-faint);

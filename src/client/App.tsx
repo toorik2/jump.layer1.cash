@@ -535,18 +535,19 @@ export default function App() {
                   </Show>
                 </button>
 
-                <Show when={!store.loading() && store.contracts().length > 0}>
-                  <button
-                    class={activeMainTab() === 'next-steps' ? styles.mainTabActive : styles.mainTab}
-                    onClick={() => navigateToMainTab('next-steps')}
-                  >
-                    Next Steps
+                <div class={styles.rightButtons}>
+                  <Show when={!store.loading() && store.contracts().length > 0}>
+                    <button
+                      class={activeMainTab() === 'next-steps' ? styles.mainTabActive : styles.mainTab}
+                      onClick={() => navigateToMainTab('next-steps')}
+                    >
+                      Share & Learn!
+                    </button>
+                  </Show>
+                  <button class={styles.startOverBtn} onClick={handleReset}>
+                    Start over
                   </button>
-                </Show>
-
-                <button class={styles.startOverBtn} onClick={handleReset}>
-                  Start over
-                </button>
+                </div>
               </div>
 
               <Show when={activeMainTab() === 'transactions'}>
