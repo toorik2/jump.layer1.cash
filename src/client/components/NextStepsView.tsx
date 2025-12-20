@@ -15,7 +15,7 @@ const COMMUNITY_LINKS = [
 
 const LEARN_BY_DOING = [
   { label: 'Arena', url: 'https://arena.layer1.cash', desc: 'Break contracts & claim BCH', icon: 'flask' },
-  { label: 'FAQ', url: 'https://faq.layer1.cash', desc: 'Common questions', icon: 'question' },
+  { label: 'FAQ', url: 'https://faq.layer1.cash', desc: 'BCH Technical Q&A', icon: 'question' },
 ];
 
 const RESOURCES = [
