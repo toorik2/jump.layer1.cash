@@ -188,11 +188,11 @@ The CashScript compiler requires proper line breaks. Single-line code will fail.
  * This includes the conversion-specific data that cannot be cached.
  */
 export function buildUserMessage(
-  contracts: { name: string; role: string }[],
+  contracts: { name: string; role: string; functions: string[] }[],
   utxoArchitecture: string
 ): string {
   const contractList = contracts
-    .map((c, i) => `${i + 1}. ${c.name} (${c.role})`)
+    .map((c, i) => `${i + 1}. ${c.name} (${c.role})\n   Functions: ${c.functions.join(', ')}`)
     .join('\n');
 
   return `Generate exactly ${contracts.length} CashScript contracts:
@@ -202,53 +202,15 @@ ${contractList}
 Each contract MUST:
 - Use the EXACT name shown above (CashScript: \`contract ContractName { ... }\`)
 - Compile successfully with cashc
-- Implement all functions from architecture.contracts[].functions
+- Implement ALL listed functions above
 
-THE ARCHITECTURE IS AUTHORITATIVE. You must:
-- Use exact contract names from architecture.contracts[].name
-- Implement exactly the functions listed in contracts[].functions
-- Parse validations from each function spec (the comma-separated items after the colon)
-- Follow the NFT state layout from nftStateTypes[]
-- Use transactionTemplates[] to understand the transaction context
+For each function listed, find its full spec in contracts[].functions.
+Format: "funcName @ txName [inputPos→outputPos]: validations"
+Parse and implement the validations after the colon.
 
-UTXO ARCHITECTURE (follow exactly):
-${utxoArchitecture}
+Use transactionTemplates[] for transaction context.
+Use nftStateTypes[] for NFT state layout.
 
-GENERATE CashScript code for each contract in architecture.contracts[].
-For each function, parse the validation list (after the colon) and implement them.
-Use transactionTemplates[] to understand the transaction context.`;
-}
-
-// Keep the old function for backward compatibility (deprecated)
-export function buildCodeGenerationPrompt(
-  knowledgeBase: string,
-  contracts: { name: string; role: string }[]
-): string {
-  const contractList = contracts
-    .map((c, i) => `${i + 1}. ${c.name} (${c.role})`)
-    .join('\n');
-
-  return `Your task is to generate exactly ${contracts.length} CashScript contracts:
-
-${contractList}
-
-Each contract MUST:
-- Use the EXACT name shown above (CashScript: \`contract ContractName { ... }\`)
-- Compile successfully with cashc
-- Implement all functions from architecture.contracts[].functions
-
-THE ARCHITECTURE IS AUTHORITATIVE. You must:
-- Use exact contract names from architecture.contracts[].name
-- Implement exactly the functions listed in contracts[].functions
-- Parse validations from each function spec (the comma-separated items after the colon)
-- Follow the NFT state layout from nftStateTypes[]
-- Use transactionTemplates[] to understand the transaction context
-
-${getStaticInstructions()}
-
-=== CASHSCRIPT REFERENCE ===
-
-Use this reference for CashScript syntax and patterns:
-
-${knowledgeBase}`;
+UTXO ARCHITECTURE:
+${utxoArchitecture}`;
 }

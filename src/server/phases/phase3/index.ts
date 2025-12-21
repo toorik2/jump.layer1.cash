@@ -40,11 +40,12 @@ export async function execute(
   console.log('[Phase 3] Starting code generation...');
   const startTime = Date.now();
 
-  // Extract contract metadata from architecture for dynamic prompt
-  const contractMeta = architecture.contracts?.map(c => ({
+  // Extract contract metadata with functions from architecture
+  const contractMeta = (architecture.contracts || []).map(c => ({
     name: c.name,
-    role: c.role
-  })) || [];
+    role: c.role,
+    functions: c.functions.map(f => f.split('@')[0].trim())
+  }));
 
   const utxoArchitectureJSON = JSON.stringify(architecture, null, 2);
   const staticInstructions = getStaticInstructions();
