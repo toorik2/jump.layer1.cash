@@ -5,14 +5,17 @@
 import { onMount, onCleanup } from 'solid-js';
 import type { Accessor, Setter } from 'solid-js';
 
+type MainTab = 'transactions' | 'contracts' | 'next-steps';
+
 interface NavigationState {
-  mainTab: 'transactions' | 'contracts';
+  mainTab: MainTab;
   contractTab: number;
+  scrollY: number;
 }
 
 interface Options {
-  activeMainTab: Accessor<'transactions' | 'contracts'>;
-  setActiveMainTab: Setter<'transactions' | 'contracts'>;
+  activeMainTab: Accessor<MainTab>;
+  setActiveMainTab: Setter<MainTab>;
   activeContractTab: Accessor<number>;
   setActiveContractTab: Setter<number>;
 }
@@ -22,7 +25,8 @@ export function useNavigationHistory(options: Options) {
 
   const getCurrentState = (): NavigationState => ({
     mainTab: options.activeMainTab(),
-    contractTab: options.activeContractTab()
+    contractTab: options.activeContractTab(),
+    scrollY: window.scrollY
   });
 
   // Push a single history entry for the current state
@@ -43,6 +47,12 @@ export function useNavigationHistory(options: Options) {
     isRestoring = true;
     options.setActiveMainTab(state.mainTab);
     options.setActiveContractTab(state.contractTab);
+
+    // Restore scroll position after DOM update
+    requestAnimationFrame(() => {
+      window.scrollTo(0, state.scrollY);
+    });
+
     isRestoring = false;
   };
 
@@ -60,9 +70,12 @@ export function useNavigationHistory(options: Options) {
     // Call this when navigating (single entry for multi-signal changes)
     pushNavigation: pushState,
 
+    // Get current state (for preserving state when URL changes)
+    getCurrentState,
+
     // Call this on reset to clear history
     resetHistory: () => {
-      history.replaceState({ mainTab: 'transactions', contractTab: 0 }, '', location.href);
+      history.replaceState({ mainTab: 'transactions', contractTab: 0, scrollY: 0 }, '', location.href);
     }
   };
 }

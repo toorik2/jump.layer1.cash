@@ -7,6 +7,7 @@ import { enrichTransactions } from './utils/transactions';
 import { createConversionStore } from './stores/conversion';
 import { streamSSE, type SSEEvent } from './hooks/useSSE';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
+import { TopBar } from '@layer1/ui';
 import PhaseProgress from './components/PhaseProgress';
 import TransactionsView from './components/TransactionsView';
 import ContractTabs from './components/ContractTabs';
@@ -293,7 +294,7 @@ export default function App() {
       case 'done':
         store.complete();
         if (event.data.token) {
-          history.replaceState(null, '', `/results/${event.data.token}`);
+          history.replaceState(navigationHistory.getCurrentState(), '', `/results/${event.data.token}`);
         }
         break;
       case 'error':
@@ -385,8 +386,10 @@ export default function App() {
       throw new Error(`Line ${lineIndex} not found in contract ${contractName}`);
     }
 
-    // Scroll window so target line is at top
-    targetLine.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Scroll to target line, accounting for fixed TopBar (48px)
+    const topBarHeight = 48;
+    const elementTop = targetLine.getBoundingClientRect().top + window.scrollY;
+    window.scrollTo({ top: elementTop - topBarHeight - 16, behavior: 'smooth' });
   };
 
   const handleNavigateToContract = (contractName: string, functionName?: string) => {
@@ -440,12 +443,8 @@ export default function App() {
 
   return (
     <>
+      <TopBar activeSite="jump" />
       <div class={styles.container}>
-        <nav class={styles.headerNav}>
-          <a href="https://faq.layer1.cash" class={styles.navLink}>FAQ</a>
-          <a href="https://arena.layer1.cash" class={styles.navLink}>Arena</a>
-          <a href="https://jump.layer1.cash" class={styles.navLinkActive}>Jump</a>
-        </nav>
         <header class={styles.header}>
           <h1 class={styles.title}>Jump to layer 1 (beta)</h1>
           <p class={styles.intro}>Convert your Solidity smart contract to CashScript</p>
