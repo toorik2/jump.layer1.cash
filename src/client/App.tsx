@@ -589,7 +589,7 @@ export default function App() {
       </div>
 
       <footer class={styles.footer}>
-        <a href="https://t.me/CashScript_Arena" target="_blank" rel="noopener noreferrer">community</a>
+        <a href="https://t.me/layer1_cash" target="_blank" rel="noopener noreferrer">community</a>
         {' · '}
         <a href="https://forms.gle/tQVieRgHnmx3XGs89" target="_blank" rel="noopener noreferrer">feedback</a>
         {' · '}
