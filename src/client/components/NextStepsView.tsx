@@ -6,11 +6,10 @@ type Props = {
 };
 
 const COMMUNITY_LINKS = [
-  { label: 'Layer1.Cash', url: 'https://t.me/layer1_cash', desc: 'This community' },
+  { label: 'Layer1.Cash', url: 'https://t.me/layer1_cash', desc: 'Layer1 community' },
+  { label: 'Bitcoin Cash', url: 'https://t.me/bchchannel', desc: 'General BCH discussion' },
   { label: 'CashScript', url: 'https://t.me/CashScriptBCH', desc: 'Language help' },
-  { label: 'CashToken Devs', url: 'https://t.me/cashtoken_devs', desc: 'Token dev' },
-  { label: 'BCH Builders', url: 'https://t.me/bchbuilders', desc: 'Builders' },
-  { label: 'BCH Channel', url: 'https://t.me/bchchannel', desc: 'General' },
+  { label: 'BCH Builders', url: 'https://t.me/bchbuilders', desc: 'High signal dev chat' },
 ];
 
 const LEARN_BY_DOING = [
